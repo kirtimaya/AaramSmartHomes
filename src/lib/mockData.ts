@@ -1,9 +1,30 @@
 import { Property, Unit, Tenant, Ticket, WaterLog } from './types';
 
 export const mockProperties: Property[] = [
-  { id: 'p1', name: 'Villa Serenity', location: 'Goa, Anjuna', total_units: 5, property_type: 'Villa' },
-  { id: 'p2', name: 'Villa Azure', location: 'Goa, Vagator', total_units: 5, property_type: 'Villa' },
-  { id: 'p3', name: 'Villa Orenda', location: 'Goa, Siolim', total_units: 5, property_type: 'Villa' },
+  { 
+    id: 'p1', 
+    name: 'Serene Duplex', 
+    location: 'Goa, Anjuna', 
+    total_units: 5, 
+    property_type: 'Villa',
+    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/realistic_villa_exterior_1773522363119.png'
+  },
+  { 
+    id: 'p2', 
+    name: 'The Azure Flats', 
+    location: 'Goa, Vagator', 
+    total_units: 5, 
+    property_type: 'Flat',
+    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/modern_apartment_exterior_1773521983114.png'
+  },
+  { 
+    id: 'p3', 
+    name: 'Orenda House', 
+    location: 'Goa, Siolim', 
+    total_units: 5, 
+    property_type: 'Individual House',
+    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/cozy_standalone_house_1773521999008.png'
+  },
 ];
 
 export const mockUnits: Unit[] = [
