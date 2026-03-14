@@ -10,18 +10,19 @@ import {
   ArrowUpRight,
   ChevronRight
 } from 'lucide-react';
-import { mockRooms, mockVillas, mockTickets, mockWaterLogs } from '@/lib/mockData';
+import { Unit, Property, Tenant, Ticket, WaterLog } from '@/lib/types';
+import { mockUnits, mockProperties, mockTickets, mockWaterLogs } from '@/lib/mockData';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export default function AdminDashboard() {
-  const totalRooms = mockRooms.length;
-  const occupiedRooms = mockRooms.filter(r => r.status === 'Occupied' || r.status === 'Notice Period').length;
-  const occupancyRate = Math.round((occupiedRooms / totalRooms) * 100);
+  const totalUnits = mockUnits.length;
+  const occupiedUnits = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
+  const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
   const activeTickets = mockTickets.filter(t => t.status !== 'Resolved').length;
 
   const stats = [
-    { label: 'Overall Occupancy', value: `${occupancyRate}%`, icon: Users, trend: '+5%', color: 'blue' },
+    { label: 'Portfolio Occupancy', value: `${occupancyRate}%`, icon: Users, trend: '+5%', color: 'blue' },
     { label: 'Monthly Revenue', value: '₹4,25,000', icon: TrendingUp, trend: '+12%', color: 'green' },
     { label: 'Open Tickets', value: activeTickets, icon: ClipboardList, trend: '-2', color: 'amber' },
     { label: 'Avg. Water Level', value: '47%', icon: Droplets, trend: 'Watch', color: 'cyan' },
@@ -33,8 +34,8 @@ export default function AdminDashboard() {
         {/* Header Section */}
         <div className="flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">System Overview</h1>
-            <p className="text-foreground/50 mt-1">Real-time status of all villa properties.</p>
+            <h1 className="text-3xl font-bold tracking-tight">Portfolio Overview</h1>
+            <p className="text-foreground/50 mt-1">Real-time status of all properties.</p>
           </div>
           <button className="bg-primary hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 group shadow-lg shadow-primary/20">
             Generate Report
@@ -132,16 +133,16 @@ export default function AdminDashboard() {
 
           {/* Water Levels Card */}
           <div className="glass rounded-3xl border border-border p-6 flex flex-col">
-            <h3 className="font-bold text-lg mb-6">Villa Water Levels</h3>
+            <h3 className="font-bold text-lg mb-6">Property Water Levels</h3>
             <div className="space-y-8 flex-1">
               {mockWaterLogs.map((log) => {
-                const villa = mockVillas.find(v => v.id === log.villa_id);
+                const property = mockProperties.find(p => p.id === log.villa_id);
                 return (
                   <div key={log.id} className="space-y-3">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="font-bold text-sm">{villa?.name}</p>
-                        <p className="text-[10px] text-foreground/40">{villa?.location}</p>
+                        <p className="font-bold text-sm">{property?.name}</p>
+                        <p className="text-[10px] text-foreground/40">{property?.property_type} • {property?.location}</p>
                       </div>
                       <p className={cn(
                         "font-bold text-lg",

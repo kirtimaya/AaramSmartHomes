@@ -1,18 +1,21 @@
-export type Villa = {
+export type PropertyType = 'Villa' | 'Flat' | 'Individual House' | 'Other';
+
+export type Property = {
   id: string;
   name: string;
   location: string;
-  total_rooms: number;
+  total_units: number;
+  property_type: PropertyType;
   image_url?: string;
 };
 
-export type RoomStatus = 'Vacant' | 'Occupied' | 'Maintenance' | 'Notice Period';
+export type UnitStatus = 'Vacant' | 'Occupied' | 'Maintenance' | 'Notice Period';
 
-export type Room = {
+export type Unit = {
   id: string;
-  villa_id: string;
-  room_number: string;
-  status: RoomStatus;
+  property_id: string;
+  unit_number: string;
+  status: UnitStatus;
   current_tenant_id?: string;
 };
 

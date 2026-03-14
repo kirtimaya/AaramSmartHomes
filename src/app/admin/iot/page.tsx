@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
-import { mockVillas, mockWaterLogs } from '@/lib/mockData';
+import { mockProperties, mockWaterLogs } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 import { Droplets, AlertTriangle, Info, RefreshCw, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -28,7 +28,7 @@ const chartData = [
 ];
 
 export default function WaterManagementPage() {
-  const [selectedVilla, setSelectedVilla] = useState(mockVillas[0]);
+  const [selectedProperty, setSelectedProperty] = useState(mockProperties[0]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(85);
 
@@ -58,7 +58,7 @@ export default function WaterManagementPage() {
     };
     return {
       status: 'Normal',
-      text: 'Water levels are optimal. All standard villa operations can proceed.',
+      text: 'Water levels are optimal. All standard property operations can proceed.',
       color: 'text-green-500',
       bg: 'bg-green-500/10',
       border: 'border-green-500/20'
@@ -101,7 +101,7 @@ export default function WaterManagementPage() {
                   <Droplets className="w-12 h-12 text-white" />
                 </div>
                 <h2 className="text-6xl font-bold tracking-tighter">{Math.round(currentLevel)}%</h2>
-                <p className="text-foreground/40 font-bold uppercase tracking-widest mt-2">{selectedVilla.name} Tank</p>
+                <p className="text-foreground/40 font-bold uppercase tracking-widest mt-2">{selectedProperty.name} Tank</p>
                 <div className="flex items-center gap-2 mt-4 text-xs font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full">
                   <Zap className="w-3 h-3" />
                   SENSOR STATUS: OK
@@ -156,19 +156,29 @@ export default function WaterManagementPage() {
             <div className="glass p-6 rounded-[32px] border border-border">
               <h3 className="font-bold mb-4">Select Property</h3>
               <div className="space-y-2">
-                {mockVillas.map(villa => (
+                {mockProperties.map(property => (
                   <button
-                    key={villa.id}
-                    onClick={() => setSelectedVilla(villa)}
+                    key={property.id}
+                    onClick={() => setSelectedProperty(property)}
                     className={cn(
                       "w-full p-4 rounded-2xl border text-left transition-all duration-300",
-                      selectedVilla.id === villa.id 
+                      selectedProperty.id === property.id 
                         ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
                         : "border-border hover:bg-slate-50 dark:hover:bg-slate-900/50"
                     )}
                   >
-                    <p className="font-bold text-sm">{villa.name}</p>
-                    <p className={cn("text-[10px]", selectedVilla.id === villa.id ? "text-white/60" : "text-foreground/40")}>{villa.location}</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-sm">{property.name}</p>
+                        <p className={cn("text-[10px]", selectedProperty.id === property.id ? "text-white/60" : "text-foreground/40")}>{property.location}</p>
+                      </div>
+                      <span className={cn(
+                        "text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
+                        selectedProperty.id === property.id ? "bg-white/10 border-white/20 text-white" : "bg-primary/10 border-primary/20 text-primary"
+                      )}>
+                        {property.property_type}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>

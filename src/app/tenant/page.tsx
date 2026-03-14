@@ -50,9 +50,9 @@ export default function TenantPortal() {
   };
 
   const amenities = [
-    { icon: Wifi, label: 'High-Speed Wi-Fi', desc: 'SSID: Aaram_Villa_Pro | Pass: staylux2024' },
+    { icon: Wifi, label: 'High-Speed Wi-Fi', desc: 'SSID: Aaram_Pro | Pass: staylux2024' },
     { icon: Coffee, label: 'Cook on Call', desc: 'Available 7 AM - 9 PM daily' },
-    { icon: Dumbbell, label: 'Gym Access', desc: 'Open 24/7 in Villa Azure complex' },
+    { icon: Dumbbell, label: 'Gym Access', desc: 'Open 24/7 in the complex' },
     { icon: Wind, label: 'AC Maintenance', desc: 'Scheduled every 1st Sunday' },
   ];
 
@@ -62,8 +62,9 @@ export default function TenantPortal() {
       <header className="px-6 py-8 flex justify-between items-center lg:px-12">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Welcome Home, {userName}</h1>
-          <p className="text-foreground/50 text-sm">Room 101, Villa Serenity</p>
+          <p className="text-foreground/50 text-sm">Unit 101, Villa Serenity</p>
         </div>
+
         <div className="flex items-center gap-4">
           <button 
             onClick={handleSignOut}

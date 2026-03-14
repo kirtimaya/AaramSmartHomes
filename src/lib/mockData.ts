@@ -1,28 +1,29 @@
-import { Villa, Room, Tenant, Ticket, WaterLog } from './types';
+import { Property, Unit, Tenant, Ticket, WaterLog } from './types';
 
-export const mockVillas: Villa[] = [
-  { id: 'v1', name: 'Villa Serenity', location: 'Goa, Anjuna', total_rooms: 5 },
-  { id: 'v2', name: 'Villa Azure', location: 'Goa, Vagator', total_rooms: 5 },
-  { id: 'v3', name: 'Villa Orenda', location: 'Goa, Siolim', total_rooms: 5 },
+export const mockProperties: Property[] = [
+  { id: 'p1', name: 'Villa Serenity', location: 'Goa, Anjuna', total_units: 5, property_type: 'Villa' },
+  { id: 'p2', name: 'Villa Azure', location: 'Goa, Vagator', total_units: 5, property_type: 'Villa' },
+  { id: 'p3', name: 'Villa Orenda', location: 'Goa, Siolim', total_units: 5, property_type: 'Villa' },
 ];
 
-export const mockRooms: Room[] = [
-  { id: 'r1', villa_id: 'v1', room_number: '101', status: 'Occupied', current_tenant_id: 't1' },
-  { id: 'r2', villa_id: 'v1', room_number: '102', status: 'Occupied', current_tenant_id: 't2' },
-  { id: 'r3', villa_id: 'v1', room_number: '103', status: 'Notice Period', current_tenant_id: 't3' },
-  { id: 'r4', villa_id: 'v1', room_number: '104', status: 'Vacant' },
-  { id: 'r5', villa_id: 'v1', room_number: '105', status: 'Maintenance' },
-  // ... more rooms for other villas
-  { id: 'r6', villa_id: 'v2', room_number: '201', status: 'Occupied', current_tenant_id: 't4' },
-  { id: 'r7', villa_id: 'v2', room_number: '202', status: 'Vacant' },
-  { id: 'r8', villa_id: 'v2', room_number: '203', status: 'Occupied', current_tenant_id: 't5' },
-  { id: 'r9', villa_id: 'v2', room_number: '204', status: 'Occupied', current_tenant_id: 't6' },
-  { id: 'r10', villa_id: 'v2', room_number: '205', status: 'Occupied', current_tenant_id: 't7' },
-  { id: 'r11', villa_id: 'v3', room_number: '301', status: 'Occupied', current_tenant_id: 't8' },
-  { id: 'r12', villa_id: 'v3', room_number: '302', status: 'Occupied', current_tenant_id: 't9' },
-  { id: 'r13', villa_id: 'v3', room_number: '303', status: 'Occupied', current_tenant_id: 't10' },
-  { id: 'r14', villa_id: 'v3', room_number: '304', status: 'Occupied', current_tenant_id: 't11' },
-  { id: 'r15', villa_id: 'v3', room_number: '305', status: 'Vacant' },
+export const mockUnits: Unit[] = [
+  { id: 'u1', property_id: 'p1', unit_number: '101', status: 'Occupied', current_tenant_id: 't1' },
+  { id: 'u2', property_id: 'p1', unit_number: '102', status: 'Occupied', current_tenant_id: 't2' },
+  { id: 'u3', property_id: 'p1', unit_number: '103', status: 'Notice Period', current_tenant_id: 't3' },
+  { id: 'u4', property_id: 'p1', unit_number: '104', status: 'Vacant' },
+  { id: 'u5', property_id: 'p1', unit_number: '105', status: 'Maintenance' },
+  
+  { id: 'u6', property_id: 'p2', unit_number: '201', status: 'Occupied', current_tenant_id: 't4' },
+  { id: 'u7', property_id: 'p2', unit_number: '202', status: 'Vacant' },
+  { id: 'u8', property_id: 'p2', unit_number: '203', status: 'Occupied', current_tenant_id: 't5' },
+  { id: 'u9', property_id: 'p2', unit_number: '204', status: 'Occupied', current_tenant_id: 't6' },
+  { id: 'u10', property_id: 'p2', unit_number: '205', status: 'Occupied', current_tenant_id: 't7' },
+  
+  { id: 'u11', property_id: 'p3', unit_number: '301', status: 'Occupied', current_tenant_id: 't8' },
+  { id: 'u12', property_id: 'p3', unit_number: '302', status: 'Occupied', current_tenant_id: 't9' },
+  { id: 'u13', property_id: 'p3', unit_number: '303', status: 'Occupied', current_tenant_id: 't10' },
+  { id: 'u14', property_id: 'p3', unit_number: '304', status: 'Occupied', current_tenant_id: 't11' },
+  { id: 'u15', property_id: 'p3', unit_number: '305', status: 'Vacant' },
 ];
 
 export const mockTenants: Tenant[] = [
