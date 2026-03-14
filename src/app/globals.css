@@ -3,36 +3,28 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
   --color-border: var(--border);
   
-  --shadow-premium: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(255 255 255 / 0.05);
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
 }
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --accent: #1e293b;
-  --accent-foreground: #f1f5f9;
-  --border: #e2e8f0;
-  --primary: #c5a059; /* Sophisticated Gold */
-}
+  /* Soft UI Color Palette */
+  --background: #FDFBF7; /* Cream */
+  --foreground: #3D3D3D;
+  --primary: #D67D61;    /* Terracotta */
+  --secondary: #8BA88E;  /* Sage Green */
+  --accent: #E8DFD0;     /* Darker Cream for depth */
+  --border: #E8DFD0;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #020617;
-    --foreground: #f1f5f9;
-    --card: #0f172a;
-    --card-foreground: #f1f5f9;
-    --accent: #f1f5f9;
-    --accent-foreground: #0f172a;
-    --border: #1e293b;
-  }
+  /* Shadows for Neumorphism */
+  --neo-out-shadow: 8px 8px 16px #E3E1DE, -8px -8px 16px #FFFFFF;
+  --neo-in-shadow: inset 6px 6px 12px #E3E1DE, inset -6px -6px 12px #FFFFFF;
 }
 
 body {
@@ -42,24 +34,54 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+/* Neumorphic Utilities */
+.soft-ui-out {
+  background: var(--background);
+  box-shadow: var(--neo-out-shadow);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
-.dark .glass {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+.soft-ui-in {
+  background: var(--background);
+  box-shadow: var(--neo-in-shadow);
+  border-radius: 16px;
 }
 
-.premium-gradient {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+.soft-button {
+  background: var(--background);
+  box-shadow: 4px 4px 10px #E3E1DE, -4px -4px 10px #FFFFFF;
+  border-radius: 12px;
+  transition: all 0.2s ease;
 }
 
-.gold-gradient {
-  background: linear-gradient(135deg, #d4af37 0%, #c5a059 100%);
+.soft-button:hover {
+  box-shadow: 2px 2px 5px #E3E1DE, -2px -2px 5px #FFFFFF;
+  transform: translateY(1px);
+}
+
+.soft-button:active {
+  box-shadow: inset 4px 4px 8px #E3E1DE, inset -4px -4px 8px #FFFFFF;
+  transform: translateY(2px);
+}
+
+.terracotta-button {
+  background: var(--primary);
+  color: white;
+  border-radius: 12px;
+  box-shadow: 4px 4px 10px rgba(214, 125, 97, 0.3);
+  transition: all 0.2s ease;
+}
+
+.sage-badge {
+  background: var(--secondary);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 @keyframes float {
@@ -72,3 +94,6 @@ body {
   animation: float 6s ease-in-out infinite;
 }
 
+.gold-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, #C06C53 100%);
+}

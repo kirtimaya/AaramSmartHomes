@@ -37,28 +37,28 @@ export default function PropertiesCatalog() {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <header className="px-6 py-12 lg:px-12 max-w-7xl mx-auto space-y-6">
-        <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
+      <header className="px-6 py-16 lg:px-12 max-w-7xl mx-auto space-y-8">
+        <Link href="/" className="inline-flex items-center gap-3 mb-12 group soft-button px-5 py-2.5 border border-white">
           <Shield className="w-5 h-5 text-primary" />
-          <span className="font-bold tracking-tighter">AARAM</span>
+          <span className="font-bold tracking-tighter text-foreground">AARAM</span>
         </Link>
 
-        <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-          <div>
-            <h1 className="text-4xl lg:text-5xl font-bold tracking-tighter">Available Homes</h1>
-            <p className="text-foreground/50 mt-2">Discover your next sanctuary in our curated portfolio.</p>
+        <div className="flex flex-col md:flex-row justify-between items-end gap-10">
+          <div className="space-y-2">
+            <h1 className="text-5xl lg:text-7xl font-bold tracking-tighter text-foreground">Available Homes</h1>
+            <p className="text-foreground/40 text-lg">Curated sanctuaries designed for your well-being.</p>
           </div>
           
-          <div className="flex gap-2 glass p-1.5 rounded-2xl border border-border overflow-x-auto whitespace-nowrap max-w-full">
+          <div className="flex gap-3 soft-ui-out p-2 border border-white overflow-x-auto whitespace-nowrap max-w-full">
             {['All', 'Villa', 'Flat', 'Individual House'].map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type as any)}
                 className={cn(
-                  "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                  "px-6 py-2.5 rounded-xl text-xs font-bold transition-all",
                   filter === type 
-                    ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                    : "text-foreground/40 hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                    ? "terracotta-button shadow-lg" 
+                    : "text-foreground/40 hover:bg-white/50"
                 )}
               >
                 {type}
@@ -69,20 +69,20 @@ export default function PropertiesCatalog() {
       </header>
 
       {/* Grid */}
-      <main className="px-6 lg:px-12 max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-12">
+      <main className="px-6 lg:px-12 max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 mt-8">
         {filtered.map((property, idx) => (
           <motion.div
             key={property.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}
-            className="group glass rounded-[40px] border border-border overflow-hidden hover:border-primary/30 transition-all duration-500"
+            className="group soft-ui-out border border-white p-4 transition-all duration-500 hover:scale-[1.02]"
           >
-            <div className="aspect-[4/3] relative overflow-hidden">
+            <div className="aspect-[4/3] relative overflow-hidden rounded-[32px] soft-ui-in">
               <div className="absolute top-4 left-4 z-10">
-                <span className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-bold border border-border flex items-center gap-1.5">
+                <span className="sage-badge flex items-center gap-2 border border-white/20">
                   {getIcon(property.property_type)}
-                  {property.property_type.toUpperCase()}
+                  {property.property_type}
                 </span>
               </div>
               {property.image_url ? (
@@ -90,36 +90,36 @@ export default function PropertiesCatalog() {
                   src={property.image_url}
                   alt={property.name}
                   fill
-                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  className="object-cover group-hover:scale-110 transition-transform duration-1000"
                 />
               ) : (
-                <div className="w-full h-full bg-slate-200 dark:bg-slate-800 animate-pulse flex items-center justify-center">
-                  <Home className="w-12 h-12 text-foreground/10" />
+                <div className="w-full h-full bg-accent/50 animate-pulse flex items-center justify-center">
+                  <Home className="w-12 h-12 text-foreground/5" />
                 </div>
               )}
             </div>
             
-            <div className="p-8 space-y-4">
+            <div className="p-6 pt-8 space-y-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-xl font-bold">{property.name}</h3>
-                  <p className="text-sm text-foreground/40 flex items-center gap-1 mt-1">
-                    <MapPin className="w-3 h-3" /> {property.location}
+                  <h3 className="text-2xl font-bold text-foreground">{property.name}</h3>
+                  <p className="text-sm text-foreground/45 flex items-center gap-2 mt-2">
+                    <MapPin className="w-4 h-4 text-primary" /> {property.location}
                   </p>
                 </div>
-                <div className="flex items-center gap-1 text-primary">
-                  <Star className="w-3 h-3 fill-current" />
-                  <span className="text-xs font-bold">4.9</span>
+                <div className="flex items-center gap-1.5 soft-button px-3 py-1.5 border border-white">
+                  <Star className="w-3.5 h-3.5 fill-primary text-primary" />
+                  <span className="text-xs font-bold text-foreground">4.9</span>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border flex justify-between items-center">
-                <div>
-                  <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">Available Units</p>
-                  <p className="font-bold">{property.total_units} Spaces</p>
+              <div className="pt-6 border-t border-border flex justify-between items-center">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] leading-none">Available Units</p>
+                  <p className="font-bold text-foreground">{property.total_units} Managed Spaces</p>
                 </div>
-                <button className="w-10 h-10 rounded-full border border-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                  <ArrowRight className="w-5 h-5" />
+                <button className="soft-button w-12 h-12 flex items-center justify-center text-primary group-hover:soft-ui-out transition-all border border-white">
+                  <ArrowRight className="w-6 h-6" />
                 </button>
               </div>
             </div>
