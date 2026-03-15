@@ -8,7 +8,8 @@ import {
   ClipboardList, 
   Droplets,
   ArrowUpRight,
-  ChevronRight
+  ChevronRight,
+  Leaf
 } from 'lucide-react';
 import { Unit, Property, Tenant, Ticket, WaterLog } from '@/lib/types';
 import { mockUnits, mockProperties, mockTickets, mockWaterLogs } from '@/lib/mockData';
@@ -30,99 +31,105 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="space-y-8">
-        {/* Header Section */}
-        <div className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Portfolio Overview</h1>
-            <p className="text-foreground/50 mt-1">Real-time status of all properties.</p>
+      <div className="space-y-10">
+        {/* Header Section - Tighter */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="space-y-1">
+             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 text-secondary text-[9px] font-bold uppercase tracking-widest border border-secondary/20">
+                <Leaf className="w-2.5 h-2.5" /> High-Density View
+              </div>
+            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground">Aaram <span className="text-primary italic">Portfolio</span></h1>
+            <p className="text-foreground/40 text-sm">Real-time status of all managed properties.</p>
           </div>
-          <button className="bg-primary hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 group shadow-lg shadow-primary/20">
-            Generate Report
+          <button className="btn-terracotta px-6 py-3 text-xs font-bold hover:translate-y-[-1px] transition-all flex items-center gap-2 group shadow-lg">
+            Generate Insights
             <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </button>
         </div>
 
-        {/* Stats Grid */}
+        {/* Stats Grid - Denser */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat, idx) => (
             <motion.div
               key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="glass p-6 rounded-2xl border border-border flex flex-col justify-between"
+              transition={{ delay: idx * 0.05 }}
+              className="soft-card p-6 border border-white flex flex-col justify-between hover:scale-[1.01] transition-transform"
             >
               <div className="flex justify-between items-start">
                 <div className={cn(
-                  "w-12 h-12 rounded-xl flex items-center justify-center border",
-                  stat.color === 'blue' && "bg-blue-500/10 border-blue-500/20 text-blue-500",
-                  stat.color === 'green' && "bg-green-500/10 border-green-500/20 text-green-500",
-                  stat.color === 'amber' && "bg-amber-500/10 border-amber-500/20 text-amber-500",
-                  stat.color === 'cyan' && "bg-cyan-500/10 border-cyan-500/20 text-cyan-500"
+                  "w-11 h-11 rounded-xl flex items-center justify-center shadow-inner bg-white/50",
+                  stat.color === 'blue' && "text-blue-500",
+                  stat.color === 'green' && "text-secondary",
+                  stat.color === 'amber' && "text-primary",
+                  stat.color === 'cyan' && "text-cyan-500"
                 )}>
-                  <stat.icon className="w-6 h-6" />
+                  <stat.icon className="w-5 h-5" />
                 </div>
                 <span className={cn(
-                  "text-xs font-bold px-2 py-1 rounded-full",
-                  stat.trend.startsWith('+') ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+                  "text-[10px] font-extrabold px-2 py-0.5 rounded-lg border border-white",
+                  stat.trend.startsWith('+') ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
                 )}>
                   {stat.trend}
                 </span>
               </div>
               <div className="mt-4">
-                <p className="text-foreground/40 text-sm font-medium">{stat.label}</p>
-                <h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
+                <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.15em]">{stat.label}</p>
+                <h3 className="text-2xl font-bold mt-1 text-foreground tracking-tight">{stat.value}</h3>
               </div>
             </motion.div>
           ))}
         </div>
 
-        {/* Middle Section: Occupancy Grid & Water Levels */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Recent Tickets Table */}
-          <div className="lg:col-span-2 glass rounded-3xl border border-border overflow-hidden">
-            <div className="p-6 border-b border-border flex justify-between items-center">
-              <h3 className="font-bold text-lg">Centralized Ticketing</h3>
-              <button className="text-primary text-xs font-bold hover:underline flex items-center gap-1">
-                View All <ChevronRight className="w-3 h-3" />
+        {/* Middle Section - Tighter Gaps */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Recent Tickets - Higher Density */}
+          <div className="lg:col-span-8 soft-card border border-white overflow-hidden bg-white/30">
+            <div className="p-6 border-b border-white flex justify-between items-center">
+               <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-6 rounded-full bg-primary" />
+                  <h3 className="font-bold text-lg text-foreground">Resident Support</h3>
+               </div>
+              <button className="text-primary text-[10px] font-extrabold uppercase tracking-widest hover:translate-x-1 transition-transform flex items-center gap-1">
+                Full Inbox <ChevronRight className="w-3 h-3" />
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-900/50 text-foreground/40 text-[10px] uppercase tracking-wider">
-                    <th className="px-6 py-4 font-bold">Category</th>
-                    <th className="px-6 py-4 font-bold">Priority</th>
-                    <th className="px-6 py-4 font-bold">Resident</th>
-                    <th className="px-6 py-4 font-bold">Status</th>
-                    <th className="px-6 py-4 font-bold">Action</th>
+                  <tr className="bg-white/40 text-foreground/30 text-[9px] uppercase tracking-[0.2em]">
+                    <th className="px-6 py-4 font-extrabold">Domain</th>
+                    <th className="px-6 py-4 font-extrabold">Urgency</th>
+                    <th className="px-6 py-4 font-extrabold">Resident</th>
+                    <th className="px-6 py-4 font-extrabold">State</th>
+                    <th className="px-6 py-4 font-extrabold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-white/40 text-xs">
                   {mockTickets.map((ticket) => (
-                    <tr key={ticket.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium">{ticket.category}</td>
-                      <td className="px-6 py-4">
+                    <tr key={ticket.id} className="hover:bg-white/40 transition-colors group">
+                      <td className="px-6 py-5 font-bold text-foreground">{ticket.category}</td>
+                      <td className="px-6 py-5">
                         <span className={cn(
-                          "px-2 py-1 rounded-md text-[10px] font-bold",
-                          ticket.priority === 'High' ? "bg-red-100 text-red-600 dark:bg-red-500/10" : "bg-blue-100 text-blue-600 dark:bg-blue-500/10"
+                          "px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-widest border border-white",
+                          ticket.priority === 'High' ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"
                         )}>
                           {ticket.priority}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-foreground/60">Tenant #{ticket.tenant_id}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-xs font-medium">
+                      <td className="px-6 py-5 text-foreground/50 font-medium">#TRS-{ticket.tenant_id}</td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-2 font-bold text-foreground/60 uppercase text-[9px] tracking-widest">
                           <div className={cn(
-                            "w-2 h-2 rounded-full",
-                            ticket.status === 'Pending' ? "bg-amber-500" : "bg-blue-500"
+                            "w-1.5 h-1.5 rounded-full shadow-sm",
+                            ticket.status === 'Pending' ? "bg-amber-400" : "bg-secondary"
                           )}></div>
                           {ticket.status}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <button className="text-xs font-bold text-primary hover:opacity-80 transition-opacity underline">Assign</button>
+                      <td className="px-6 py-5">
+                        <button className="text-[10px] font-extrabold text-primary hover:text-primary/80 transition-colors uppercase tracking-widest group-hover:underline">Engage</button>
                       </td>
                     </tr>
                   ))}
@@ -131,9 +138,16 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Water Levels Card */}
-          <div className="glass rounded-3xl border border-border p-6 flex flex-col">
-            <h3 className="font-bold text-lg mb-6">Property Water Levels</h3>
+          {/* Water Levels Card - Modular Dashboard Look */}
+          <div className="lg:col-span-4 soft-card border border-white p-6 flex flex-col bg-white/30">
+            <div className="space-y-1 mb-8">
+               <h3 className="font-bold text-lg text-foreground flex items-center gap-3">
+                  <div className="w-1.5 h-6 rounded-full bg-secondary" />
+                  Smart Resources
+               </h3>
+               <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Real-time Telemetry</p>
+            </div>
+            
             <div className="space-y-8 flex-1">
               {mockWaterLogs.map((log) => {
                 const property = mockProperties.find(p => p.id === log.villa_id);
@@ -141,39 +155,35 @@ export default function AdminDashboard() {
                   <div key={log.id} className="space-y-3">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="font-bold text-sm">{property?.name}</p>
-                        <p className="text-[10px] text-foreground/40">{property?.property_type} • {property?.location}</p>
+                        <p className="font-bold text-xs text-foreground uppercase tracking-tight">{property?.name}</p>
+                        <p className="text-[9px] text-foreground/40 font-bold uppercase tracking-widest mt-0.5">{property?.location}</p>
                       </div>
                       <p className={cn(
-                        "font-bold text-lg",
-                        log.level_percentage < 30 ? "text-red-500" : "text-primary"
+                        "font-bold text-lg tracking-tighter",
+                        log.level_percentage < 30 ? "text-primary" : "text-secondary"
                       )}>
                         {log.level_percentage}%
                       </p>
                     </div>
-                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-2 w-full soft-ui-in bg-white/50 rounded-full overflow-hidden border border-white/20">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${log.level_percentage}%` }}
                         transition={{ duration: 1, ease: "easeOut" }}
                         className={cn(
-                          "h-full rounded-full",
-                          log.level_percentage < 30 ? "bg-red-500" : "bg-primary"
+                          "h-full rounded-full shadow-inner transition-colors duration-1000",
+                          log.level_percentage < 30 ? "bg-primary" : "bg-secondary"
                         )}
                       />
                     </div>
-                    {log.level_percentage < 30 && (
-                      <div className="bg-red-500/10 text-red-600 text-[10px] font-bold p-2 rounded-lg border border-red-500/20 animate-pulse">
-                        CRITICAL: Low water level reported.
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
-            <div className="mt-8 p-4 rounded-2xl bg-primary/5 border border-primary/10">
-              <p className="text-xs font-medium text-foreground/60 leading-relaxed">
-                <span className="text-primary font-bold">AI Insight:</span> Villa Azure consumption is 12% higher than average this week. Recommend leak inspection.
+
+            <div className="mt-8 p-4 rounded-2xl bg-secondary/5 border border-secondary/10">
+              <p className="text-[11px] font-bold text-foreground/60 leading-relaxed italic">
+                <span className="text-secondary uppercase tracking-widest mr-1">Insight:</span> Consumption is 12% higher than average. Recommend leak check.
               </p>
             </div>
           </div>

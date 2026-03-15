@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { mockProperties, mockWaterLogs } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
-import { Droplets, AlertTriangle, Info, RefreshCw, Zap } from 'lucide-react';
+import { Droplets, AlertTriangle, Info, RefreshCw, Zap, Leaf } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { 
   AreaChart, 
@@ -69,81 +69,88 @@ export default function WaterManagementPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-8">
-        <div className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Water Management</h1>
-            <p className="text-foreground/50 mt-1">IoT real-time monitoring and analytics.</p>
+      <div className="space-y-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+          <div className="space-y-1">
+             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 text-secondary text-[9px] font-bold uppercase tracking-widest border border-secondary/20">
+                <Leaf className="w-2.5 h-2.5" /> Edge Telemetry
+              </div>
+            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground">Aaram <span className="text-primary italic">Analytics</span></h1>
+            <p className="text-foreground/40 text-sm font-medium">IoT real-time monitoring and resource analytics.</p>
           </div>
           <button 
             onClick={refreshData}
-            className="glass flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="soft-button flex items-center gap-2 px-5 py-3 border border-white text-[10px] font-extrabold uppercase tracking-widest hover:bg-white/60 transition-all shadow-sm"
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
-            Refresh Sensors
+            <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+            Sync Hardware
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Main Visualizer */}
-          <div className="lg:col-span-2 space-y-8">
-            <div className="glass p-8 rounded-[32px] border border-border flex flex-col items-center justify-center relative overflow-hidden h-[400px]">
-              {/* Animated Wave Background */}
+          <div className="lg:col-span-8 space-y-8">
+            <div className="soft-card p-10 border border-white flex flex-col items-center justify-center relative overflow-hidden h-[420px] bg-white/30">
+              {/* Animated Wave Background - Refined */}
               <div 
-                className="absolute bottom-0 left-0 right-0 bg-primary/10 transition-all duration-1000 ease-in-out" 
+                className="absolute bottom-0 left-0 right-0 bg-primary/5 transition-all duration-1000 ease-in-out border-t border-white/50" 
                 style={{ height: `${currentLevel}%` }}
               >
-                <div className="absolute top-0 left-0 right-0 h-4 bg-primary/20 opacity-50 block animate-float" />
+                <div className="absolute top-0 left-0 right-0 h-4 bg-white/20 opacity-40 blur-sm block animate-pulse" />
               </div>
 
               <div className="relative z-10 text-center flex flex-col items-center">
-                <div className="w-24 h-24 rounded-full gold-gradient flex items-center justify-center shadow-2xl mb-6">
-                  <Droplets className="w-12 h-12 text-white" />
+                <div className="w-28 h-28 rounded-[40px] soft-ui-out flex items-center justify-center mb-8 border border-white shadow-xl bg-white/50">
+                  <Droplets className="w-14 h-14 text-primary" />
                 </div>
-                <h2 className="text-6xl font-bold tracking-tighter">{Math.round(currentLevel)}%</h2>
-                <p className="text-foreground/40 font-bold uppercase tracking-widest mt-2">{selectedProperty.name} Tank</p>
-                <div className="flex items-center gap-2 mt-4 text-xs font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full">
+                <h2 className="text-7xl font-bold tracking-tighter text-foreground">{Math.round(currentLevel)}%</h2>
+                <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-[0.3em] mt-4">{selectedProperty.name} Storage</p>
+                <div className="flex items-center gap-2 mt-6 text-[9px] font-extrabold text-secondary bg-secondary/10 px-4 py-1.5 rounded-full border border-secondary/20 uppercase tracking-widest">
                   <Zap className="w-3 h-3" />
-                  SENSOR STATUS: OK
+                  Signal Strength: Optimal
                 </div>
               </div>
             </div>
 
-            {/* Historical Chart */}
-            <div className="glass p-8 rounded-[32px] border border-border h-[400px]">
-              <h3 className="text-lg font-bold mb-8">Consumption Pattern (24h)</h3>
+            {/* Historical Chart - Softened */}
+            <div className="soft-card p-10 border border-white h-[420px] bg-white/30">
+               <div className="space-y-1 mb-10">
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-3">
+                     <div className="w-1.5 h-6 rounded-full bg-primary" />
+                     Drift Analysis
+                  </h3>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">24-Hour Consumption Pulse</p>
+               </div>
               <div className="w-full h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorLevel" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#c5a059" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#c5a059" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#D67D61" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="#D67D61" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                     <XAxis 
                       dataKey="time" 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }}
+                      tick={{ fontSize: 9, fill: 'rgba(61,61,61,0.3)', fontWeight: 'bold' }}
                     />
                     <YAxis 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }}
+                      tick={{ fontSize: 9, fill: 'rgba(61,61,61,0.3)', fontWeight: 'bold' }}
                     />
                     <Tooltip 
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
-                      itemStyle={{ color: '#c5a059' }}
+                      contentStyle={{ backgroundColor: '#FDFBF7', border: '1px solid #FFFFFF', borderRadius: '16px', boxShadow: '10px 10px 20px #E3E1DE' }}
                     />
                     <Area 
                       type="monotone" 
                       dataKey="level" 
-                      stroke="#c5a059" 
+                      stroke="#D67D61" 
                       fillOpacity={1} 
                       fill="url(#colorLevel)" 
-                      strokeWidth={3}
+                      strokeWidth={4}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -151,30 +158,33 @@ export default function WaterManagementPage() {
             </div>
           </div>
 
-          {/* Recommendations Side Bar */}
-          <div className="space-y-6">
-            <div className="glass p-6 rounded-[32px] border border-border">
-              <h3 className="font-bold mb-4">Select Property</h3>
+          {/* Side Bar - Denser */}
+          <div className="lg:col-span-4 space-y-8">
+            <div className="soft-card p-6 border border-white bg-white/40">
+               <div className="space-y-1 mb-6">
+                  <h3 className="font-bold text-sm text-foreground uppercase tracking-tight">Active Nodes</h3>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Switch Property</p>
+               </div>
               <div className="space-y-2">
                 {mockProperties.map(property => (
                   <button
                     key={property.id}
                     onClick={() => setSelectedProperty(property)}
                     className={cn(
-                      "w-full p-4 rounded-2xl border text-left transition-all duration-300",
+                      "w-full p-4 rounded-2xl border transition-all duration-300",
                       selectedProperty.id === property.id 
-                        ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
-                        : "border-border hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                        ? "btn-terracotta shadow-md scale-[1.02]" 
+                        : "border-white bg-white/20 hover:bg-white/60 text-foreground/40"
                     )}
                   >
                     <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-sm">{property.name}</p>
-                        <p className={cn("text-[10px]", selectedProperty.id === property.id ? "text-white/60" : "text-foreground/40")}>{property.location}</p>
+                      <div className="text-left">
+                        <p className="font-bold text-xs uppercase tracking-tight">{property.name}</p>
+                        <p className={cn("text-[8px] font-bold uppercase tracking-widest mt-0.5", selectedProperty.id === property.id ? "text-white/60" : "text-foreground/20")}>{property.location}</p>
                       </div>
                       <span className={cn(
-                        "text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
-                        selectedProperty.id === property.id ? "bg-white/10 border-white/20 text-white" : "bg-primary/10 border-primary/20 text-primary"
+                        "text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-lg border",
+                        selectedProperty.id === property.id ? "bg-white/10 border-white/20 text-white" : "bg-primary/5 border-primary/10 text-primary"
                       )}>
                         {property.property_type}
                       </span>
@@ -184,39 +194,43 @@ export default function WaterManagementPage() {
               </div>
             </div>
 
-            <div className={cn("p-8 rounded-[32px] border space-y-4", recommendation.bg, recommendation.border)}>
-              <div className="flex items-center gap-3">
-                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center bg-white/10", recommendation.color)}>
-                  <AlertTriangle className="w-5 h-5" />
+            <div className={cn("p-8 rounded-[40px] border space-y-5 soft-card", recommendation.bg.replace('bg-', 'bg-').replace('/10', '/5'), recommendation.border)}>
+              <div className="flex items-center gap-4">
+                <div className={cn("w-12 h-12 rounded-2xl soft-ui-in flex items-center justify-center bg-white/50 shadow-inner", recommendation.color)}>
+                  <AlertTriangle className="w-6 h-6" />
                 </div>
-                <h3 className={cn("font-bold", recommendation.color)}>Usage Recommendation</h3>
+                <div className="space-y-0.5">
+                   <h3 className={cn("font-bold text-sm uppercase tracking-tight", recommendation.color)}>{recommendation.status} Alert</h3>
+                   <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Protocol Required</p>
+                </div>
               </div>
-              <p className="text-sm font-medium leading-relaxed opacity-80">
-                {recommendation.text}
+              <p className="text-xs font-bold leading-relaxed text-foreground/60 italic">
+                "{recommendation.text}"
               </p>
-              <button className="text-[10px] font-bold uppercase tracking-widest underline decoration-2 underline-offset-4">
-                Push Alert to Residents
+              <button className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-primary border-b-2 border-primary/20 hover:border-primary transition-all pb-1 w-fit">
+                Broadcast to Nodes
               </button>
             </div>
 
-            <div className="glass p-8 rounded-[32px] border border-border">
-              <h3 className="font-bold mb-4">Hardware Info</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center pb-4 border-b border-border">
-                  <span className="text-xs text-foreground/40 font-medium">Controller</span>
-                  <span className="text-xs font-bold">ESP-32 DevKit V1</span>
-                </div>
-                <div className="flex justify-between items-center pb-4 border-b border-border">
-                  <span className="text-xs text-foreground/40 font-medium">Sensor</span>
-                  <span className="text-xs font-bold">HC-SR04 Ultrasonic</span>
-                </div>
-                <div className="flex justify-between items-center pb-4 border-b border-border">
-                  <span className="text-xs text-foreground/40 font-medium">Last Ping</span>
-                  <span className="text-xs font-bold">2 mins ago</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-primary font-bold">
-                  <Info className="w-3 h-3" />
-                  WEBHOOK URL CONFIGURED
+            <div className="soft-card p-8 border border-white bg-white/30">
+               <div className="space-y-1 mb-8">
+                  <h3 className="font-bold text-sm text-foreground uppercase tracking-tight">Node Topology</h3>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Hardware Meta</p>
+               </div>
+              <div className="space-y-5">
+                {[
+                  { label: 'Controller', val: 'ESP-32 Cluster' },
+                  { label: 'Transducer', val: 'Ultrasonic Array' },
+                  { label: 'Packet Latency', val: '12ms (Sync)' },
+                ].map((item, i) => (
+                   <div key={i} className="flex justify-between items-center pb-4 border-b border-white/50 last:border-0 last:pb-0">
+                     <span className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest">{item.label}</span>
+                     <span className="text-[11px] font-bold text-foreground tracking-tight">{item.val}</span>
+                   </div>
+                ))}
+                <div className="flex items-center gap-2 text-[9px] text-secondary font-extrabold uppercase tracking-widest bg-secondary/5 p-3 rounded-xl border border-secondary/10">
+                  <Info className="w-3.5 h-3.5" />
+                  Security: Encrypted P2P
                 </div>
               </div>
             </div>
