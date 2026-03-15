@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Shield, Bell, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { AaraChatbot } from '@/components/AaraChatbot';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth();
@@ -72,6 +73,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      {/* 🤖 Aara AI Chatbot — available on all admin pages */}
+      <AaraChatbot />
     </div>
   );
 }
