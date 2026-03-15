@@ -1,29 +1,33 @@
 import React from 'react';
 import { Sidebar } from './Sidebar';
+import { Shield, Bell } from 'lucide-react';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background selection:bg-primary/20">
       <Sidebar />
-      <main className="md:pl-64 h-full">
-        <header className="h-20 border-b border-border bg-background/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
+      <main className="md:pl-64 min-h-screen relative">
+        <header className="h-20 border-b border-white/50 bg-background/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Admin Console</h2>
-            <p className="text-xs text-foreground/50">Manage your villas and residents</p>
+            <h2 className="text-xl font-bold tracking-tighter text-foreground uppercase">Admin Console</h2>
+            <p className="text-[10px] font-bold text-foreground/30 flex items-center gap-1 uppercase tracking-widest">
+              <Shield className="w-3 h-3 text-primary" /> Managed Estates
+            </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="bg-green-500/10 text-green-600 dark:text-green-400 text-[10px] font-bold px-2 py-1 rounded-full border border-green-500/20 uppercase tracking-wider">
-              System Online
+          <div className="flex items-center gap-6">
+            <div className="sage-badge flex items-center gap-2 border border-white px-3 py-1 scale-90">
+              <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+              System Operational
             </div>
-            <div className="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-primary/5 transition-colors cursor-pointer border border-border">
+            <div className="soft-button w-11 h-11 border border-white text-foreground/30 hover:text-primary transition-all">
               <span className="relative">
-                <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-background"></div>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bell"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border-2 border-background"></div>
+                <Bell className="w-5 h-5" />
               </span>
             </div>
           </div>
         </header>
-        <div className="p-8">
+        <div className="p-8 lg:p-10">
           {children}
         </div>
       </main>

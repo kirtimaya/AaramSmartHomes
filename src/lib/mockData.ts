@@ -7,7 +7,7 @@ export const mockProperties: Property[] = [
     location: 'Goa, Anjuna', 
     total_units: 5, 
     property_type: 'Villa',
-    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/realistic_villa_exterior_1773522363119.png'
+    image_url: '/images/realistic_villa_exterior_1773522363119.png'
   },
   { 
     id: 'p2', 
@@ -15,7 +15,7 @@ export const mockProperties: Property[] = [
     location: 'Goa, Vagator', 
     total_units: 5, 
     property_type: 'Flat',
-    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/modern_apartment_exterior_1773521983114.png'
+    image_url: '/images/modern_apartment_exterior_1773521983114.png'
   },
   { 
     id: 'p3', 
@@ -23,7 +23,7 @@ export const mockProperties: Property[] = [
     location: 'Goa, Siolim', 
     total_units: 5, 
     property_type: 'Individual House',
-    image_url: '/Users/kirtimayaswain/.gemini/antigravity/brain/ad45c97d-fd61-41d5-8c49-0e483d0a1a61/cozy_standalone_house_1773521999008.png'
+    image_url: '/images/cozy_standalone_house_1773521999008.png'
   },
 ];
 

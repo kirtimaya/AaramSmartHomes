@@ -11,7 +11,8 @@ import {
   Activity,
   Download,
   Filter,
-  Info
+  Info,
+  Leaf
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { 
@@ -43,42 +44,45 @@ const villaROI = [
 export default function FinancialHub() {
   return (
     <AdminLayout>
-      <div className="space-y-8">
-        <div className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Financial Hub</h1>
-            <p className="text-foreground/50 mt-1">Track rent, expenses, and investment returns.</p>
+      <div className="space-y-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+          <div className="space-y-1">
+             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 text-secondary text-[9px] font-bold uppercase tracking-widest border border-secondary/20">
+                <Leaf className="w-2.5 h-2.5" /> Fiscal Intelligence
+              </div>
+            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground">Aaram <span className="text-primary italic">Financials</span></h1>
+            <p className="text-foreground/40 text-sm font-medium">Track yields, operating costs, and portfolio P&L.</p>
           </div>
-          <div className="flex gap-4">
-            <button className="glass flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <div className="flex gap-3">
+            <button className="soft-button flex items-center gap-2 px-5 py-3 border border-white text-[10px] font-extrabold uppercase tracking-widest hover:bg-white/60 transition-all">
               <Download className="w-4 h-4" />
-              Statement
+              Export P&L
             </button>
-            <button className="bg-primary text-white flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/20">
+            <button className="btn-terracotta flex items-center gap-2 px-6 py-3 shadow-lg hover:translate-y-[-1px] transition-all text-[10px] font-extrabold uppercase tracking-widest">
               <IndianRupee className="w-4 h-4" />
-              Collect Rent
+              Log Dividend
             </button>
           </div>
         </div>
 
-        {/* Top Summary Cards */}
+        {/* Top Summary Cards - Dense */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <FinanceCard 
-            title="Net Profit (Q1)" 
+            title="Net Yield (Q1)" 
             amount="₹8,95,000" 
             trend="+8.2%" 
             isPositive={true} 
             icon={Wallet} 
           />
           <FinanceCard 
-            title="Operating Expenses" 
+            title="OPEX Ratio" 
             amount="₹3,65,000" 
             trend="+12%" 
             isPositive={false} 
             icon={Activity} 
           />
           <FinanceCard 
-            title="Projected ROI" 
+            title="Portfolio ROI" 
             amount="12.4%" 
             trend="+1.5%" 
             isPositive={true} 
@@ -86,81 +90,92 @@ export default function FinancialHub() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Revenue vs Expenses Chart */}
-          <div className="lg:col-span-2 glass rounded-[32px] border border-border p-8">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="font-bold text-lg">Revenue vs Operating Expenses</h3>
-              <div className="flex gap-4 text-xs font-bold text-foreground/40">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Revenue vs Expenses Chart - Soft Look */}
+          <div className="lg:col-span-8 soft-card border border-white p-8 bg-white/30 overflow-hidden">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-10">
+               <div className="space-y-1">
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-3">
+                     <div className="w-1.5 h-6 rounded-full bg-primary" />
+                     Monetary Flows
+                  </h3>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">6-Month Trend Analysis</p>
+               </div>
+              <div className="flex gap-6 text-[9px] font-extrabold uppercase tracking-widest">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-primary" /> Revenue
+                  <div className="w-2.5 h-2.5 rounded shadow-sm bg-primary" /> <span className="text-foreground/40">Gross Revenue</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700" /> Expenses
+                  <div className="w-2.5 h-2.5 rounded shadow-sm bg-foreground/10" /> <span className="text-foreground/40">Cost Base</span>
                 </div>
               </div>
             </div>
-            <div className="h-[300px] w-full">
+            <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={financialData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                   <XAxis 
                     dataKey="month" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fontSize: 12, fill: 'rgba(255,255,255,0.4)' }}
+                    tick={{ fontSize: 9, fill: 'rgba(61,61,61,0.3)', fontWeight: 'bold' }}
                   />
                   <YAxis 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
+                    tick={{ fontSize: 9, fill: 'rgba(61,61,61,0.3)', fontWeight: 'bold' }}
                     tickFormatter={(value) => `₹${value/1000}k`}
                   />
                   <Tooltip 
-                    cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
+                    cursor={{ fill: 'rgba(214,125,97,0.05)' }}
+                    contentStyle={{ backgroundColor: '#FDFBF7', border: '1px solid #FFFFFF', borderRadius: '16px', boxShadow: '10px 10px 20px #E3E1DE' }}
                   />
-                  <Bar dataKey="revenue" fill="#c5a059" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expenses" fill="rgba(255,255,255,0.1)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenue" fill="#D67D61" radius={[6, 6, 0, 0]} barSize={24} />
+                  <Bar dataKey="expenses" fill="rgba(61,61,61,0.08)" radius={[6, 6, 0, 0]} barSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* ROI Breakdown per Villa */}
-          <div className="glass rounded-[32px] border border-border p-8">
-            <h3 className="font-bold text-lg mb-8">Property Performance</h3>
+          {/* Property Performance - Modular */}
+          <div className="lg:col-span-4 soft-card border border-white p-8 bg-white/40">
+            <div className="space-y-1 mb-10">
+               <h3 className="font-bold text-lg text-foreground flex items-center gap-3">
+                  <div className="w-1.5 h-6 rounded-full bg-secondary" />
+                  Asset Matrix
+               </h3>
+               <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Yield Per Destination</p>
+            </div>
+            
             <div className="space-y-8">
               {villaROI.map((villa) => (
                 <div key={villa.name} className="space-y-3">
                   <div className="flex justify-between items-end">
-                    <p className="font-bold text-sm">{villa.name}</p>
-                    <p className="text-primary font-bold">{villa.roi}% ROI</p>
+                    <p className="font-bold text-xs text-foreground uppercase tracking-tight">{villa.name}</p>
+                    <p className="text-secondary font-bold tracking-tighter text-lg">{villa.roi}%</p>
                   </div>
-                  <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-2 w-full soft-ui-in bg-white/50 rounded-full overflow-hidden border border-white/20">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${(villa.roi / 20) * 100}%` }}
                       transition={{ duration: 1.5, ease: "easeOut" }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: villa.color }}
+                      className="h-full rounded-full shadow-inner bg-secondary"
                     />
                   </div>
-                  <div className="flex justify-between text-[10px] text-foreground/40 font-bold">
-                    <span>Target: 10%</span>
-                    <span className={cn(villa.roi >= 10 ? "text-green-500" : "text-amber-500")}>
-                      {villa.roi >= 10 ? "Above Target" : "Underperforming"}
+                  <div className="flex justify-between text-[9px] text-foreground/30 font-bold uppercase tracking-widest">
+                    <span>Baseline: 10%</span>
+                    <span className={cn(villa.roi >= 10 ? "text-secondary" : "text-primary")}>
+                      {villa.roi >= 10 ? "Above Target" : "Warning"}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-12 pt-8 border-t border-border">
-              <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                <Info className="w-5 h-5 text-primary shrink-0" />
-                <p className="text-xs font-medium text-foreground/70">
-                  Villa Azure is your best performer this quarter due to 100% occupancy and low maintenance overhead.
+            <div className="mt-12 pt-8 border-t border-white/50">
+              <div className="flex items-center gap-3 p-4 bg-secondary/5 rounded-2xl border border-secondary/10">
+                <Info className="w-4 h-4 text-secondary shrink-0" />
+                <p className="text-[10px] font-bold text-foreground/50 leading-relaxed uppercase tracking-tight">
+                  <span className="text-secondary">System Insight:</span> Villa Azure is capital efficient with <span className="text-foreground">100% occupancy</span>.
                 </p>
               </div>
             </div>
@@ -174,25 +189,25 @@ export default function FinancialHub() {
 function FinanceCard({ title, amount, trend, isPositive, icon: Icon }: { title: string, amount: string, trend: string, isPositive: boolean, icon: any }) {
   return (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="glass p-8 rounded-[32px] border border-border group hover:border-primary/20 transition-all"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="soft-card p-8 border border-white group hover:scale-[1.01] transition-all bg-white/30"
     >
       <div className="flex justify-between items-start mb-6">
-        <div className="w-12 h-12 rounded-2xl bg-primary/5 border border-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all duration-500">
+        <div className="w-12 h-12 rounded-2xl soft-ui-in bg-white/50 flex items-center justify-center text-primary group-hover:text-primary transition-all duration-500 shadow-inner">
           <Icon className="w-6 h-6" />
         </div>
         <div className={cn(
-          "flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full",
-          isPositive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
+          "flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-lg border border-white",
+          isPositive ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
         )}>
           {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
           {trend}
         </div>
       </div>
       <div>
-        <p className="text-xs font-bold text-foreground/40 uppercase tracking-widest">{title}</p>
-        <h3 className="text-3xl font-bold mt-2 tracking-tighter">{amount}</h3>
+        <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">{title}</p>
+        <h3 className="text-3xl font-bold mt-1 text-foreground tracking-tighter">{amount}</h3>
       </div>
     </motion.div>
   );

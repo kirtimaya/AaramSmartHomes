@@ -78,72 +78,72 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden selection:bg-primary/20">
-      {/* Background Ornaments */}
-      <div className="absolute top-[-5%] right-[-5%] w-[40%] h-[40%] bg-secondary/5 rounded-full blur-[100px]" />
-      <div className="absolute bottom-[-5%] left-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
+      {/* Background Ornaments - Tighter */}
+      <div className="absolute top-[-10%] right-[-10%] w-[30%] h-[30%] bg-secondary/5 rounded-full blur-[80px]" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[35%] h-[35%] bg-primary/5 rounded-full blur-[100px]" />
 
       <motion.div 
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md z-10"
+        className="w-full max-w-[380px] z-10"
       >
-        <div className="text-center mb-10 space-y-4">
-          <Link href="/" className="soft-button inline-flex items-center gap-2 px-4 py-2 border border-white group">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-110">
-              <Shield className="w-5 h-5 text-white" />
+        <div className="text-center mb-8 space-y-3">
+          <Link href="/" className="soft-button inline-flex items-center gap-2 px-3 py-1.5 border border-white group bg-white/40">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-110 shadow-sm shadow-primary/20">
+              <Shield className="w-4 h-4 text-white" />
             </div>
-            <span className="text-lg font-bold tracking-tighter text-foreground">AARAM</span>
+            <span className="text-sm font-bold tracking-tighter text-foreground uppercase">Aaram</span>
           </Link>
           <div>
-            <h1 className="text-4xl font-bold tracking-tighter text-foreground">Join the Collective</h1>
-            <p className="text-foreground/40 text-sm mt-2 flex items-center justify-center gap-1">
-              <Leaf className="w-3 h-3 text-secondary" /> Request your co-living entry
+            <h1 className="text-3xl font-bold tracking-tighter text-foreground text-balance">Join the <span className="text-secondary italic">Sanctuary</span></h1>
+            <p className="text-foreground/40 text-[10px] font-bold uppercase tracking-widest mt-1 flex items-center justify-center gap-1.5">
+              <Leaf className="w-3 h-3 text-secondary" /> Intelligent Living Node
             </p>
           </div>
         </div>
 
-        <div className="soft-ui-out p-10 border border-white">
-          <form onSubmit={handleSignup} className="space-y-6">
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Full Name</label>
+        <div className="soft-card p-8 border border-white bg-white/40">
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-1">Full Name</label>
               <div className="relative group">
-                <User className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="text" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="John Doe"
-                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
+                  className="soft-ui-in w-full py-3.5 pl-10 pr-4 text-xs focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/60 border border-white/50"
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Email Identity</label>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-1">Email Identity</label>
               <div className="relative group">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
+                  placeholder="identity@aaram.space"
+                  className="soft-ui-in w-full py-3.5 pl-10 pr-4 text-xs focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/60 border border-white/50"
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Security Key</label>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-1">Secure Key</label>
               <div className="relative group">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
+                  className="soft-ui-in w-full py-3.5 pl-10 pr-4 text-xs focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/60 border border-white/50"
                   required
                   minLength={6}
                 />
@@ -154,9 +154,9 @@ export default function SignupPage() {
               <motion.div 
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-3 p-4 rounded-2xl bg-red-500/5 border border-red-500/10 text-red-500 text-xs font-bold"
+                className="flex items-center gap-2 p-3 rounded-xl bg-primary/5 border border-primary/10 text-primary text-[10px] font-bold uppercase tracking-wide"
               >
-                <AlertCircle className="w-4 h-4 shrink-0" />
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 {error}
               </motion.div>
             )}
@@ -164,26 +164,26 @@ export default function SignupPage() {
             <button 
               type="submit" 
               disabled={loading}
-              className="terracotta-button w-full py-5 font-bold flex items-center justify-center gap-3 shadow-xl hover:translate-y-[-2px] transition-all disabled:opacity-50 group"
+              className="btn-terracotta w-full py-4 mt-4 font-bold flex items-center justify-center gap-2.5 shadow-xl hover:translate-y-[-1px] transition-all disabled:opacity-50 group text-xs uppercase tracking-widest"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+              {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : (
                 <>
-                  Submit Access Request
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  Initialize Profile
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-10 text-center">
-             <p className="text-xs text-foreground/30 font-bold">
-              Already have access? <Link href="/login" className="text-primary hover:underline hover:text-primary/80 transition-colors">Sign In</Link>
+          <div className="mt-8 text-center pt-6 border-t border-white/50">
+            <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest">
+              Already a Node? <Link href="/login" className="text-primary hover:text-primary/80 transition-colors underline-offset-4 underline decoration-primary/20">Establish Link</Link>
             </p>
           </div>
         </div>
 
-        <div className="mt-12 text-center text-[10px] text-foreground/10 font-bold tracking-[0.3em] uppercase">
-          Minimalist Community Boarding
+        <div className="mt-10 text-center text-[9px] text-foreground/10 font-bold tracking-[0.4em] uppercase">
+          Zero-Trust Environment
         </div>
       </motion.div>
     </div>
