@@ -19,6 +19,7 @@ export type Room = {
   type: string;
   sqft?: number;
   features: string[];
+  image_urls?: string[];
 };
 
 export type Benefit = {
@@ -43,6 +44,7 @@ export type Unit = {
   room_number: string; // Changed from unit_number
   status: UnitStatus;
   current_tenant_id?: string;
+  lease_end_date?: string;
 };
 
 export type Tenant = {
@@ -73,7 +75,7 @@ export type Ticket = {
 
 export type WaterLog = {
   id: string;
-  villa_id: string;
+  property_id: string;
   level_percentage: number;
   timestamp: string;
 };

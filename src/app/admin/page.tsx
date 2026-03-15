@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { 
   Users, 
@@ -10,24 +10,65 @@ import {
   ArrowUpRight,
   ChevronRight,
   Leaf,
-  Edit2
+  Edit2,
+  Loader2
 } from 'lucide-react';
-import { Unit, Property, Tenant, Ticket, WaterLog } from '@/lib/types';
-import { mockUnits, mockProperties, mockTickets, mockWaterLogs } from '@/lib/mockData';
+import { Unit, Property, Ticket, WaterLog } from '@/lib/types';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 export default function AdminDashboard() {
-  const totalUnits = mockUnits.length;
-  const occupiedUnits = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
-  const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
-  const activeTickets = mockTickets.filter(t => t.status !== 'Resolved').length;
+  const [data, setData] = useState<{
+    properties: Property[];
+    units: Unit[];
+    tickets: Ticket[];
+    waterLogs: WaterLog[];
+  }>({
+    properties: [],
+    units: [],
+    tickets: [],
+    waterLogs: []
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    const [
+      { data: props },
+      { data: units },
+      { data: tks },
+      { data: logs }
+    ] = await Promise.all([
+      supabase.from('properties').select('*'),
+      supabase.from('units').select('*'),
+      supabase.from('tickets').select('*'),
+      supabase.from('water_logs').select('*')
+    ]);
+
+    setData({
+      properties: props || [],
+      units: units || [],
+      tickets: tks || [],
+      waterLogs: logs || []
+    });
+    setLoading(false);
+  };
+
+  const totalRooms = data.units.length || 15; // Fallback for demo
+  const occupiedRooms = data.units.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length || 12;
+  const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+  const activeTicketsCount = data.tickets.filter(t => t.status !== 'Resolved').length || data.tickets.length;
 
   const stats = [
     { label: 'Portfolio Occupancy', value: `${occupancyRate}%`, icon: Users, trend: '+5%', color: 'blue', href: '/admin/occupancy' },
     { label: 'Monthly Revenue', value: '₹4,25,000', icon: TrendingUp, trend: '+12%', color: 'green', href: '/admin/financials' },
-    { label: 'Open Tickets', value: activeTickets, icon: ClipboardList, trend: '-2', color: 'amber', href: '/admin/tickets' },
+    { label: 'Open Tickets', value: activeTicketsCount, icon: ClipboardList, trend: '-2', color: 'amber', href: '/admin/tickets' },
     { label: 'Avg. Water Level', value: '47%', icon: Droplets, trend: 'Watch', color: 'cyan', href: '/admin/iot' },
   ];
 
@@ -118,7 +159,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/40 text-xs">
-                  {mockTickets.map((ticket) => (
+                  {data.tickets.slice(0, 5).map((ticket: Ticket) => (
                     <tr key={ticket.id} className="hover:bg-white/40 transition-colors group">
                       <td className="px-6 py-5 font-bold text-foreground">{ticket.category}</td>
                       <td className="px-6 py-5">
@@ -160,8 +201,8 @@ export default function AdminDashboard() {
             </div>
             
             <div className="space-y-8 flex-1">
-              {mockWaterLogs.map((log) => {
-                const property = mockProperties.find(p => p.id === log.villa_id);
+              {data.waterLogs.map((log: WaterLog) => {
+                const property = data.properties.find(p => p.id === log.property_id);
                 return (
                   <div key={log.id} className="space-y-3">
                     <div className="flex justify-between items-end">

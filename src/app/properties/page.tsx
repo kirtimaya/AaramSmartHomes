@@ -1,11 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { AdminLayout } from '@/components/layout/AdminLayout'; // Though usually user-facing, we can use parts of design
 import { Property } from '@/lib/types';
-import { mockProperties } from '@/lib/mockData';
 import { 
   MapPin, 
   Home, 
@@ -15,17 +13,37 @@ import {
   Shield,
   Star,
   Search,
-  Leaf
+  Leaf,
+  Loader2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 export default function PropertiesCatalog() {
   const [filter, setFilter] = useState<'All' | 'Villa' | 'Flat' | 'Individual House'>('All');
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProperties();
+  }, []);
+
+  const fetchProperties = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*, rooms(*), benefits(*), automation_systems(*)');
+    
+    if (!error && data) {
+      setProperties(data);
+    }
+    setLoading(false);
+  };
 
   const filtered = filter === 'All' 
-    ? mockProperties 
-    : mockProperties.filter(p => p.property_type === filter);
+    ? properties 
+    : properties.filter(p => p.property_type === filter);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -84,7 +102,16 @@ export default function PropertiesCatalog() {
 
       {/* Grid - Tighter */}
       <main className="px-6 lg:px-12 max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-8 mt-6">
-        {filtered.map((property, idx) => (
+        {loading ? (
+           <div className="col-span-full flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-foreground/30">Harvesting Real-time Data</p>
+           </div>
+        ) : filtered.length === 0 ? (
+           <div className="col-span-full text-center py-20 border-2 border-dashed border-white rounded-[40px] soft-ui-in">
+              <p className="text-foreground/30 font-bold uppercase tracking-widest">No matching sanctuaries found.</p>
+           </div>
+        ) : filtered.map((property, idx) => (
           <motion.div
             key={property.id}
             initial={{ opacity: 0, y: 10 }}
@@ -116,7 +143,7 @@ export default function PropertiesCatalog() {
             <div className="p-4 pt-5 space-y-4">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-lg font-bold text-foreground leading-tight">{property.name}</h3>
+                  <h3 className="text-lg font-bold text-foreground leading-tight uppercase tracking-tighter">{property.name}</h3>
                   <p className="text-[11px] text-foreground/40 flex items-center gap-1.5 mt-1">
                     <MapPin className="w-3.5 h-3.5 text-primary" /> {property.location}
                   </p>
@@ -129,12 +156,12 @@ export default function PropertiesCatalog() {
 
               <div className="pt-4 border-t border-border/40 flex justify-between items-center">
                 <div className="space-y-0.5">
-                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em] leading-none">Units</p>
-                  <p className="font-bold text-xs text-foreground">{property.total_units} Managed</p>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em] leading-none">Rooms</p>
+                  <p className="font-bold text-xs text-foreground">{property.total_rooms} Nodes Available</p>
                 </div>
-                <button className="soft-button w-9 h-9 flex items-center justify-center text-primary group-hover:shadow-md transition-all border border-white">
+                <Link href={`/properties/${property.id}`} className="soft-button w-9 h-9 flex items-center justify-center text-primary group-hover:shadow-md transition-all border border-white">
                   <ArrowRight className="w-5 h-5" />
-                </button>
+                </Link>
               </div>
             </div>
           </motion.div>

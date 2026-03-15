@@ -43,6 +43,33 @@ body {
   min-height: 100vh;
   margin: 0;
   padding: 0;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 2px 2px, var(--secondary) 1px, transparent 0);
+  background-size: 64px 64px;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: -10%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+  opacity: 0.15;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: -1;
 }
 
 @utility soft-card {

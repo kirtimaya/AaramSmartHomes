@@ -1,8 +1,32 @@
+'use client';
+
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Shield, ArrowRight, Star, MapPin, Zap, Leaf, Coffee, Wifi, Dumbbell, Grid } from "lucide-react";
+import { Shield, ArrowRight, Star, MapPin, Zap, Leaf, Coffee, Wifi, Dumbbell, Grid, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { Property } from "@/lib/types";
 
 export default function LandingPage() {
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProperties();
+  }, []);
+
+  const fetchProperties = async () => {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*, rooms(*), benefits(*)')
+      .limit(2);
+    
+    if (!error && data) {
+      setProperties(data);
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-background relative selection:bg-primary/20">
       {/* Background Ornaments - Tighter Blurs */}
@@ -55,7 +79,7 @@ export default function LandingPage() {
           <div className="rounded-[40px] soft-card p-3 bg-white/50 border border-white w-full">
             <div className="rounded-[30px] overflow-hidden relative aspect-[4/3] shadow-inner">
               <Image 
-                src="/images/realistic_villa_exterior_1773522363119.png"
+                src={properties[0]?.image_url || "/images/realistic_villa_exterior_1773522363119.png"}
                 alt="Minimalist Duplex Villa"
                 fill
                 className="object-cover"
@@ -84,34 +108,26 @@ export default function LandingPage() {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-          <div className="group relative rounded-[40px] soft-card p-3 bg-white/30 border border-white">
-            <div className="rounded-[30px] overflow-hidden w-full aspect-video relative shadow-inner">
-              <Image 
-                src="/images/standard_co_living_room_1773522377787.png"
-                alt="Sage & Cream Interior"
-                fill
-                className="object-cover transition-transform duration-1000 group-hover:scale-105"
-              />
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-8">
-                <h3 className="text-xl font-bold text-foreground">The Sanctuary</h3>
-                <p className="text-foreground/60 text-xs mt-1">Private suites featuring organic linens and ample natural light.</p>
+          {loading ? (
+             <div className="col-span-2 flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+             </div>
+          ) : properties.map(property => (
+            <div key={property.id} className="group relative rounded-[40px] soft-card p-3 bg-white/30 border border-white">
+              <div className="rounded-[30px] overflow-hidden w-full aspect-video relative shadow-inner">
+                <Image 
+                  src={property.image_url || "/images/standard_co_living_room_1773522377787.png"}
+                  alt={property.name}
+                  fill
+                  className="object-cover transition-transform duration-1000 group-hover:scale-105"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-8">
+                  <h3 className="text-xl font-bold text-foreground uppercase tracking-tighter">{property.name}</h3>
+                  <p className="text-foreground/60 text-xs mt-1 line-clamp-2">{property.description || `Luxury ${property.property_type} in ${property.location}`}</p>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="group relative rounded-[40px] soft-card p-3 bg-white/30 border border-white">
-             <div className="rounded-[30px] overflow-hidden w-full aspect-video relative shadow-inner">
-              <Image 
-                src="/images/common_living_dining_area_1773522392110.png"
-                alt="Minimalist Living Area"
-                fill
-                className="object-cover transition-transform duration-1000 group-hover:scale-105"
-              />
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-8">
-                <h3 className="text-xl font-bold text-foreground">Community Hubs</h3>
-                <p className="text-foreground/60 text-xs mt-1">Open-plan areas that foster connection without the clutter.</p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 

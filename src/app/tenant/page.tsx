@@ -33,36 +33,82 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { mockTenants, mockProperties } from '@/lib/mockData';
 import { Tenant, Property } from '@/lib/types';
+
+import { supabase } from '@/lib/supabase';
 
 export default function UnifiedUserDashboard() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab ] = useState<'explore' | 'home' | 'meals' | 'support'>('home');
   const [tenantProfile, setTenantProfile] = useState<Tenant | null>(null);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    } else if (user) {
-        // Find tenant profile by email or use guest as fallback
-        const profile = mockTenants.find(t => t.email === user.email) || mockTenants.find(t => t.id === 't_guest');
-        if (profile) {
-            setTenantProfile(profile as Tenant);
-            if (profile.status === 'guest') setActiveTab('explore');
-        }
+    if (!loading) {
+      if (!user) {
+        router.push('/login');
+      } else {
+        fetchProfileAndData();
+      }
     }
   }, [user, loading, router]);
 
-  if (loading || !user || !tenantProfile) {
+  const fetchProfileAndData = async () => {
+    setDashboardLoading(true);
+    try {
+      // 1. Fetch Tenant Profile
+      const { data: profile, error: profileError } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', user?.id)
+        .single();
+
+      let currentProfile: Tenant;
+
+      if (profileError || !profile) {
+        // Fallback or Guest initialization
+        currentProfile = {
+          id: user?.id || 'guest',
+          name: user?.user_metadata?.full_name || 'Guest Member',
+          email: user?.email || '',
+          status: 'guest',
+          shortlisted_property_ids: []
+        };
+      } else {
+        currentProfile = profile as Tenant;
+      }
+
+      setTenantProfile(currentProfile);
+      if (currentProfile.status === 'guest') setActiveTab('explore');
+
+      // 2. Fetch All Properties (to filter shortlisted)
+      const { data: props, error: propsError } = await supabase
+        .from('properties')
+        .select('*');
+
+      if (!propsError && props) {
+        setProperties(props as Property[]);
+      }
+    } catch (err) {
+      console.error('Dashboard initialization error:', err);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  if (loading || dashboardLoading || !user || !tenantProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-6">
+        <div className="flex flex-col items-center gap-6 text-center px-6">
           <div className="w-20 h-20 soft-ui-out flex items-center justify-center text-primary animate-pulse border border-white">
             <Shield className="w-10 h-10" />
           </div>
-          <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-[0.4em]">Synchronizing Lifestyle</p>
+          <div className="space-y-1">
+            <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-[0.4em]">Synchronizing Lifestyle</p>
+            <p className="text-[10px] font-bold text-primary italic">Hand-crafting your sanctuary...</p>
+          </div>
         </div>
       </div>
     );
@@ -83,7 +129,7 @@ export default function UnifiedUserDashboard() {
     { icon: Sparkles, label: 'Deep Cleaning', desc: 'Weekly professional architectural care.' },
   ];
 
-  const shortlistedProperties = mockProperties.filter(p => tenantProfile.shortlisted_property_ids?.includes(p.id));
+  const shortlistedProperties = properties.filter(p => tenantProfile.shortlisted_property_ids?.includes(p.id));
 
   return (
     <div className="min-h-screen bg-background pb-20 selection:bg-primary/20">
