@@ -11,10 +11,12 @@ import {
   ArrowRight, 
   Loader2, 
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Leaf
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -55,16 +57,18 @@ export default function SignupPage() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="glass p-12 rounded-[40px] border border-primary/20 max-w-md space-y-6"
+          className="soft-ui-out p-12 border border-white max-w-md space-y-8"
         >
-          <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center text-green-500 mx-auto">
-            <CheckCircle2 className="w-10 h-10" />
+          <div className="w-24 h-24 rounded-full soft-ui-in flex items-center justify-center text-secondary mx-auto">
+            <CheckCircle2 className="w-12 h-12" />
           </div>
-          <h2 className="text-3xl font-bold">Request Sent</h2>
-          <p className="text-foreground/50 leading-relaxed">
-            Your resident access request has been sent. Please check your email to verify your account and wait for admin approval.
-          </p>
-          <Link href="/login" className="inline-block text-primary font-bold hover:underline py-2">
+          <div className="space-y-3">
+            <h2 className="text-3xl font-bold text-foreground">Request Received</h2>
+            <p className="text-foreground/45 leading-relaxed text-lg">
+              Your resident access request has been sent for curation. Please verify your email to activate your account.
+            </p>
+          </div>
+          <Link href="/login" className="terracotta-button block w-full py-4 font-bold shadow-lg">
             Return to Sign In
           </Link>
         </motion.div>
@@ -73,69 +77,73 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden selection:bg-primary/20">
       {/* Background Ornaments */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-500/5 rounded-full blur-[120px]" />
+      <div className="absolute top-[-5%] right-[-5%] w-[40%] h-[40%] bg-secondary/5 rounded-full blur-[100px]" />
+      <div className="absolute bottom-[-5%] left-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
 
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md z-10"
       >
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
-            <div className="w-10 h-10 rounded-xl gold-gradient flex items-center justify-center transition-transform group-hover:scale-110">
-              <Shield className="w-6 h-6 text-white" />
+        <div className="text-center mb-10 space-y-4">
+          <Link href="/" className="soft-button inline-flex items-center gap-2 px-4 py-2 border border-white group">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-110">
+              <Shield className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tighter">AARAM</span>
+            <span className="text-lg font-bold tracking-tighter text-foreground">AARAM</span>
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight">Access Request</h1>
-          <p className="text-foreground/40 text-sm mt-2">Join the Aaram Smart Homes community</p>
+          <div>
+            <h1 className="text-4xl font-bold tracking-tighter text-foreground">Join the Collective</h1>
+            <p className="text-foreground/40 text-sm mt-2 flex items-center justify-center gap-1">
+              <Leaf className="w-3 h-3 text-secondary" /> Request your co-living entry
+            </p>
+          </div>
         </div>
 
-        <div className="glass p-8 rounded-[32px] border border-border bg-white/50 dark:bg-slate-900/50 shadow-2xl">
-          <form onSubmit={handleSignup} className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-foreground/40 ml-1">Full Name</label>
+        <div className="soft-ui-out p-10 border border-white">
+          <form onSubmit={handleSignup} className="space-y-6">
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Full Name</label>
               <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/20 group-focus-within:text-primary transition-colors" />
+                <User className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="text" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="John Doe"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border-border border rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-inner"
+                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-foreground/40 ml-1">Email Address</label>
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Email Identity</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/20 group-focus-within:text-primary transition-colors" />
+                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border-border border rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-inner"
+                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-foreground/40 ml-1">Password</label>
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-2">Security Key</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/20 group-focus-within:text-primary transition-colors" />
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/10 group-focus-within:text-primary transition-colors" />
                 <input 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border-border border rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-inner"
+                  className="soft-ui-in w-full py-4 pl-14 pr-6 text-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/50"
                   required
                   minLength={6}
                 />
@@ -144,9 +152,9 @@ export default function SignupPage() {
 
             {error && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-2 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 p-4 rounded-2xl bg-red-500/5 border border-red-500/10 text-red-500 text-xs font-bold"
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
@@ -156,20 +164,26 @@ export default function SignupPage() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-primary/20 group disabled:opacity-50"
+              className="terracotta-button w-full py-5 font-bold flex items-center justify-center gap-3 shadow-xl hover:translate-y-[-2px] transition-all disabled:opacity-50 group"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                 <>
-                  Submit Request
+                  Submit Access Request
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-8 text-center text-xs text-foreground/40 font-medium">
-            Already a resident? <Link href="/login" className="text-primary font-bold hover:underline">Sign In</Link>
+          <div className="mt-10 text-center">
+             <p className="text-xs text-foreground/30 font-bold">
+              Already have access? <Link href="/login" className="text-primary hover:underline hover:text-primary/80 transition-colors">Sign In</Link>
+            </p>
           </div>
+        </div>
+
+        <div className="mt-12 text-center text-[10px] text-foreground/10 font-bold tracking-[0.3em] uppercase">
+          Minimalist Community Boarding
         </div>
       </motion.div>
     </div>

@@ -12,7 +12,14 @@ import {
   CreditCard,
   ChevronRight,
   Plus,
-  LogOut
+  LogOut,
+  Settings,
+  Home,
+  Star,
+  Shield,
+  User,
+  Zap,
+  Leaf
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -24,6 +31,7 @@ export default function TenantPortal() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'home' | 'meals' | 'tickets' | 'payments'>('home');
+  const [selectedMeal, setSelectedMeal] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -34,9 +42,11 @@ export default function TenantPortal() {
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm font-bold text-foreground/40 animate-pulse uppercase tracking-widest">Securing Session...</p>
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-16 h-16 soft-ui-out flex items-center justify-center text-primary animate-pulse">
+            <Shield className="w-8 h-8" />
+          </div>
+          <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.3em]">Preparing Sanctuary</p>
         </div>
       </div>
     );
@@ -50,187 +60,222 @@ export default function TenantPortal() {
   };
 
   const amenities = [
-    { icon: Wifi, label: 'High-Speed Wi-Fi', desc: 'SSID: Aaram_Villa_Pro | Pass: staylux2024' },
+    { icon: Wifi, label: 'High-Speed Wi-Fi', desc: 'SSID: Aaram_Pro | Pass: staylux2024' },
     { icon: Coffee, label: 'Cook on Call', desc: 'Available 7 AM - 9 PM daily' },
-    { icon: Dumbbell, label: 'Gym Access', desc: 'Open 24/7 in Villa Azure complex' },
+    { icon: Dumbbell, label: 'Gym Access', desc: 'Open 24/7 in the complex' },
     { icon: Wind, label: 'AC Maintenance', desc: 'Scheduled every 1st Sunday' },
   ];
 
+  const stats = [
+    { label: 'Unit', value: '101', sub: 'Villa Serenity', icon: Home, color: 'text-primary' },
+    { label: 'WiFi Status', value: 'Prime', sub: '120 Mbps', icon: Wifi, color: 'text-secondary' },
+    { label: 'Next Payment', value: 'Apr 01', sub: '₹28,500', icon: CreditCard, color: 'text-foreground/40' },
+  ];
+
   return (
-    <div className="min-h-screen bg-background pb-24 lg:pb-0">
-      {/* Mobile Top Header */}
-      <header className="px-6 py-8 flex justify-between items-center lg:px-12">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Welcome Home, {userName}</h1>
-          <p className="text-foreground/50 text-sm">Room 101, Villa Serenity</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={handleSignOut}
-            className="w-10 h-10 rounded-xl glass border border-border flex items-center justify-center text-red-500 hover:bg-red-500/10 transition-colors"
-            title="Sign Out"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-          <div className="w-12 h-12 rounded-full gold-gradient border-2 border-white/20 shadow-lg shadow-primary/20 flex items-center justify-center font-bold text-white uppercase">
-            {userName.substring(0, 2)}
+    <div className="min-h-screen bg-background pb-32 lg:pb-12 selection:bg-primary/20">
+      {/* Top Header - Mobile & Desktop */}
+      <div className="px-6 pt-12 pb-24 bg-accent/30 rounded-b-[64px] border-b border-white">
+        <div className="max-w-7xl mx-auto flex justify-between items-start">
+          <div className="space-y-3">
+             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 text-secondary text-[10px] font-bold uppercase tracking-widest border border-secondary/20">
+                <Leaf className="w-3 h-3" /> Earthy Comfort
+              </div>
+            <h1 className="text-4xl lg:text-5xl font-bold tracking-tighter text-foreground">Welcome Home, <span className="text-primary italic">{userName}</span></h1>
+            <p className="text-foreground/40 text-lg">Your peaceful sanctuary in North Goa.</p>
           </div>
-        </div>
-      </header>
-
-
-      <div className="px-6 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-12 max-w-7xl mx-auto">
-        {/* Main Content Area */}
-        <div className="lg:col-span-8 space-y-12">
-          
-          {/* Section: Status Cards */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="glass p-6 rounded-3xl border border-border space-y-2">
-              <p className="text-xs font-bold text-foreground/40 uppercase">Next Payment</p>
-              <h3 className="text-xl font-bold">₹45,000</h3>
-              <p className="text-[10px] text-primary font-semibold">Due in 5 days</p>
-            </div>
-            <div className="glass p-6 rounded-3xl border border-border space-y-2">
-              <p className="text-xs font-bold text-foreground/40 uppercase">Water Level</p>
-              <h3 className="text-xl font-bold text-green-500">Normal</h3>
-              <p className="text-[10px] text-foreground/40">Adequate for today</p>
-            </div>
-          </div>
-
-          <AnimatePresence mode="wait">
-            {activeTab === 'home' && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="space-y-8"
+          <div className="flex items-center gap-4">
+             <button 
+                onClick={handleSignOut}
+                className="soft-button w-14 h-14 flex items-center justify-center border border-white text-red-400 group hover:text-red-600"
               >
-                {/* Welcome Kit / Benefits */}
-                <section className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold">Resident Benefits</h2>
-                    <button className="text-primary text-xs font-bold underline">Welcome Guide PDF</button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {amenities.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-4 p-4 glass rounded-2xl border border-border group hover:border-primary transition-colors cursor-pointer">
-                        <div className="w-12 h-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                          <item.icon className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm">{item.label}</p>
-                          <p className="text-xs text-foreground/50">{item.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {/* Maintenance Request Quick Form placeholder */}
-                <section className="bg-slate-900 text-white rounded-[32px] p-8 relative overflow-hidden">
-                  <div className="relative z-10 space-y-4">
-                    <h3 className="text-2xl font-bold">Have an issue?</h3>
-                    <p className="text-white/60 text-sm max-w-md">Raise a maintenance ticket and track its progress in real-time. Our team usually responds within 2 hours.</p>
-                    <button className="bg-primary text-white px-8 py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                      Report Problem
-                    </button>
-                  </div>
-                  <MessageSquare className="absolute -right-8 -bottom-8 w-48 h-48 text-white/5 rotate-12" />
-                </section>
-              </motion.div>
-            )}
-
-            {activeTab === 'meals' && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="space-y-8"
-              >
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-bold">Meal Selector</h2>
-                  <div className="text-xs text-foreground/40 font-medium">Week 14 Mar - 20 Mar</div>
-                </div>
-                
-                <div className="space-y-4">
-                  {['Today', 'Tomorrow', '17 Mar'].map((day, dIdx) => (
-                    <div key={day} className="glass rounded-3xl border border-border p-6 shadow-sm">
-                      <h4 className="font-bold mb-4">{day}</h4>
-                      <div className="grid grid-cols-3 gap-3">
-                        {['Breakfast', 'Lunch', 'Dinner'].map((meal) => (
-                          <div key={meal} className="flex flex-col items-center gap-3">
-                            <div className="w-full aspect-square rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-foreground/20 hover:text-primary hover:bg-primary/5 transition-all cursor-pointer border border-transparent hover:border-primary/20 group">
-                              <UtensilsCrossed className="w-8 h-8 group-hover:scale-125 transition-transform" />
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-wider">{meal}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Desktop Sidebar / Notifications Area */}
-        <div className="lg:col-span-4 space-y-12">
-          <div className="glass rounded-3xl border border-border p-6">
-            <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-primary" />
-              Recent Activity
-            </h3>
-            <div className="space-y-6">
-              <ActivityItem date="Yesterday" text="Visitor #3402 was granted entry." />
-              <ActivityItem date="12 Mar" text="Rent payment received for March." />
-              <ActivityItem date="10 Mar" text="AC Filter cleaning completed." />
-            </div>
-          </div>
-
-          <div className="bg-primary/10 rounded-3xl border border-primary/20 p-8 flex flex-col items-center text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white">
-              <Plus className="w-8 h-8" />
-            </div>
-            <h4 className="font-bold">Add Amenity</h4>
-            <p className="text-xs text-foreground/60 leading-relaxed">Want laundry or bike rental service? Add it to your subscription in one click.</p>
-            <button className="text-primary text-sm font-bold hover:underline">Explore Services</button>
+                <LogOut className="w-6 h-6 transition-transform group-hover:scale-110" />
+              </button>
+             <button className="soft-button w-14 h-14 flex items-center justify-center border border-white">
+                <Settings className="w-6 h-6 text-foreground/40" />
+              </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Navigation */}
-      <nav className="fixed bottom-6 left-6 right-6 lg:left-auto lg:right-12 lg:top-1/2 lg:-translate-y-1/2 lg:w-20 glass rounded-[32px] border border-border p-4 flex lg:flex-col justify-between items-center shadow-2xl z-50">
-        <NavBtn active={activeTab === 'home'} onClick={() => setActiveTab('home')} icon={ShieldCheck} />
-        <NavBtn active={activeTab === 'meals'} onClick={() => setActiveTab('meals')} icon={UtensilsCrossed} />
-        <NavBtn active={activeTab === 'tickets'} onClick={() => setActiveTab('tickets')} icon={MessageSquare} />
-        <NavBtn active={activeTab === 'payments'} onClick={() => setActiveTab('payments')} icon={CreditCard} />
-      </nav>
-    </div>
-  );
-}
+      <div className="max-w-7xl mx-auto px-6 -mt-12 space-y-12">
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {stats.map((stat, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="soft-ui-out p-8 border border-white flex flex-col gap-5 hover:scale-[1.02] transition-transform cursor-default"
+            >
+              <div className={cn("w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-inner", stat.color)}>
+                <stat.icon className="w-7 h-7" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">{stat.label}</p>
+                <p className="text-3xl font-bold text-foreground mt-1 tracking-tight">{stat.value}</p>
+                <p className="text-sm text-foreground/40 mt-1">{stat.sub}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
 
-function NavBtn({ active, onClick, icon: Icon }: { active: boolean, onClick: () => void, icon: any }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={cn(
-        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300",
-        active ? "bg-primary text-white shadow-lg shadow-primary/20 scale-110" : "text-foreground/40 hover:bg-slate-100 dark:hover:bg-slate-800"
-      )}
-    >
-      <Icon className="w-6 h-6" />
-    </button>
-  );
-}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          {/* Main Area */}
+          <div className="lg:col-span-8 space-y-12">
+            
+            {/* Tabs for Mobile/Desktop Content */}
+            <div className="flex gap-4 p-2 soft-ui-out bg-white/40 border border-white w-fit">
+               {['home', 'meals', 'tickets'].map((tab) => (
+                 <button
+                   key={tab}
+                   onClick={() => setActiveTab(tab as any)}
+                   className={cn(
+                     "px-6 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-widest",
+                     activeTab === tab 
+                      ? "terracotta-button shadow-lg" 
+                      : "text-foreground/40 hover:bg-white/60"
+                   )}
+                 >
+                   {tab}
+                 </button>
+               ))}
+            </div>
 
-function ActivityItem({ date, text }: { date: string, text: string }) {
-  return (
-    <div className="flex gap-4">
-      <div className="w-1 h-10 bg-primary/20 rounded-full mt-1" />
-      <div>
-        <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">{date}</p>
-        <p className="text-sm font-medium">{text}</p>
+            <AnimatePresence mode="wait">
+              {activeTab === 'home' && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  className="space-y-12"
+                >
+                  {/* Service Request Hero */}
+                  <div className="soft-ui-out p-12 border border-white relative overflow-hidden group">
+                     <div className="relative z-10 space-y-6">
+                        <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center text-primary mb-2">
+                           <MessageSquare className="w-8 h-8" />
+                        </div>
+                        <div className="space-y-3">
+                           <h2 className="text-3xl font-bold text-foreground">Concierge Support</h2>
+                           <p className="text-foreground/45 max-w-sm text-lg leading-relaxed">Is there something we can improve? Raise a request, and our onsite team will be at your door within the hour.</p>
+                        </div>
+                        <button className="terracotta-button px-10 py-5 font-bold shadow-xl hover:translate-y-[-2px] transition-all rounded-2xl">
+                           Report Concern
+                        </button>
+                     </div>
+                     <Shield className="absolute -right-16 -bottom-16 w-64 h-64 text-primary/5 rotate-12 group-hover:rotate-0 transition-transform duration-1000" />
+                  </div>
+
+                  {/* Amenities List */}
+                  <div className="space-y-8">
+                     <h3 className="text-xl font-bold text-foreground px-2">Managed Services</h3>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        {amenities.map((item, idx) => (
+                          <div key={idx} className="soft-ui-out p-6 border border-white flex items-center gap-5 hover:bg-white/40 transition-colors group">
+                             <div className="w-14 h-14 rounded-2xl soft-ui-in flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
+                                <item.icon className="w-7 h-7" />
+                             </div>
+                             <div>
+                                <h4 className="font-bold text-foreground">{item.label}</h4>
+                                <p className="text-xs text-foreground/40 mt-1">{item.desc}</p>
+                             </div>
+                          </div>
+                        ))}
+                     </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'meals' && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  className="soft-ui-out p-12 border border-white space-y-12"
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                      <h2 className="text-3xl font-bold text-foreground">Artisan Kitchen</h2>
+                      <p className="text-foreground/40 text-lg">Curate your meals for tomorrow, March 16th.</p>
+                    </div>
+                    <UtensilsCrossed className="w-10 h-10 text-primary/30" />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+                    {['Breakfast', 'Lunch', 'Dinner'].map((meal) => (
+                      <button
+                        key={meal}
+                        onClick={() => setSelectedMeal(meal)}
+                        className={cn(
+                          "p-8 text-left border transition-all duration-500 rounded-[40px] flex flex-col gap-6",
+                          selectedMeal === meal
+                            ? "terracotta-button shadow-2xl scale-[1.05]"
+                            : "soft-button border-white text-foreground/50 hover:bg-white"
+                        )}
+                      >
+                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner", 
+                          selectedMeal === meal ? "bg-white/20" : "bg-primary/5")}>
+                           <Star className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-2xl">{meal}</p>
+                          <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest mt-2">{selectedMeal === meal ? 'Selection Stored' : 'Available'}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <div className="pt-8 border-t border-border flex items-center gap-4 text-foreground/40">
+                     <p className="text-sm italic">"The kitchen opens at 7:00 AM for fresh artisanal breakfast."</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Activity/Sidebar - Desktop */}
+          <div className="lg:col-span-4 space-y-12">
+            <div className="soft-ui-out p-10 border border-white space-y-10 bg-white/30">
+               <div className="space-y-2">
+                  <h3 className="text-2xl font-bold text-foreground flex items-center gap-4">
+                     <div className="w-3 h-10 rounded-full bg-secondary" />
+                     Home Log
+                  </h3>
+                  <p className="text-xs text-foreground/40 font-bold uppercase tracking-widest pl-7">Live Updates</p>
+               </div>
+              
+              <div className="space-y-10 relative">
+                <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-border/20" />
+                
+                {[
+                  { title: 'Community Social', desc: "Organic wine tasting at Siolim Deck, 7 PM.", time: '2h ago', icon: Star, color: 'text-primary' },
+                  { title: 'Sustainabilty Note', desc: "Rainwater harvest cycles active for the week.", time: '5h ago', icon: Leaf, color: 'text-secondary' },
+                  { title: 'Portal Payment', desc: "Rent cycle for April successfully logged.", time: '1d ago', icon: CreditCard, color: 'text-foreground/30' },
+                ].map((item, i) => (
+                  <div key={i} className="flex gap-6 relative z-10 group">
+                    <div className="w-9 h-9 rounded-full bg-background border border-white flex items-center justify-center shrink-0 soft-ui-out group-hover:scale-110 transition-transform">
+                      <item.icon className={cn("w-4 h-4", item.color)} />
+                    </div>
+                    <div className="space-y-1 pt-1">
+                      <p className="font-bold text-foreground text-sm tracking-tight">{item.title}</p>
+                      <p className="text-xs text-foreground/45 leading-relaxed">{item.desc}</p>
+                      <p className="text-[10px] text-foreground/20 font-bold uppercase tracking-widest mt-1">{item.time}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button className="soft-button w-full py-6 font-bold flex items-center justify-center gap-4 text-primary border border-white group">
+              <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Plus className="w-5 h-5" />
+              </div>
+              Explore Premium Add-ons
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
