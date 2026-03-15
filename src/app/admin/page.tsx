@@ -9,7 +9,8 @@ import {
   Droplets,
   ArrowUpRight,
   ChevronRight,
-  Leaf
+  Leaf,
+  Edit2
 } from 'lucide-react';
 import { Unit, Property, Tenant, Ticket, WaterLog } from '@/lib/types';
 import { mockUnits, mockProperties, mockTickets, mockWaterLogs } from '@/lib/mockData';
@@ -18,16 +19,16 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export default function AdminDashboard() {
-  const totalRooms = mockUnits.length;
-  const occupiedRooms = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
-  const occupancyRate = Math.round((occupiedRooms / totalRooms) * 100);
+  const totalUnits = mockUnits.length;
+  const occupiedUnits = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
+  const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
   const activeTickets = mockTickets.filter(t => t.status !== 'Resolved').length;
 
   const stats = [
-    { label: 'Portfolio Occupancy', value: `${occupancyRate}%`, icon: Users, trend: '+5%', color: 'blue' },
-    { label: 'Monthly Revenue', value: '₹4,25,000', icon: TrendingUp, trend: '+12%', color: 'green' },
-    { label: 'Open Tickets', value: activeTickets, icon: ClipboardList, trend: '-2', color: 'amber' },
-    { label: 'Avg. Water Level', value: '47%', icon: Droplets, trend: 'Watch', color: 'cyan' },
+    { label: 'Portfolio Occupancy', value: `${occupancyRate}%`, icon: Users, trend: '+5%', color: 'blue', href: '/admin/occupancy' },
+    { label: 'Monthly Revenue', value: '₹4,25,000', icon: TrendingUp, trend: '+12%', color: 'green', href: '/admin/financials' },
+    { label: 'Open Tickets', value: activeTickets, icon: ClipboardList, trend: '-2', color: 'amber', href: '/admin/tickets' },
+    { label: 'Avg. Water Level', value: '47%', icon: Droplets, trend: 'Watch', color: 'cyan', href: '/admin/iot' },
   ];
 
   return (
@@ -42,44 +43,53 @@ export default function AdminDashboard() {
             <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground">Aaram <span className="text-primary italic">Portfolio</span></h1>
             <p className="text-foreground/40 text-sm">Real-time status of all managed properties.</p>
           </div>
-          <button className="btn-terracotta px-6 py-3 text-xs font-bold hover:translate-y-[-1px] transition-all flex items-center gap-2 group shadow-lg">
-            Generate Insights
-            <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </button>
+          <div className="flex gap-3">
+            <Link href="/admin/properties/manage" className="soft-button px-6 py-3 text-xs font-bold border border-white hover:bg-white/40 transition-all uppercase tracking-widest">
+              Manage Portfolio
+            </Link>
+            <button className="btn-terracotta px-6 py-3 text-xs font-bold hover:translate-y-[-1px] transition-all flex items-center gap-2 group shadow-lg uppercase tracking-widest">
+              Generate Insights
+              <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid - Denser */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat, idx) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className="soft-card p-6 border border-white flex flex-col justify-between hover:scale-[1.01] transition-transform"
-            >
-              <div className="flex justify-between items-start">
-                <div className={cn(
-                  "w-11 h-11 rounded-xl flex items-center justify-center shadow-inner bg-white/50",
-                  stat.color === 'blue' && "text-blue-500",
-                  stat.color === 'green' && "text-secondary",
-                  stat.color === 'amber' && "text-primary",
-                  stat.color === 'cyan' && "text-cyan-500"
-                )}>
-                  <stat.icon className="w-5 h-5" />
+            <Link key={stat.label} href={stat.href}>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="soft-card p-6 border border-white flex flex-col justify-between hover:scale-[1.02] hover:shadow-xl transition-all h-full group relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Edit2 className="w-3.5 h-3.5 text-foreground/20" />
                 </div>
-                <span className={cn(
-                  "text-[10px] font-extrabold px-2 py-0.5 rounded-lg border border-white",
-                  stat.trend.startsWith('+') ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
-                )}>
-                  {stat.trend}
-                </span>
-              </div>
-              <div className="mt-4">
-                <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.15em]">{stat.label}</p>
-                <h3 className="text-2xl font-bold mt-1 text-foreground tracking-tight">{stat.value}</h3>
-              </div>
-            </motion.div>
+                <div className="flex justify-between items-start">
+                  <div className={cn(
+                    "w-11 h-11 rounded-xl flex items-center justify-center shadow-inner bg-white/50",
+                    stat.color === 'blue' && "text-blue-500",
+                    stat.color === 'green' && "text-secondary",
+                    stat.color === 'amber' && "text-primary",
+                    stat.color === 'cyan' && "text-cyan-500"
+                  )}>
+                    <stat.icon className="w-5 h-5" />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-extrabold px-2 py-0.5 rounded-lg border border-white",
+                    stat.trend.startsWith('+') ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
+                  )}>
+                    {stat.trend}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.15em]">{stat.label}</p>
+                  <h3 className="text-2xl font-bold mt-1 text-foreground tracking-tight">{stat.value}</h3>
+                </div>
+              </motion.div>
+            </Link>
           ))}
         </div>
 

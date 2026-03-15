@@ -6,7 +6,7 @@ export type Property = {
   location: string;
   total_rooms: number; // Renamed from total_units
   property_type: PropertyType;
-  image_url: string;
+  image_url?: string;
   description?: string;
   rooms?: Room[];
   benefits?: Benefit[];

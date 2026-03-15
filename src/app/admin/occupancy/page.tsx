@@ -17,8 +17,8 @@ export default function OccupancyPage() {
              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 text-secondary text-[9px] font-bold uppercase tracking-widest border border-secondary/20">
                 <Leaf className="w-2.5 h-2.5" /> Live Inventory
               </div>
-            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground text-balance">Room <span className="text-primary italic">Status</span></h1>
-            <p className="text-foreground/40 text-sm">Visual grid of all rooms across the portfolio.</p>
+            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground text-balance">Unit <span className="text-primary italic">Status</span></h1>
+            <p className="text-foreground/40 text-sm">Visual grid of all units across the portfolio.</p>
           </div>
           
           <div className="flex gap-3 flex-wrap">
@@ -47,7 +47,7 @@ export default function OccupancyPage() {
                 {mockUnits
                   .filter((unit) => unit.property_id === property.id)
                   .map((unit) => (
-                    <RoomCard key={unit.id} unit={unit} />
+                    <UnitCard key={unit.id} unit={unit} />
                   ))}
               </div>
             </div>
@@ -67,7 +67,7 @@ function StatusLegend({ icon: Icon, color, label }: { icon: any, color: string, 
   );
 }
 
-function RoomCard({ unit }: { unit: Unit }) {
+function UnitCard({ unit }: { unit: Unit }) {
   const statusColors = {
     'Occupied': 'border-white text-secondary bg-white/40',
     'Notice Period': 'border-white text-blue-500 bg-white/40',
@@ -92,8 +92,8 @@ function RoomCard({ unit }: { unit: Unit }) {
     >
       <div className="flex justify-between items-start">
         <div className="space-y-0.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest opacity-40">Room</p>
-          <h4 className="text-3xl font-bold tracking-tighter">{unit.room_number}</h4>
+          <p className="text-[9px] font-bold uppercase tracking-widest opacity-40">Unit</p>
+          <h4 className="text-3xl font-bold tracking-tighter">{unit.unit_number}</h4>
         </div>
         <div className="w-10 h-10 rounded-xl soft-ui-in flex items-center justify-center border border-current opacity-20 group-hover:opacity-100 transition-opacity">
           {statusIcons[unit.status as keyof typeof statusIcons]}
