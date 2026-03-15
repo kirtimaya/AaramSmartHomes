@@ -37,7 +37,12 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push('/tenant');
+      // Intelligently redirect based on email (placeholder for actual role)
+      if (email.includes('admin') || email === 'kirtimayaswain@gmail.com') {
+        router.push('/admin');
+      } else {
+        router.push('/tenant');
+      }
     }
   };
 
