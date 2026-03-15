@@ -1,8 +1,35 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
-import { Shield, Bell } from 'lucide-react';
+import { Shield, Bell, Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  // Mock admin check - in production, this would check a 'role' claim or a database record
+  const isAdmin = user?.email?.includes('admin') || user?.email === 'kirtimayaswain@gmail.com' || user; 
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+        <p className="text-sm font-bold text-foreground/40 uppercase tracking-widest">Verifying Admin Access</p>
+      </div>
+    );
+  }
+
+  if (!user || !isAdmin) {
+    return null; // Logic in useEffect will redirect
+  }
+
   return (
     <div className="min-h-screen bg-background selection:bg-primary/20">
       <Sidebar />

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Unit, Property, Tenant, Ticket, WaterLog } from '@/lib/types';
 import { mockUnits, mockProperties, mockTickets, mockWaterLogs } from '@/lib/mockData';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -91,9 +92,9 @@ export default function AdminDashboard() {
                   <div className="w-1.5 h-6 rounded-full bg-primary" />
                   <h3 className="font-bold text-lg text-foreground">Resident Support</h3>
                </div>
-              <button className="text-primary text-[10px] font-extrabold uppercase tracking-widest hover:translate-x-1 transition-transform flex items-center gap-1">
+              <Link href="/admin/tickets" className="text-primary text-[10px] font-extrabold uppercase tracking-widest hover:translate-x-1 transition-transform flex items-center gap-1">
                 Full Inbox <ChevronRight className="w-3 h-3" />
-              </button>
+              </Link>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
