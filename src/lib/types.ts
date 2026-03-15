@@ -27,6 +27,7 @@ export type Benefit = {
   name: string;
   icon: string; // Lucide icon name
   description?: string;
+  image_url?: string;
 };
 
 export type AutomationSystem = {
@@ -34,6 +35,8 @@ export type AutomationSystem = {
   name: string;
   type: 'Lighting' | 'Security' | 'Climate' | 'Other';
   status: 'Active' | 'Inactive';
+  description?: string;
+  image_url?: string;
 };
 
 export type UnitStatus = 'Vacant' | 'Occupied' | 'Maintenance' | 'Notice Period';
