@@ -13,14 +13,15 @@ import {
   PieChart,
   Calendar,
   Settings,
-  Bell,
   Shield,
-  User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 const sidebarItems = [
   { icon: Home, label: 'Dashboard', href: '/admin' },
+  { icon: Shield, label: 'Properties', href: '/admin/properties/manage' },
   { icon: PieChart, label: 'Occupancy', href: '/admin/occupancy' },
   { icon: Calendar, label: 'Move-Outs', href: '/admin/calendar' },
   { icon: BarChart3, label: 'Financials', href: '/admin/financials' },
@@ -30,55 +31,57 @@ const sidebarItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  };
 
   return (
-    <div className="hidden md:flex h-screen w-64 flex-col fixed left-0 top-0 bg-background border-r border-white/40 z-50">
+    <div className="hidden md:flex flex-col w-64 bg-background border-r border-white/50 h-screen fixed left-0 top-0 z-50">
       <div className="p-8">
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
-            <Shield className="w-5 h-5 text-white" />
+        <div className="flex items-center gap-3 mb-10">
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+            <Shield className="w-6 h-6 text-white" />
           </div>
-          <span className="font-bold tracking-tighter text-lg text-foreground uppercase">Aaram</span>
-        </Link>
+          <h1 className="text-xl font-bold tracking-tighter text-foreground uppercase">Aaram <span className="text-primary italic">Admin</span></h1>
+        </div>
+
+        <nav className="space-y-1.5">
+          {sidebarItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 group",
+                  isActive 
+                    ? "bg-white shadow-md border border-white/50 text-foreground scale-[1.02]" 
+                    : "text-foreground/40 hover:bg-white/40 hover:text-foreground"
+                )}
+              >
+                <item.icon className={cn(
+                  "w-5 h-5 transition-transform group-hover:scale-110",
+                  isActive ? "text-primary" : "text-foreground/20"
+                )} />
+                <span className="text-[11px] font-bold uppercase tracking-widest">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
 
-      <nav className="flex-1 mt-4 px-4 space-y-1.5">
-        {sidebarItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-[13px] font-bold",
-              pathname === item.href 
-                ? "btn-terracotta shadow-md scale-[1.02]" 
-                : "text-foreground/40 hover:bg-white/60 hover:text-foreground"
-            )}
-          >
-            <item.icon className={cn(
-              "w-4 h-4",
-              pathname === item.href ? "text-white" : "group-hover:scale-110 transition-transform"
-            )} />
-            <span className="uppercase tracking-widest">{item.label}</span>
-          </Link>
-        ))}
-      </nav>
-
-      <div className="p-4 mt-auto">
-        <div className="soft-card p-4 border border-white bg-white/30">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl soft-ui-in flex items-center justify-center text-primary font-bold shadow-inner bg-white/50">
-              <User className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold truncate text-foreground uppercase tracking-tight">Kirti Swain</p>
-              <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest leading-none">Estate Owner</p>
-            </div>
-          </div>
-          <button className="mt-5 flex items-center justify-center gap-2 text-[10px] font-extrabold text-red-400 hover:text-red-500 transition-colors w-full p-2.5 soft-button border border-white bg-white/50 uppercase tracking-[0.2em]">
-            <LogOut className="w-3 h-3" />
-            Sign Out
-          </button>
-        </div>
+      <div className="mt-auto p-6 border-t border-white/50">
+        <button 
+          onClick={handleSignOut}
+          className="flex items-center gap-4 w-full px-5 py-4 rounded-2xl text-foreground/40 hover:bg-red-50 hover:text-red-500 transition-all group font-bold"
+        >
+          <LogOut className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          <span className="text-[11px] font-bold uppercase tracking-widest">Sign Out</span>
+        </button>
       </div>
     </div>
   );

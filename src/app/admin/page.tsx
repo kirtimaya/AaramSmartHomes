@@ -18,9 +18,9 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export default function AdminDashboard() {
-  const totalUnits = mockUnits.length;
-  const occupiedUnits = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
-  const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
+  const totalRooms = mockUnits.length;
+  const occupiedRooms = mockUnits.filter(u => u.status === 'Occupied' || u.status === 'Notice Period').length;
+  const occupancyRate = Math.round((occupiedRooms / totalRooms) * 100);
   const activeTickets = mockTickets.filter(t => t.status !== 'Resolved').length;
 
   const stats = [
