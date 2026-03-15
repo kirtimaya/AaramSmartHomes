@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
-import { Shield, Bell, Loader2 } from 'lucide-react';
+import { Shield, Bell, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -14,8 +14,13 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  // Mock admin check - in production, this would check a 'role' claim or a database record
-  const isAdmin = user?.email?.includes('admin') || user?.email === 'kirtimayaswain@gmail.com' || user; 
+  const isAdmin = user?.email?.includes('admin') || user?.email === 'kirtimayaswain@gmail.com';
+
+  useEffect(() => {
+    if (!loading && user && !isAdmin) {
+      router.push('/tenant');
+    }
+  }, [user, loading, isAdmin, router]);
 
   if (loading) {
     return (
@@ -46,11 +51,20 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
               System Operational
             </div>
-            <div className="soft-button w-11 h-11 border border-white text-foreground/30 hover:text-primary transition-all">
-              <span className="relative">
-                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border-2 border-background"></div>
-                <Bell className="w-5 h-5" />
-              </span>
+            <div className="flex items-center gap-3">
+                <div className="soft-button w-11 h-11 border border-white text-foreground/30 hover:text-primary transition-all">
+                  <span className="relative">
+                    <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border-2 border-background"></div>
+                    <Bell className="w-5 h-5" />
+                  </span>
+                </div>
+                <button 
+                  onClick={async () => { await signOut(); router.push('/login'); }}
+                  className="soft-button w-11 h-11 border border-white text-red-400 hover:text-red-500 transition-all flex items-center justify-center"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
             </div>
           </div>
         </header>

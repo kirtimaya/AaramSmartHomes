@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 
 const sidebarItems = [
   { icon: Home, label: 'Dashboard', href: '/admin' },
+  { icon: Shield, label: 'Properties', href: '/admin/properties/manage' },
   { icon: PieChart, label: 'Occupancy', href: '/admin/occupancy' },
   { icon: Calendar, label: 'Move-Outs', href: '/admin/calendar' },
   { icon: BarChart3, label: 'Financials', href: '/admin/financials' },
@@ -28,8 +29,18 @@ const sidebarItems = [
   { icon: Droplets, label: 'Water Levels', href: '/admin/iot' },
 ];
 
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  };
 
   return (
     <div className="hidden md:flex h-screen w-64 flex-col fixed left-0 top-0 bg-background border-r border-white/40 z-50">
@@ -63,23 +74,28 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-4 mt-auto">
-        <div className="soft-card p-4 border border-white bg-white/30">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl soft-ui-in flex items-center justify-center text-primary font-bold shadow-inner bg-white/50">
-              <User className="w-5 h-5" />
+      {user && (
+        <div className="p-4 mt-auto">
+          <div className="soft-card p-4 border border-white bg-white/30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl soft-ui-in flex items-center justify-center text-primary font-bold shadow-inner bg-white/50">
+                <User className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-extrabold truncate text-foreground uppercase tracking-tight">{user.email?.split('@')[0]}</p>
+                <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest leading-none">Access Node</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold truncate text-foreground uppercase tracking-tight">Kirti Swain</p>
-              <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest leading-none">Estate Owner</p>
-            </div>
+            <button 
+              onClick={handleSignOut}
+              className="mt-5 flex items-center justify-center gap-2 text-[10px] font-extrabold text-red-400 hover:text-red-500 transition-colors w-full p-2.5 soft-button border border-white bg-white/50 uppercase tracking-[0.2em]"
+            >
+              <LogOut className="w-3 h-3" />
+              Sign Out
+            </button>
           </div>
-          <button className="mt-5 flex items-center justify-center gap-2 text-[10px] font-extrabold text-red-400 hover:text-red-500 transition-colors w-full p-2.5 soft-button border border-white bg-white/50 uppercase tracking-[0.2em]">
-            <LogOut className="w-3 h-3" />
-            Sign Out
-          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

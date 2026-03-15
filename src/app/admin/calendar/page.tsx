@@ -110,7 +110,7 @@ export default function MoveOutsPage() {
                       </div>
                       <div className="flex flex-col gap-2">
                          <div className="flex items-center justify-center md:justify-start gap-2 text-[11px] font-bold text-foreground/50">
-                            <Home className="w-3.5 h-3.5 text-primary" /> {property?.name} • Unit {unit?.unit_number}
+                            <Home className="w-3.5 h-3.5 text-primary" /> {property?.name} • Room {unit?.room_number}
                          </div>
                          <div className="flex items-center justify-center md:justify-start gap-2 text-[11px] font-bold text-foreground/50">
                             <MapPin className="w-3.5 h-3.5 text-primary" /> {property?.location}

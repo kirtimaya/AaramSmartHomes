@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Wifi, 
   Coffee, 
@@ -19,257 +19,311 @@ import {
   Shield,
   User,
   Zap,
-  Leaf
+  Leaf,
+  Heart,
+  Calendar,
+  Phone,
+  CheckCircle2,
+  Building2,
+  Waves,
+  MapPin,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { mockTenants, mockProperties } from '@/lib/mockData';
+import { Tenant, Property } from '@/lib/types';
 
-export default function TenantPortal() {
+export default function UnifiedUserDashboard() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab ] = useState<'home' | 'meals' | 'tickets' | 'payments'>('home');
-  const [selectedMeal, setSelectedMeal] = useState<string | null>(null);
+  const [activeTab, setActiveTab ] = useState<'explore' | 'home' | 'meals' | 'support'>('home');
+  const [tenantProfile, setTenantProfile] = useState<Tenant | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
+    } else if (user) {
+        // Find tenant profile by email or use guest as fallback
+        const profile = mockTenants.find(t => t.email === user.email) || mockTenants.find(t => t.id === 't_guest');
+        if (profile) {
+            setTenantProfile(profile as Tenant);
+            if (profile.status === 'guest') setActiveTab('explore');
+        }
     }
   }, [user, loading, router]);
 
-  if (loading || !user) {
+  if (loading || !user || !tenantProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-6">
-          <div className="w-16 h-16 soft-ui-out flex items-center justify-center text-primary animate-pulse">
-            <Shield className="w-8 h-8" />
+          <div className="w-20 h-20 soft-ui-out flex items-center justify-center text-primary animate-pulse border border-white">
+            <Shield className="w-10 h-10" />
           </div>
-          <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.3em]">Preparing Sanctuary</p>
+          <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-[0.4em]">Synchronizing Lifestyle</p>
         </div>
       </div>
     );
   }
 
-  const userName = user.user_metadata.full_name || user.email?.split('@')[0] || 'Resident';
+  const isGuest = tenantProfile.status === 'guest';
+  const userName = user.user_metadata.full_name || user.email?.split('@')[0] || 'Member';
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/');
+    router.push('/login');
   };
 
-  const amenities = [
-    { icon: Wifi, label: 'High-Speed Wi-Fi', desc: 'SSID: Aaram_Pro | Pass: staylux2024' },
-    { icon: Coffee, label: 'Cook on Call', desc: 'Available 7 AM - 9 PM daily' },
-    { icon: Dumbbell, label: 'Gym Access', desc: 'Open 24/7 in the complex' },
-    { icon: Wind, label: 'AC Maintenance', desc: 'Scheduled every 1st Sunday' },
+  const universalBenefits = [
+    { icon: Wifi, label: 'Hyper-WiFi', desc: 'Secure mesh networking across all nodes.' },
+    { icon: Coffee, label: 'Kitchen Hub', desc: 'Curated meal plans and on-call chefs.' },
+    { icon: ShieldCheck, label: 'Biometric Security', desc: 'Zero-touch entry via Aaram Mobile App.' },
+    { icon: Sparkles, label: 'Deep Cleaning', desc: 'Weekly professional architectural care.' },
   ];
 
-  const stats = [
-    { label: 'Unit', value: '101', sub: 'Villa Serenity', icon: Home, color: 'text-primary' },
-    { label: 'WiFi Status', value: 'Prime', sub: '120 Mbps', icon: Wifi, color: 'text-secondary' },
-    { label: 'Next Payment', value: 'Apr 01', sub: '₹28,500', icon: CreditCard, color: 'text-foreground/40' },
-  ];
+  const shortlistedProperties = mockProperties.filter(p => tenantProfile.shortlisted_property_ids?.includes(p.id));
 
   return (
-    <div className="min-h-screen bg-background pb-20 lg:pb-12 selection:bg-primary/20">
-      {/* Top Header - Compact */}
-      <div className="px-6 pt-10 pb-20 bg-accent/40 rounded-b-[48px] border-b border-white">
-        <div className="max-w-7xl mx-auto flex justify-between items-start">
-          <div className="space-y-2">
-             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 text-secondary text-[9px] font-bold uppercase tracking-widest border border-secondary/20">
-                <Leaf className="w-2.5 h-2.5" /> Earthy Comfort
+    <div className="min-h-screen bg-background pb-20 selection:bg-primary/20">
+      {/* Dynamic Header */}
+      <div className={cn(
+        "px-6 pt-12 pb-24 rounded-b-[64px] border-b border-white transition-colors duration-1000",
+        isGuest ? "bg-secondary/5" : "bg-accent/40"
+      )}>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+          <div className="space-y-4">
+             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/60 text-secondary text-[10px] font-extrabold uppercase tracking-widest border border-white shadow-sm">
+                {isGuest ? <Sparkles className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3 text-primary" />}
+                {isGuest ? 'Future Resident' : 'Active Sanctuary'} Node
               </div>
-            <h1 className="text-3xl lg:text-5xl font-bold tracking-tighter text-foreground">Namaste, <span className="text-primary italic">{userName}</span></h1>
-            <p className="text-foreground/40 text-sm">Your peaceful sanctuary in North Goa.</p>
+            <h1 className="text-4xl lg:text-6xl font-black tracking-tighter text-foreground">
+                {isGuest ? 'Welcome,' : 'Namaste,'} <span className="text-primary italic">{userName}</span>
+            </h1>
+            <p className="text-foreground/40 text-base max-w-xl font-medium leading-relaxed">
+                {isGuest 
+                  ? 'Your shortlisted properties are ready for a walkthrough. Connect with our team to finalize your stay.'
+                  : 'Welcome back to your duplex. Everything is set to your preferences.'}
+            </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
              <button 
                 onClick={handleSignOut}
-                className="soft-button w-12 h-12 border border-white text-red-400 group hover:text-red-500"
+                className="soft-button w-14 h-14 border border-white text-red-300 group hover:text-red-500 shadow-xl"
               >
-                <LogOut className="w-5 h-5 transition-transform group-hover:scale-110" />
+                <LogOut className="w-6 h-6 transition-transform group-hover:scale-110" />
               </button>
-             <button className="soft-button w-12 h-12 border border-white">
-                <Settings className="w-5 h-5 text-foreground/40" />
+             <button className="soft-button w-14 h-14 border border-white shadow-xl">
+                <Settings className="w-6 h-6 text-foreground/40" />
               </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 -mt-10 space-y-8">
-        {/* Quick Stats Grid - Tighter */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {stats.map((stat, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="soft-card p-6 border border-white flex flex-col gap-4 hover:scale-[1.01] transition-transform"
-            >
-              <div className={cn("w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-inner", stat.color)}>
-                <stat.icon className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em]">{stat.label}</p>
-                <p className="text-2xl font-bold text-foreground mt-0.5 tracking-tight">{stat.value}</p>
-                <p className="text-xs text-foreground/40">{stat.sub}</p>
-              </div>
-            </motion.div>
-          ))}
+      <div className="max-w-7xl mx-auto px-6 -mt-12 space-y-12">
+        {/* Navigation Tabs */}
+        <div className="flex justify-center">
+            <div className="flex gap-2 p-2 soft-ui-out bg-white/80 backdrop-blur-md border border-white w-fit rounded-[24px] shadow-2xl">
+               {isGuest ? (
+                 <>
+                   <button onClick={() => setActiveTab('explore')} className={cn("tab-user", activeTab === 'explore' && "active")}>Explore</button>
+                   <button onClick={() => setActiveTab('support')} className={cn("tab-user", activeTab === 'support' && "active")}>Contact Team</button>
+                 </>
+               ) : (
+                 <>
+                   <button onClick={() => setActiveTab('home')} className={cn("tab-user", activeTab === 'home' && "active")}>Home</button>
+                   <button onClick={() => setActiveTab('meals')} className={cn("tab-user", activeTab === 'meals' && "active")}>Meals</button>
+                   <button onClick={() => setActiveTab('support')} className={cn("tab-user", activeTab === 'support' && "active")}>Concierge</button>
+                 </>
+               )}
+            </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Main Area */}
-          <div className="lg:col-span-8 space-y-8">
-            
-            {/* Tabs - Compact */}
-            <div className="flex gap-2.5 p-1.5 soft-ui-out bg-white/40 border border-white w-fit">
-               {['home', 'meals', 'tickets'].map((tab) => (
-                 <button
-                   key={tab}
-                   onClick={() => setActiveTab(tab as any)}
-                   className={cn(
-                     "px-5 py-2 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-widest",
-                     activeTab === tab 
-                      ? "terracotta-button shadow-md scale-105" 
-                      : "text-foreground/40 hover:bg-white/60"
-                   )}
-                 >
-                   {tab}
-                 </button>
-               ))}
-            </div>
+        <AnimatePresence mode="wait">
+            {activeTab === 'explore' && isGuest && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-12">
+                   {/* Shortlisted Properties */}
+                   <section className="space-y-8">
+                       <h2 className="text-2xl font-bold uppercase tracking-tight flex items-center gap-3">
+                           <Heart className="w-6 h-6 text-primary fill-primary/10" /> Your Selection
+                       </h2>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                           {shortlistedProperties.map(property => (
+                               <div key={property.id} className="soft-card p-0 overflow-hidden border border-white group">
+                                   <div className="relative h-64">
+                                       <img src={property.image_url} className="w-full h-full object-cover" />
+                                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                       <div className="absolute bottom-6 left-6">
+                                           <h3 className="text-2xl font-bold text-white uppercase tracking-tighter">{property.name}</h3>
+                                           <p className="text-white/70 text-sm font-bold flex items-center gap-1 uppercase tracking-widest"><MapPin className="w-3 h-3" /> {property.location}</p>
+                                       </div>
+                                       <div className="absolute top-6 right-6">
+                                            <span className="sage-badge scale-110 shadow-lg">{property.property_type}</span>
+                                       </div>
+                                   </div>
+                                   <div className="p-8 flex justify-between items-center bg-white/40">
+                                       <div className="flex gap-6">
+                                           <div className="text-center">
+                                               <p className="text-lg font-black text-foreground">{property.total_rooms}</p>
+                                               <p className="text-[8px] font-extrabold uppercase tracking-[0.2em] text-foreground/30">Rooms</p>
+                                           </div>
+                                           <div className="w-[1px] h-8 bg-white/60 my-auto" />
+                                           <div className="text-center">
+                                               <p className="text-lg font-black text-secondary">Aaram+</p>
+                                               <p className="text-[8px] font-extrabold uppercase tracking-[0.2em] text-foreground/30">Tier</p>
+                                           </div>
+                                       </div>
+                                       <button className="btn-terracotta px-6 py-3 text-[10px] font-extrabold uppercase tracking-widest shadow-lg">Schedule Visit</button>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   </section>
 
-            <AnimatePresence mode="wait">
-              {activeTab === 'home' && (
-                <motion.div
-                  initial={{ opacity: 0, x: -5 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 5 }}
-                  className="space-y-8"
-                >
-                  {/* Service Request Hero - Tighter */}
-                  <div className="soft-card p-10 border border-white relative overflow-hidden group bg-accent/20">
-                     <div className="relative z-10 space-y-5">
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                           <MessageSquare className="w-7 h-7" />
-                        </div>
-                        <div className="space-y-2">
-                           <h2 className="text-2xl font-bold text-foreground">Concierge Support</h2>
-                           <p className="text-foreground/45 max-w-sm text-sm leading-relaxed">Need help? Raise a request and we'll be there within the hour.</p>
-                        </div>
-                        <button className="terracotta-button px-8 py-3.5 text-xs font-bold shadow-lg hover:translate-y-[-1px] transition-all rounded-xl">
-                           Report Concern
-                        </button>
-                     </div>
-                     <Shield className="absolute -right-12 -bottom-12 w-48 h-48 text-primary/5 rotate-12 group-hover:rotate-0 transition-transform duration-1000" />
-                  </div>
-
-                  {/* Amenities List - Tighter */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {amenities.map((item, idx) => (
-                      <div key={idx} className="soft-card-sm p-4 border border-white flex items-center gap-4 hover:bg-white/40 transition-colors group">
-                         <div className="w-11 h-11 rounded-xl soft-ui-in flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
-                            <item.icon className="w-5 h-5" />
-                         </div>
-                         <div>
-                            <h4 className="font-bold text-xs text-foreground uppercase tracking-tight">{item.label}</h4>
-                            <p className="text-[10px] text-foreground/40 mt-0.5 truncate max-w-[180px]">{item.desc}</p>
-                         </div>
-                      </div>
-                    ))}
-                  </div>
+                   {/* Common Benefits */}
+                   <section className="space-y-8">
+                       <h2 className="text-2xl font-bold uppercase tracking-tight flex items-center gap-3">
+                           <Star className="w-6 h-6 text-secondary" /> The Aaram Standard
+                       </h2>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                           {universalBenefits.map((item, i) => (
+                               <div key={i} className="soft-card p-8 border border-white space-y-4 hover:scale-[1.03] transition-transform">
+                                   <div className="w-12 h-12 rounded-2xl bg-secondary/5 flex items-center justify-center text-secondary shadow-inner">
+                                       <item.icon className="w-6 h-6" />
+                                   </div>
+                                   <div className="space-y-1">
+                                       <h4 className="font-bold text-sm text-foreground uppercase tracking-tight">{item.label}</h4>
+                                       <p className="text-[11px] text-foreground/45 leading-relaxed">{item.desc}</p>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   </section>
                 </motion.div>
-              )}
+            )}
 
-              {activeTab === 'meals' && (
-                <motion.div
-                  initial={{ opacity: 0, x: -5 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 5 }}
-                  className="soft-card p-10 border border-white space-y-8"
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="space-y-1">
-                      <h2 className="text-2xl font-bold text-foreground">Artisan Kitchen</h2>
-                      <p className="text-foreground/40 text-sm">Select your meals for tomorrow.</p>
+            {activeTab === 'home' && !isGuest && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-10">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="soft-card p-8 border border-white space-y-4">
+                            <div className="w-12 h-12 rounded-2xl bg-primary/5 flex items-center justify-center text-primary shadow-inner">
+                                <Building2 className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Your Unit</p>
+                                <p className="text-2xl font-black text-foreground">101A • Master Duplex</p>
+                            </div>
+                        </div>
+                        <div className="soft-card p-8 border border-white space-y-4">
+                            <div className="w-12 h-12 rounded-2xl bg-secondary/5 flex items-center justify-center text-secondary shadow-inner">
+                                <Zap className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Automation</p>
+                                <p className="text-2xl font-black text-foreground">8 Nodes Active</p>
+                            </div>
+                        </div>
+                        <div className="soft-card p-8 border border-white space-y-4">
+                            <div className="w-12 h-12 rounded-2xl bg-foreground/5 flex items-center justify-center text-foreground/40 shadow-inner">
+                                <CreditCard className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Dues</p>
+                                <p className="text-2xl font-black text-foreground">₹2,400 <span className="text-[10px] text-emerald-500 font-bold ml-1">PAID</span></p>
+                            </div>
+                        </div>
                     </div>
-                    <UtensilsCrossed className="w-8 h-8 text-primary/30" />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    {['Breakfast', 'Lunch', 'Dinner'].map((meal) => (
-                      <button
-                        key={meal}
-                        onClick={() => setSelectedMeal(meal)}
-                        className={cn(
-                          "p-6 text-left border transition-all duration-500 rounded-[32px] flex flex-col gap-4",
-                          selectedMeal === meal
-                            ? "terracotta-button shadow-xl scale-[1.03]"
-                            : "soft-button border-white text-foreground/50 hover:bg-white"
-                        )}
-                      >
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shadow-inner", 
-                          selectedMeal === meal ? "bg-white/20" : "bg-primary/5")}>
-                           <Star className="w-5 h-5" />
+                    
+                    <div className="soft-card p-10 border border-white bg-white/40 flex flex-col md:flex-row gap-10 items-center">
+                        <div className="space-y-4 flex-1">
+                            <h2 className="text-3xl font-black tracking-tighter uppercase">Living Area Status</h2>
+                            <p className="text-foreground/45 max-w-sm text-sm">Light levels are optimized for mid-day focus. AC is set to 22°C Energy Saver mode.</p>
+                            <div className="flex gap-4 pt-2">
+                                <button className="soft-button px-6 py-3 border border-white text-[10px] font-extrabold uppercase tracking-widest">Adjust Climate</button>
+                                <button className="terracotta-button px-6 py-3 text-[10px] font-extrabold uppercase tracking-widest shadow-lg">Scene: Relax</button>
+                            </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-lg">{meal}</p>
-                          <p className="text-[9px] font-bold opacity-60 uppercase tracking-widest mt-1">{selectedMeal === meal ? 'Selected' : 'Available'}</p>
+                        <div className="w-full md:w-64 h-64 soft-ui-out bg-white/50 rounded-[48px] border border-white flex items-center justify-center relative overflow-hidden group">
+                           <Shield className="w-20 h-20 text-primary/10 transition-transform duration-1000 group-hover:scale-125" />
+                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-foreground/30">Security Status</p>
+                               <p className="text-lg font-black text-emerald-500 flex items-center gap-1"><CheckCircle2 className="w-5 h-5" /> FORTIFIED</p>
+                           </div>
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                    </div>
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+            )}
 
-          {/* Activity/Sidebar - Desktop */}
-          <div className="lg:col-span-4 space-y-8">
-            <div className="soft-card p-8 border border-white space-y-8 bg-white/30">
-               <div className="space-y-1">
-                  <h3 className="text-xl font-bold text-foreground flex items-center gap-3">
-                     <div className="w-2.5 h-8 rounded-full bg-secondary" />
-                     Home Log
-                  </h3>
-                  <p className="text-[9px] text-foreground/40 font-bold uppercase tracking-widest pl-5">Live Updates</p>
-               </div>
-              
-              <div className="space-y-8 relative">
-                <div className="absolute left-3.5 top-2 bottom-2 w-0.5 bg-border/20" />
-                
-                {[
-                  { title: 'Community Social', desc: "Organic wine tasting tonight.", time: '2h ago', icon: Star, color: 'text-primary' },
-                  { title: 'Sustainabilty Note', desc: "Rainwater harvest cycles active.", time: '5h ago', icon: Leaf, color: 'text-secondary' },
-                  { title: 'Portal Payment', desc: "Rent for April logged.", time: '1d ago', icon: CreditCard, color: 'text-foreground/30' },
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-5 relative z-10 group">
-                    <div className="w-8 h-8 rounded-full bg-background border border-white flex items-center justify-center shrink-0 soft-button group-hover:scale-105 transition-transform">
-                      <item.icon className={cn("w-3.5 h-3.5", item.color)} />
+            {activeTab === 'support' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-12 py-10">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-4xl font-black tracking-tighter uppercase">Direct Line to Aaram</h2>
+                        <p className="text-foreground/40 text-lg uppercase tracking-widest font-bold">Priority Connect Node</p>
                     </div>
-                    <div className="space-y-0.5 pt-0.5">
-                      <p className="font-bold text-foreground text-xs">{item.title}</p>
-                      <p className="text-[10px] text-foreground/45 leading-relaxed">{item.desc}</p>
-                      <p className="text-[9px] text-foreground/20 font-bold uppercase tracking-widest mt-0.5">{item.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <button className="soft-button w-full py-4.5 font-bold flex items-center justify-center gap-3 text-primary border border-white group text-xs">
-              <div className="w-7 h-7 rounded-lg bg-primary text-white flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
-                <Plus className="w-4 h-4" />
-              </div>
-              Explore Premium Add-ons
-            </button>
-          </div>
-        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="soft-card p-10 border border-white space-y-8 bg-white/60">
+                             <div className="space-y-2">
+                                <h3 className="text-xl font-bold uppercase tracking-tight">Speak with a Lead</h3>
+                                <p className="text-xs text-foreground/40 leading-relaxed font-bold">Instant connection with our property managers regarding visits or stay details.</p>
+                             </div>
+                             <div className="space-y-4">
+                                <button className="w-full btn-terracotta py-5 flex items-center justify-center gap-3 text-sm font-bold shadow-2xl">
+                                    <Phone className="w-5 h-5" />
+                                    Call Management
+                                </button>
+                                <button className="w-full soft-button py-5 flex items-center justify-center gap-3 text-sm font-bold border border-white bg-white/40">
+                                    <MessageSquare className="w-5 h-5 text-primary" />
+                                    WhatsApp Concierge
+                                </button>
+                             </div>
+                        </div>
+
+                        <div className="soft-card p-10 border border-white space-y-8 bg-secondary/5">
+                             <div className="space-y-2">
+                                <h3 className="text-xl font-bold uppercase tracking-tight">Request Documentation</h3>
+                                <p className="text-xs text-foreground/40 leading-relaxed font-bold">Get digital copies of floor plans, rental agreements, or community guidelines.</p>
+                             </div>
+                             <div className="space-y-4">
+                                <div className="soft-well p-4 border border-white flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/40">Agreement Template</span>
+                                    <Plus className="w-4 h-4 text-primary cursor-pointer" />
+                                </div>
+                                <div className="soft-well p-4 border border-white flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/40">Floor Plan - p1 Duplex</span>
+                                    <Plus className="w-4 h-4 text-primary cursor-pointer" />
+                                </div>
+                             </div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
       </div>
+
+      <style jsx global>{`
+        .tab-user {
+            padding: 10px 24px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        .tab-user.active {
+            background: #E07A5F;
+            color: white;
+            box-shadow: 0 10px 20px -10px rgba(224, 122, 95, 0.4);
+            transform: scale(1.05);
+        }
+        .tab-user:not(.active):hover {
+            background: rgba(255,255,255,0.8);
+            color: black;
+        }
+      `}</style>
     </div>
   );
 }
