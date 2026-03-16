@@ -21,10 +21,11 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { Suspense } from 'react';
 
 const ROOT_EMAIL = 'kirtimayaswain@gmail.com';
 
-export default function AdminLoginPage() {
+function AdminLoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -486,5 +487,17 @@ export default function AdminLoginPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
+    }>
+      <AdminLoginContent />
+    </Suspense>
   );
 }
