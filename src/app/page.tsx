@@ -62,7 +62,7 @@ export default function LandingPage() {
             <span className="text-primary italic">HARMONY.</span>
           </h1>
           <p className="text-foreground/50 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
-            Thoughtfully managed homes combining minimalist design with smart technology in North Goa.
+            Thoughtfully managed homes combining minimalist design with smart technology in India.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-2">
             <Link href="/properties" className="btn-terracotta px-8 py-4 flex items-center justify-center gap-2 group">
