@@ -14,17 +14,25 @@
 }
 
 :root {
-  /* Soft UI Color Palette */
+  /* Soft UI Color Palette - Refined for Warmth & organic comfort */
   --background: #FDFBF7; /* Cream */
-  --foreground: #3D3D3D;
+  --foreground: #3D3D3D; /* Charcoal */
   --primary: #D67D61;    /* Terracotta */
   --secondary: #8BA88E;  /* Sage Green */
-  --accent: #E8DFD0;     /* Darker Cream for depth */
+  --accent: #F4EFE8;     /* Slightly darker cream for depth */
   --border: #E8DFD0;
 
-  /* Shadows for Neumorphism */
-  --neo-out-shadow: 8px 8px 16px #E3E1DE, -8px -8px 16px #FFFFFF;
-  --neo-in-shadow: inset 6px 6px 12px #E3E1DE, inset -6px -6px 12px #FFFFFF;
+  /* Refined Shadows for Neumorphism (Higher density, lower spread for tighter feel) */
+  --neo-out-shadow: 6px 6px 12px #E8E5E0, -6px -6px 12px #FFFFFF;
+  --neo-in-shadow: inset 4px 4px 8px #E8E5E0, inset -4px -4px 8px #FFFFFF;
+  --neo-out-shadow-sm: 4px 4px 8px #E8E5E0, -4px -4px 8px #FFFFFF;
+}
+
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  height: auto;
 }
 
 body {
@@ -32,68 +40,131 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  position: relative;
 }
 
-/* Neumorphic Utilities */
-.soft-ui-out {
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 2px 2px, var(--secondary) 1px, transparent 0);
+  background-size: 64px 64px;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: -10%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+  opacity: 0.15;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+@utility soft-card {
   background: var(--background);
   box-shadow: var(--neo-out-shadow);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-.soft-ui-in {
+@utility soft-card-sm {
+  background: var(--background);
+  box-shadow: var(--neo-out-shadow-sm);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+@utility soft-well {
   background: var(--background);
   box-shadow: var(--neo-in-shadow);
   border-radius: 16px;
 }
 
-.soft-button {
+@utility soft-button {
   background: var(--background);
-  box-shadow: 4px 4px 10px #E3E1DE, -4px -4px 10px #FFFFFF;
-  border-radius: 12px;
-  transition: all 0.2s ease;
+  box-shadow: var(--neo-out-shadow-sm);
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .soft-button:hover {
-  box-shadow: 2px 2px 5px #E3E1DE, -2px -2px 5px #FFFFFF;
-  transform: translateY(1px);
+  transform: translateY(-1px);
+  box-shadow: 6px 6px 14px #E8E5E0, -6px -6px 14px #FFFFFF;
 }
 
 .soft-button:active {
-  box-shadow: inset 4px 4px 8px #E3E1DE, inset -4px -4px 8px #FFFFFF;
-  transform: translateY(2px);
+  box-shadow: inset 3px 3px 6px #E8E5E0, inset -3px -3px 6px #FFFFFF;
+  transform: translateY(1px);
 }
 
-.terracotta-button {
+@utility btn-terracotta {
   background: var(--primary);
   color: white;
-  border-radius: 12px;
-  box-shadow: 4px 4px 10px rgba(214, 125, 97, 0.3);
-  transition: all 0.2s ease;
+  border-radius: 14px;
+  box-shadow: 4px 4px 10px rgba(214, 125, 97, 0.25);
+  transition: all 0.25s ease;
+  font-weight: 700;
 }
 
-.sage-badge {
+.btn-terracotta:hover {
+  filter: brightness(1.05);
+  transform: scale(1.02);
+  box-shadow: 0 8px 16px rgba(214, 125, 97, 0.3);
+}
+
+@utility badge-sage {
   background: var(--secondary);
   color: white;
   padding: 4px 12px;
   border-radius: 100px;
-  font-size: 10px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
 }
 
-@keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+@utility soft-ui-out {
+  @apply soft-card;
 }
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
+@utility soft-ui-in {
+  @apply soft-well;
 }
 
-.gold-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, #C06C53 100%);
+@utility section-tight {
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+}
+
+@utility container-tight {
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@utility terracotta-button {
+  @apply btn-terracotta;
+}
+
+@utility sage-badge {
+  @apply badge-sage;
 }

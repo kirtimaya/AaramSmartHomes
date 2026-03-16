@@ -4,8 +4,38 @@ export type Property = {
   id: string;
   name: string;
   location: string;
-  total_units: number;
+  total_rooms: number; // Renamed from total_units
   property_type: PropertyType;
+  image_url?: string;
+  description?: string;
+  rooms?: Room[];
+  benefits?: Benefit[];
+  automation?: AutomationSystem[];
+};
+
+export type Room = {
+  id: string;
+  name: string; // e.g., Master Bedroom, Living Room
+  type: string;
+  sqft?: number;
+  features: string[];
+  image_urls?: string[];
+};
+
+export type Benefit = {
+  id: string;
+  name: string;
+  icon: string; // Lucide icon name
+  description?: string;
+  image_url?: string;
+};
+
+export type AutomationSystem = {
+  id: string;
+  name: string;
+  type: 'Lighting' | 'Security' | 'Climate' | 'Other';
+  status: 'Active' | 'Inactive';
+  description?: string;
   image_url?: string;
 };
 
@@ -14,20 +44,22 @@ export type UnitStatus = 'Vacant' | 'Occupied' | 'Maintenance' | 'Notice Period'
 export type Unit = {
   id: string;
   property_id: string;
-  unit_number: string;
+  room_number: string; // Changed from unit_number
   status: UnitStatus;
   current_tenant_id?: string;
+  lease_end_date?: string;
 };
 
 export type Tenant = {
   id: string;
   name: string;
   email: string;
-  room_id: string;
-  move_in_date: string;
+  room_id?: string; // Optional if not onboarded
+  move_in_date?: string;
   notice_date?: string;
   move_out_date?: string;
-  status: 'active' | 'notice' | 'moved_out';
+  status: 'active' | 'notice' | 'moved_out' | 'guest';
+  shortlisted_property_ids?: string[];
 };
 
 export type TicketStatus = 'Pending' | 'In-Progress' | 'Resolved';
@@ -46,7 +78,7 @@ export type Ticket = {
 
 export type WaterLog = {
   id: string;
-  villa_id: string;
+  property_id: string;
   level_percentage: number;
   timestamp: string;
 };

@@ -13,12 +13,15 @@ import {
   PieChart,
   Calendar,
   Settings,
-  Bell
+  Bell,
+  Shield,
+  User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const sidebarItems = [
   { icon: Home, label: 'Dashboard', href: '/admin' },
+  { icon: Shield, label: 'Properties', href: '/admin/properties/manage' },
   { icon: PieChart, label: 'Occupancy', href: '/admin/occupancy' },
   { icon: Calendar, label: 'Move-Outs', href: '/admin/calendar' },
   { icon: BarChart3, label: 'Financials', href: '/admin/financials' },
@@ -26,56 +29,73 @@ const sidebarItems = [
   { icon: Droplets, label: 'Water Levels', href: '/admin/iot' },
 ];
 
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/adminLogin');
+  };
 
   return (
-    <div className="hidden md:flex h-screen w-64 flex-col fixed left-0 top-0 bg-card border-r border-border z-50">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold gold-gradient bg-clip-text text-transparent tracking-tight">
-          AARAM
-          <span className="block text-xs font-medium text-foreground opacity-60 tracking-widest uppercase">Smart Homes</span>
-        </h1>
+    <div className="hidden md:flex h-screen w-64 flex-col fixed left-0 top-0 bg-background border-r border-white/40 z-50">
+      <div className="p-8">
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <span className="font-bold tracking-tighter text-lg text-foreground uppercase">Aaram</span>
+        </Link>
       </div>
 
-      <nav className="flex-1 mt-6 px-4 space-y-2">
+      <nav className="flex-1 mt-4 px-4 space-y-1.5">
         {sidebarItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group",
+              "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-[13px] font-bold",
               pathname === item.href 
-                ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                : "text-foreground/60 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-foreground"
+                ? "btn-terracotta shadow-md scale-[1.02]" 
+                : "text-foreground/40 hover:bg-white/60 hover:text-foreground"
             )}
           >
             <item.icon className={cn(
-              "w-5 h-5",
+              "w-4 h-4",
               pathname === item.href ? "text-white" : "group-hover:scale-110 transition-transform"
             )} />
-            <span className="font-medium text-sm">{item.label}</span>
+            <span className="uppercase tracking-widest">{item.label}</span>
           </Link>
         ))}
       </nav>
 
-      <div className="p-4 mt-auto">
-        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4 border border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold">
-              KS
+      {user && (
+        <div className="p-4 mt-auto">
+          <div className="soft-card p-4 border border-white bg-white/30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl soft-ui-in flex items-center justify-center text-primary font-bold shadow-inner bg-white/50">
+                <User className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-extrabold truncate text-foreground uppercase tracking-tight">{user.email?.split('@')[0]}</p>
+                <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest leading-none">Access Node</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">Kirti Swain</p>
-              <p className="text-xs text-foreground/50 truncate">Owner</p>
-            </div>
+            <button 
+              onClick={handleSignOut}
+              className="mt-5 flex items-center justify-center gap-2 text-[10px] font-extrabold text-red-400 hover:text-red-500 transition-colors w-full p-2.5 soft-button border border-white bg-white/50 uppercase tracking-[0.2em]"
+            >
+              <LogOut className="w-3 h-3" />
+              Sign Out
+            </button>
           </div>
-          <button className="mt-4 flex items-center gap-2 text-xs font-medium text-red-500 hover:text-red-600 transition-colors w-full group">
-            <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Logout
-          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
