@@ -177,7 +177,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-8 text-foreground/30 uppercase tracking-widest">
             <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
-            <Link href="/admin" className="soft-button px-4 py-1.5 text-[9px] hover:text-primary transition-all uppercase border border-white">
+            <Link href="/adminLogin" className="soft-button px-4 py-1.5 text-[9px] hover:text-primary transition-all uppercase border border-white">
               Admin Gateway
             </Link>
           </div>

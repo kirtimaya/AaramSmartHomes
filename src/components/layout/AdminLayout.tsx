@@ -3,25 +3,52 @@ import { Sidebar } from './Sidebar';
 import { Shield, Bell, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { AaraChatbot } from '@/components/AaraChatbot';
+import { supabase } from '@/lib/supabase';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
 
+  const [adminList, setAdminList] = React.useState<string[]>([]);
+  const ROOT_EMAIL = 'kirtimayaswain@gmail.com';
+
+  useEffect(() => {
+    async function fetchAdmins() {
+      const { data } = await supabase.from('admins').select('email');
+      if (data) {
+        setAdminList(data.map((a: { email: string }) => a.email.toLowerCase()));
+      }
+    }
+    fetchAdmins();
+  }, []);
+
+  const isAdmin = React.useMemo(() => {
+    if (!user?.email) return false;
+    const normalizedEmail = user.email.toLowerCase().trim();
+    const result = 
+      normalizedEmail === ROOT_EMAIL || 
+      normalizedEmail.includes('admin') || 
+      adminList.includes(normalizedEmail);
+    console.log('[Auth Debug] Email:', normalizedEmail, 'isAdmin:', result);
+    return result;
+  }, [user, adminList]);
+
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      console.log('[Auth Debug] No user, redirecting to admin login');
+      router.push('/adminLogin');
+      return;
     }
-  }, [user, loading, router]);
 
-  const isAdmin = user?.email?.includes('admin') || user?.email === 'kirtimayaswain@gmail.com';
-
-  useEffect(() => {
+    // Root bypass logic inside useEffect to ensure redirect if not admin
     if (!loading && user && !isAdmin) {
-      router.push('/tenant');
+      const normalized = user.email?.toLowerCase().trim();
+      if (normalized === ROOT_EMAIL) {
+        console.log('[Auth Debug] Root detected in guard, allowing access');
+        return; 
+      }
     }
-  }, [user, loading, isAdmin, router]);
+  }, [user, loading, router, isAdmin]);
 
   if (loading) {
     return (
@@ -32,9 +59,45 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null; // Logic in useEffect will redirect
+  if (user && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto space-y-6">
+        <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center text-primary shadow-inner soft-ui-in">
+          <Shield className="w-10 h-10" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold tracking-tighter uppercase text-foreground">Access Restricted</h1>
+          <p className="text-sm text-foreground/40 font-medium leading-relaxed">
+            Your account (<span className="text-foreground font-bold">{user.email}</span>) does not have administrative privileges for Aaram Smart Homes.
+          </p>
+        </div>
+        <div className="p-4 rounded-2xl bg-white/40 border border-white soft-well space-y-2 text-left">
+          <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-widest">Diagnostic Info</p>
+          <code className="block text-[10px] font-mono text-primary/70 break-all leading-tight">
+            Auth ID: {user.id}<br/>
+            Email: {user.email}<br/>
+            Admin List: {adminList.join(', ') || 'Fetching...'}
+          </code>
+        </div>
+        <div className="flex flex-col w-full gap-3 pt-4">
+          <button 
+            onClick={() => router.push('/tenant')}
+            className="btn-terracotta py-4 text-xs font-bold uppercase tracking-widest shadow-xl"
+          >
+            Go to Resident Portal
+          </button>
+          <button 
+            onClick={async () => { await signOut(); router.push('/adminLogin'); }}
+            className="soft-button py-4 text-xs font-bold uppercase tracking-widest border border-white text-foreground/40"
+          >
+            Sign Out & Try Again
+          </button>
+        </div>
+      </div>
+    );
   }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background selection:bg-primary/20">
@@ -60,7 +123,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                   </span>
                 </div>
                 <button 
-                  onClick={async () => { await signOut(); router.push('/login'); }}
+                  onClick={async () => { await signOut(); router.push('/adminLogin'); }}
                   className="soft-button w-11 h-11 border border-white text-red-400 hover:text-red-500 transition-all flex items-center justify-center"
                   title="Sign Out"
                 >
@@ -73,8 +136,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
-      {/* 🤖 Aara AI Chatbot — available on all admin pages */}
-      <AaraChatbot />
     </div>
   );
 }

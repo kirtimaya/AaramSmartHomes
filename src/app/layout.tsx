@@ -13,6 +13,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { AaraChatbot } from "@/components/AaraChatbot";
+
 export const metadata: Metadata = {
   title: "Aaram Smart Homes | Premium Villa PMS",
   description: "Executive Property Management System for high-end villa rentals.",
@@ -30,6 +32,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           {children}
+          <AaraChatbot />
         </AuthProvider>
       </body>
     </html>

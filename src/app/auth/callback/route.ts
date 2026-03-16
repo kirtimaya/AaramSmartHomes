@@ -14,11 +14,12 @@ export async function GET(request: NextRequest) {
     
     const { data: { session } } = await supabase.auth.exchangeCodeForSession(code);
     
-    const email = session?.user?.email ?? '';
-    if (email === 'kirtimayaswain@gmail.com' || email.includes('admin')) {
-      return NextResponse.redirect(new URL('/admin', requestUrl.origin));
-    }
-    return NextResponse.redirect(new URL('/tenant', requestUrl.origin));
+    const email = session?.user?.email?.toLowerCase() ?? '';
+    const redirect = requestUrl.searchParams.get('redirect') || '/tenant';
+    
+    // Standard login has no additional check.
+    // Admin checking is done at the Layout level using the dynamic admins table.
+    return NextResponse.redirect(new URL(redirect, requestUrl.origin));
   }
 
   // No code — send back to login

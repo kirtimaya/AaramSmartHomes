@@ -10,7 +10,10 @@ import {
   ArrowRight, 
   Loader2, 
   AlertCircle,
-  Leaf
+  Leaf,
+  Fingerprint,
+  User as UserIcon,
+  Search
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -34,11 +37,8 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      if (email.includes('admin') || email === 'kirtimayaswain@gmail.com') {
-        router.push('/admin');
-      } else {
-        router.push('/tenant');
-      }
+      // Standard users go to tenant dashboard
+      router.push('/tenant');
     }
   };
 
@@ -184,6 +184,7 @@ export default function LoginPage() {
           Zero-Trust Environment
         </div>
       </motion.div>
+
     </div>
   );
 }
