@@ -76,7 +76,7 @@ export const mockTickets: Ticket[] = [
 ];
 
 export const mockWaterLogs: WaterLog[] = [
-  { id: 'w1', villa_id: 'p1', level_percentage: 85, timestamp: new Date().toISOString() },
-  { id: 'w2', villa_id: 'p2', level_percentage: 42, timestamp: new Date().toISOString() },
-  { id: 'w3', villa_id: 'p3', level_percentage: 15, timestamp: new Date().toISOString() },
+  { id: 'w1', property_id: 'p1', level_percentage: 85, timestamp: new Date().toISOString() },
+  { id: 'w2', property_id: 'p2', level_percentage: 42, timestamp: new Date().toISOString() },
+  { id: 'w3', property_id: 'p3', level_percentage: 15, timestamp: new Date().toISOString() },
 ];
