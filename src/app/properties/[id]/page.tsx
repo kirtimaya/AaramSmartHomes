@@ -4,21 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Shield, 
-  Zap, 
-  Waves, 
-  Wifi, 
-  Sun, 
-  Building2, 
-  Check, 
-  Star,
-  ChevronRight,
-  Loader2,
-  Calendar
-} from 'lucide-react';
+import { ArrowLeft, MapPin, Shield, Zap, Waves, Wifi, Sun, Building2, Check, Star, ChevronRight, ChevronLeft, Loader2, Calendar } from 'lucide-react';
 import { Property, Room } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -32,6 +18,7 @@ export default function PropertyDetailView() {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [currentImgIdx, setCurrentImgIdx] = useState(0);
   const { user } = useAuth();
   const isAdmin = user?.email?.includes('admin@');
 
@@ -57,6 +44,7 @@ export default function PropertyDetailView() {
       setProperty(mappedData);
       if (data.rooms && data.rooms.length > 0) {
         setActiveRoom(data.rooms[0]);
+        setCurrentImgIdx(0);
       }
     }
     setLoading(false);
@@ -190,7 +178,7 @@ export default function PropertyDetailView() {
                 {property.rooms?.map((room) => (
                   <button
                     key={room.id}
-                    onClick={() => setActiveRoom(room)}
+                    onClick={() => { setActiveRoom(room); setCurrentImgIdx(0); }}
                     className={cn(
                       "px-6 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all whitespace-nowrap",
                       activeRoom?.id === room.id 
@@ -213,15 +201,49 @@ export default function PropertyDetailView() {
                   exit={{ opacity: 0, y: -20 }}
                   className="grid grid-cols-1 lg:grid-cols-12 gap-12"
                 >
-                  <div className="lg:col-span-7 soft-card p-3 border border-white overflow-hidden aspect-[16/10] bg-white/20">
-                     <div className="w-full h-full relative group rounded-[32px] overflow-hidden">
-                        <Image 
-                          src="/images/standard_co_living_room_1773522377787.png"
-                          alt={activeRoom.name}
-                          fill
-                          className="object-cover transition-transform duration-1000 group-hover:scale-105"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-8">
+                   <div className="lg:col-span-7 soft-card p-3 border border-white overflow-hidden aspect-[16/10] bg-white/20 relative group">
+                      <div className="w-full h-full relative rounded-[32px] overflow-hidden">
+                        <AnimatePresence mode="wait">
+                          <motion.div
+                            key={activeRoom.image_urls?.[currentImgIdx] || 'empty'}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="absolute inset-0"
+                          >
+                            <Image 
+                              src={(activeRoom.image_urls && activeRoom.image_urls.length > 0) ? activeRoom.image_urls[currentImgIdx] : "/images/standard_co_living_room_1773522377787.png"}
+                              alt={activeRoom.name}
+                              fill
+                              className="object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = 'https://placehold.co/1200x800/fecaca/991b1b?text=Room+Interior';
+                              }}
+                            />
+                          </motion.div>
+                        </AnimatePresence>
+
+                        {/* Slider Controls */}
+                        {activeRoom.image_urls && activeRoom.image_urls.length > 1 && (
+                          <>
+                            <div className="absolute inset-x-0 bottom-8 flex justify-between px-8 z-20">
+                               <button onClick={(e) => { e.stopPropagation(); setCurrentImgIdx(p => (p === 0 ? activeRoom.image_urls!.length - 1 : p - 1)); }} 
+                                 className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-black/40 transition-all">
+                                 <ChevronLeft className="w-6 h-6" />
+                               </button>
+                               <div className="px-4 py-2 rounded-full bg-black/20 backdrop-blur-md border border-white/20 text-white text-[10px] font-bold tracking-widest">
+                                 {currentImgIdx + 1} / {activeRoom.image_urls.length}
+                               </div>
+                               <button onClick={(e) => { e.stopPropagation(); setCurrentImgIdx(p => (p === activeRoom.image_urls!.length - 1 ? 0 : p + 1)); }}
+                                 className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-black/40 transition-all">
+                                 <ChevronRight className="w-6 h-6" />
+                               </button>
+                            </div>
+                          </>
+                        )}
+                        
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-8 pointer-events-none">
                            <div className="flex items-center gap-4">
                               <div className="bg-white/90 backdrop-blur-md px-6 py-3 rounded-2xl border border-white shadow-2xl">
                                  <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest leading-none mb-1">Scale</p>
@@ -233,8 +255,8 @@ export default function PropertyDetailView() {
                               </div>
                            </div>
                         </div>
-                     </div>
-                  </div>
+                      </div>
+                   </div>
                   <div className="lg:col-span-5 space-y-10 py-6">
                      <div className="space-y-6">
                         <div className="flex items-center gap-3">
@@ -295,13 +317,26 @@ export default function PropertyDetailView() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {(property?.benefits || []).length > 0 ? (property.benefits || []).map((benefit) => (
-                    <div key={benefit.id} className="soft-card p-8 border border-white flex flex-col gap-5 group hover:bg-white transition-all shadow-lg hover:shadow-2xl">
-                       <div className="w-14 h-14 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform border border-secondary/5">
-                          <Sun className="w-7 h-7" />
+                    <div key={benefit.id} className="soft-card border border-white flex flex-col group hover:bg-white transition-all shadow-lg hover:shadow-2xl overflow-hidden">
+                       <div className="relative h-32 bg-secondary/5 overflow-hidden">
+                          <img 
+                            src={benefit.image_url || "/images/amenity_pool.png"} 
+                            alt={benefit.name}
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = 'https://placehold.co/400x300/fecaca/991b1b?text=Amenity';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                          <div className="absolute top-3 right-3 w-8 h-8 rounded-xl bg-white/20 backdrop-blur-md border border-white/20 flex items-center justify-center text-white">
+                             <Sun className="w-4 h-4" />
+                          </div>
                        </div>
-                       <div>
-                          <p className="font-bold text-foreground uppercase tracking-tight text-lg">{benefit.name}</p>
-                          <p className="text-[9px] text-foreground/30 font-extrabold uppercase tracking-widest mt-1">Universal Benefit Hub</p>
+                       <div className="p-5">
+                          <p className="font-bold text-foreground uppercase tracking-tight text-base leading-tight">{benefit.name}</p>
+                          <p className="text-[9px] text-foreground/30 font-extrabold uppercase tracking-widest mt-1">Certified Amenity</p>
+                          {benefit.description && <p className="text-[10px] text-foreground/50 mt-2 line-clamp-2 italic">{benefit.description}</p>}
                        </div>
                     </div>
                   )) : (

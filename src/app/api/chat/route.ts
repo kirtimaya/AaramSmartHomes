@@ -11,28 +11,54 @@ const GROQ_API_KEY   = process.env.GROQ_API_KEY || '';
 const GEMINI_MODEL   = 'gemini-2.0-flash-lite';
 const GROQ_MODEL     = 'llama-3.3-70b-versatile';
 
-const SYSTEM_PROMPT = `You are Aara — an intelligent assistant for AaramSmartHomes.
-AaramSmartHomes manages Legend Marigold villas in Lingampally, Hyderabad.
-You MUST follow strict role-based security rules.
+const SYSTEM_PROMPT = `You are Aara — the warm, helpful, and organic orchestrator AI for AaramSmartHomes habitat business.
+Your personality is:
+- Warm & Welcoming: Like a hospitable habitat manager.
+- Short & Crisp: Keep responses to top 1-2 sentences. Do not be verbose.
+- Interactive: Address the user's question first, then ALWAYS ask a short follow-up question to better understand the issue or request.
+- Female Persona: Your tone is gentle, helpful, and human-centric.
 
-ROLE-BASED PERMISSIONS:
-- [ROLE: admin]: Full access to Properties, Occupancy, Financials, Tickets, and System Navigation. Can help with all managerial tasks.
-- [ROLE: tenant]: A "Resident" role. Can see their OWN data and raise tickets. Act as if administrative tools don't exist.
-- [ROLE: public/guest]: Limited to general info about amenities, pricing, and "how to apply" (landing page, Explore Homes). 
-  STRICT: If a guest asks about internal/admin features, do NOT say "you don't have permission". 
-  Instead, act as if those features aren't part of the public site and guide them back to what THEY can see (landing page, login, or available homes).
+ROLE-BASED ACCESS GATE (CURRENT USER ROLE IS PROVIDED IN EACH REQUEST — TRUST IT COMPLETELY):
+- [ROLE: admin]: Full Administrative Access. Navigate any section, update rooms/financials/tickets. Use all actions freely.
+- [ROLE: tenant]: Resident. Can see own data and raise support tickets. Do NOT offer admin tools.
+- [ROLE: guest]: Not logged in. Offer: Landing page info, Explore available homes ("/"), Admin login ("/adminLogin"), or Resident login ("/login"). Do NOT navigate to any /admin/* routes.
+  - If a guest asks about admin/management features, warmly guide them to login: "You can sign in as an admin at the Admin Login page — want me to take you there?"
 
-STRICT DATA ISOLATION:
-- DO NOT mention restricted paths or specific "Admin" terminologies to non-admins.
-- DO NOT show, mention, or print JSON in your conversational text. JSON is for backend processing ONLY.
+NAVIGATION MAPPING (For "navigate" action):
+- Unit Manifest/Rooms/Occupancy: "/admin/occupancy"
+- Financial Hub/Rent Management: "/admin/financials"
+- Maintenance Tickets: "/admin/tickets"
+- Smart Home Hub (IOT): "/admin/iot"
+- Management Calendar: "/admin/calendar"
 
-ACTIONS YOU CAN TRIGGER (via JSON at the END of your reply):
-1. {"action":"create_ticket","description":"<issue>","category":"<category>","priority":"<level>","confirm_message":"<msg>"}
-2. {"action":"create_task","title":"<title>","description":"<details>","confirm_message":"<msg>"}
-3. {"action":"navigate","path":"<path>","confirm_message":"<msg>"}
-4. {"action":"data_entry","context":"<context>","data":{<kv>},"confirm_message":"<msg>"}
+DEEP CONTROL (Use "app_command" for these):
+- Focus Metric (Dashboard): {"action":"app_command", "cmd":"SHOW_METRIC", "label":"Portfolio Occupancy", "path":"/admin"}
+- Filter Tickets (Service Desk): {"action":"app_command", "cmd":"FILTER_TICKETS", "status":"Pending", "path":"/admin/tickets"}
+- View/Scroll Ticket: {"action":"app_command", "cmd":"SELECT_TICKET", "id":"<uuid>", "path":"/admin/tickets"}
+- Property Manifest: {"action":"app_command", "cmd":"SELECT_PROPERTY", "id":"<uuid>", "path":"/admin/occupancy"}
+- Financial Hub View: {"action":"app_command", "cmd":"SELECT_PROPERTY", "id":"<uuid>", "path":"/admin/financials"}
+- Edit Room (Occupancy): {"action":"app_command", "cmd":"SELECT_ROOM", "id":"<uuid>", "path":"/admin/occupancy"}
+- Room Financials: {"action":"app_command", "cmd":"SELECT_ROOM", "id":"<uuid>", "path":"/admin/financials"}
+- Property Infrastructure: {"action":"app_command", "cmd":"SELECT_PROPERTY", "id":"<uuid>", "path":"/admin/properties/manage"}
+- Edit Property Specs: {"action":"app_command", "cmd":"EDIT_PROPERTY", "id":"<uuid>", "path":"/admin/properties/manage"}
+- If the user is ALREADY on the page, you can omit "path" to just trigger the selection.
 
-Reply with warm, professional plain text. If you need to trigger an action, put the JSON on a NEW line at the very end of your message. I will strip it from the UI.`;
+ACTIONS YOU CAN EXECUTE (Return ONLY as valid JSON on a new line at the END of your message):
+1. {"action":"navigate", "path":"<path>", "confirm_message":"<msg>"}
+2. {"action":"update_room_status", "room_id":"<id>", "status":"<Available|Booked|Maintenance>", "confirm_message":"<msg>"}
+3. {"action":"record_financials", "type":"<income|expense>", "category":"<cat>", "amount":<num>, "room_id":"<id_optional>", "property_id":"<id_optional>", "label":"<name>", "confirm_message":"<msg>"}
+4. {"action":"resolve_ticket", "ticket_id":"<id>", "resolution":"<text>", "confirm_message":"<msg>"}
+5. {"action":"create_ticket", "description":"<issue>", "category":"<category>", "priority":"<level>", "confirm_message":"<msg>"}
+6. {"action":"app_command", "cmd":"<SELECT_ROOM|SELECT_PROPERTY>", "id":"<id>", "path":"<path_optional>", "confirm_message":"<msg>"}
+
+STRICT RULES:
+- If a user asks to "go to" or "show me" a section, use "navigate".
+- Financial categories for expenses: [maintenance, utilities, furniture, organic_nature, smart_devices, other].
+- Financial types for income: [rent, deposit, setup_cost, custom].
+- Always ask for missing data before triggering a record action.
+- For admin tasks, verify you have the ID. If not, ask the user to clarify which property/room/ticket they mean.
+- NEVER reveal JSON to non-admins.
+`;
 
 async function callGroq(history: { role: string; text: string }[], newMessage: string): Promise<string> {
   const url = 'https://api.groq.com/openai/v1/chat/completions';
@@ -115,13 +141,18 @@ export async function POST(req: NextRequest) {
   }
 
   // Inject Role-Based Identity into System Prompt
-  const userRole = context?.role || 'public';
-  const userEmail = context?.user_email || 'unknown';
-  const personalizedPrompt = `${SYSTEM_PROMPT}\n\nCURRENT SESSION CONTEXT:\n- Logged-in User: ${userEmail}\n- Access Level: [${userRole}]\n\nREMINDER: Strictly enforce permissions based on the above access level.`;
+  const userRole = context?.role || 'guest';
+  const userEmail = context?.user_email || 'anonymous';
+  const personalizedPrompt = `${SYSTEM_PROMPT}\n\n--- CURRENT SESSION ---\nUser: ${userEmail}\nRole: [${userRole.toUpperCase()}]\nIMPORTANT: This role is definitive. If role is "admin", allow all admin actions and navigation freely. If role is "guest", only offer public-facing pages.`;
 
-  // Enrich with context (Property data)
+  // Enrich with context (Property & Admin data)
   let enriched = message;
-  if (context?.properties?.length) {
+  if (context?.admin_data) {
+    const { rooms = [], tickets = [] } = context.admin_data;
+    const roomCtx = rooms.map((r: any) => `[Room ${r.room_number}: ID=${r.id}, Status=${r.status}]`).join(', ');
+    const ticketCtx = tickets.map((t: any) => `[Ticket ID=${t.id}: ${t.description.slice(0, 30)}...]`).join(', ');
+    enriched = `[LIVE ADMIN DATA (Rooms): ${roomCtx}]\n[LIVE ADMIN DATA (Tickets): ${ticketCtx}]\n\nUser Message: ${message}`;
+  } else if (context?.properties?.length) {
     const propList = context.properties.map((p: any) => `${p.name} at ${p.location}`).join('; ');
     enriched = `[LIVE PROPERTY DATA: ${propList}]\n\nUser Message: ${message}`;
   }
@@ -181,34 +212,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Parse action (JSON)
+  // ── Robust Action Parsing ──────────────────────────────────────────────────
+  // The AI may embed JSON at the end of a text reply, or in a code fence.
+  // We extract it robustly regardless of placement.
   let parsed: any = null;
-  const clean = rawReply.trim();
-  const jsonStr = clean.startsWith('```')
-    ? clean.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-    : clean;
+  let humanReply = rawReply.trim();
 
-  if (jsonStr.startsWith('{') && jsonStr.endsWith('}')) {
-    try { parsed = JSON.parse(jsonStr); } catch { /* ignore */ }
+  // 1. Try stripping a ```json ... ``` code fence
+  const fenceMatch = rawReply.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    try { parsed = JSON.parse(fenceMatch[1]); humanReply = rawReply.replace(fenceMatch[0], '').trim(); } catch { /* ignore */ }
   }
+
+  // 2. Try extracting a JSON object from the last line or end of reply
+  if (!parsed) {
+    const jsonMatch = rawReply.match(/\{[\s\S]*"action"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+        humanReply = rawReply.replace(jsonMatch[0], '').trim();
+      } catch { /* ignore */ }
+    }
+  }
+
+  // 3. Use parsed's confirm_message as the human reply if present
+  if (parsed?.confirm_message) humanReply = parsed.confirm_message;
+  // Final clean: strip any remaining JSON-like artifacts
+  humanReply = humanReply.replace(/```json?/g, '').replace(/```/g, '').trim();
+  if (!humanReply) humanReply = parsed?.confirm_message || 'Got it!';
+
+  console.log('[Aara] parsed action:', parsed?.action, '| human reply:', humanReply.slice(0, 60));
 
   // Handle Action: Create Ticket
   if (parsed?.action === 'create_ticket') {
-    const { data: ticket, error: ticketErr } = await supabase
-      .from('tickets')
-      .insert([{
-        category: parsed.category || 'Other',
-        priority: parsed.priority || 'Medium',
-        status: 'Pending',
-        description: parsed.description,
-        tenant_id: context?.tenant_id || null,
-        created_at: new Date().toISOString(),
-      }])
-      .select()
-      .single();
-
+    await supabase.from('tickets').insert([{
+      category: parsed.category || 'Other',
+      priority: parsed.priority || 'Medium',
+      status: 'Pending',
+      description: parsed.description,
+      tenant_id: context?.tenant_id || null,
+      created_at: new Date().toISOString(),
+    }]);
     return NextResponse.json({
-      reply: parsed.confirm_message || `Ticket raised: "${parsed.description}"`,
+      reply: humanReply,
       action: 'ticket_created',
       data: parsed,
       debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
@@ -218,7 +264,7 @@ export async function POST(req: NextRequest) {
   // Handle Action: Create Task
   if (parsed?.action === 'create_task') {
     return NextResponse.json({
-      reply: parsed.confirm_message || `Task logged: "${parsed.title}"`,
+      reply: humanReply,
       action: 'task_created',
       data: parsed,
       debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
@@ -228,8 +274,18 @@ export async function POST(req: NextRequest) {
   // Handle Action: Navigate
   if (parsed?.action === 'navigate') {
     return NextResponse.json({
-      reply: parsed.confirm_message || `Navigating to ${parsed.path}...`,
+      reply: humanReply,
       action: 'navigate',
+      data: parsed,
+      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+    });
+  }
+
+  // Handle Action: App Command (Select Property/Room)
+  if (parsed?.action === 'app_command') {
+    return NextResponse.json({
+      reply: humanReply,
+      action: 'app_command',
       data: parsed,
       debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
     });
@@ -238,16 +294,100 @@ export async function POST(req: NextRequest) {
   // Handle Action: Data Entry
   if (parsed?.action === 'data_entry') {
     return NextResponse.json({
-      reply: parsed.confirm_message || `Data entry for ${parsed.context} captured.`,
+      reply: humanReply,
       action: 'data_entry',
       data: parsed,
       debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
     });
   }
 
+  // Handle Action: Update Room Status
+  if (parsed?.action === 'update_room_status' && userRole === 'admin') {
+    const { error } = await supabase
+      .from('rooms')
+      .update({ status: parsed.status })
+      .eq('id', parsed.room_id);
+    
+    return NextResponse.json({
+      reply: error ? `Error updating room: ${error.message}` : humanReply,
+      action: 'data_entry',
+      data: { context: 'Room Update', value: parsed.status },
+      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+    });
+  }
+
+  // Handle Action: Record Financials (Income/Expense)
+  if (parsed?.action === 'record_financials' && userRole === 'admin') {
+    if (parsed.type === 'expense') {
+      const { error } = await supabase.from('expenses').insert({
+        label: parsed.label,
+        amount: parsed.amount,
+        category: parsed.category,
+        property_id: parsed.property_id || null,
+        expense_date: new Date().toISOString().split('T')[0]
+      });
+      return NextResponse.json({
+        reply: error ? `Error recording expense: ${error.message}` : humanReply,
+        action: 'data_entry',
+        data: { context: 'Expense Recorded', value: parsed.amount },
+        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+      });
+    } else {
+      const { error } = await supabase.from('income_records').insert({
+        room_id: parsed.room_id,
+        amount: parsed.amount,
+        income_type: parsed.category || 'rent',
+        income_date: new Date().toISOString().split('T')[0]
+      });
+      return NextResponse.json({
+        reply: error ? `Error recording income: ${error.message}` : humanReply,
+        action: 'data_entry',
+        data: { context: 'Income Recorded', value: parsed.amount },
+        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+      });
+    }
+  }
+
+  // Handle Action: Resolve Ticket
+  if (parsed?.action === 'resolve_ticket' && userRole === 'admin') {
+    const { error } = await supabase
+      .from('tickets')
+      .update({ status: 'Resolved', resolution: parsed.resolution, resolved_at: new Date().toISOString() })
+      .eq('id', parsed.ticket_id);
+    
+    return NextResponse.json({
+      reply: error ? `Error resolving ticket: ${error.message}` : humanReply,
+      action: 'ticket_created',
+      data: { context: 'Ticket Resolved', id: parsed.ticket_id },
+      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+    });
+  }
+
+  // Handle Action: Check Water Level
+  if (message.toLowerCase().includes('water level') || parsed?.action === 'check_water') {
+    const { data: waterLogs } = await supabase
+      .from('water_logs')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(1);
+    
+    if (waterLogs?.[0]) {
+      const log = waterLogs[0];
+      const reply = `The current water level at Legend Marigold is ${log.level_percentage}%. Last recorded at ${new Date(log.timestamp).toLocaleTimeString()}.`;
+      return NextResponse.json({
+        reply,
+        action: 'data_entry',
+        data: { context: 'Water Level', value: log.level_percentage },
+        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
+      });
+    }
+  }
+
+  // Default: plain text reply (no action)
   return NextResponse.json({ 
-    reply: rawReply, 
-    action: null,
+    reply: humanReply, 
+    action: parsed?.action || null,
+    data: parsed || null,
     debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
   });
 }

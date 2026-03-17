@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { AaraFABIcon } from '@/components/AaraFABIcon';
 import {
   Bot, X, Send, Mic, MicOff, Loader2, Sparkles,
   CheckCircle2, Plus, Navigation, Database
@@ -123,13 +122,264 @@ function ActionBadge({ action, data }: { action: ActionType; data?: any }) {
   return null;
 }
 
-/**
- * Dispatches a global event for components to listen to (e.g., Selecting a room)
- */
-function dispatchAaraCommand(action: string, data: any) {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('AARA_APP_COMMAND', { detail: { action, data } }));
-  }
+// ─── Directional Stardust Trail ──────────────────────────────────────────────
+function StarDust({ dragVelocity }: { dragVelocity: { x: number; y: number } }) {
+  const [particles, setParticles] = useState<{
+    id: number;
+    startX: number; startY: number;
+    endX: number; endY: number;
+    size: number; opacity: number; duration: number;
+  }[]>([]);
+
+  const isMoving = Math.abs(dragVelocity.x) > 2 || Math.abs(dragVelocity.y) > 2;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const count = isMoving ? 4 : 1;
+      setParticles(prev => {
+        const newBatch = Array.from({ length: count }).map(() => {
+          // Trail spawns opposite to direction of movement
+          const angle = isMoving
+            ? Math.atan2(-dragVelocity.y, -dragVelocity.x) + (Math.random() - 0.5) * 0.8
+            : Math.random() * Math.PI * 2;
+          const spawnDist = 10 + Math.random() * 15;
+          const travelDist = isMoving ? 40 + Math.random() * 60 : 20 + Math.random() * 40;
+          const sz = isMoving ? 6 + Math.random() * 14 : 4 + Math.random() * 10;
+          return {
+            id: Math.random(),
+            startX: Math.cos(angle) * spawnDist,
+            startY: Math.sin(angle) * spawnDist,
+            endX: Math.cos(angle) * (spawnDist + travelDist),
+            endY: Math.sin(angle) * (spawnDist + travelDist),
+            size: sz,
+            opacity: 0.7 + Math.random() * 0.3,
+            duration: isMoving ? 0.6 + Math.random() * 0.6 : 1.5 + Math.random() * 1.5,
+          };
+        });
+        return [...prev.slice(isMoving ? -50 : -20), ...newBatch];
+      });
+    }, isMoving ? 30 : 200);
+    return () => clearInterval(interval);
+  }, [isMoving, dragVelocity.x, dragVelocity.y]);
+
+  return (
+    <div className="absolute inset-0 overflow-visible pointer-events-none" style={{ zIndex: -1 }}>
+      <AnimatePresence>
+        {particles.map(p => (
+          <motion.div
+            key={p.id}
+            initial={{ x: p.startX, y: p.startY, scale: 1, opacity: p.opacity }}
+            animate={{ x: p.endX, y: p.endY, scale: 0, opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: p.duration, ease: 'easeOut' }}
+            className="absolute rounded-full"
+            style={{
+              left: '50%',
+              top: '50%',
+              width: p.size,
+              height: p.size,
+              marginLeft: -p.size / 2,
+              marginTop: -p.size / 2,
+              background: 'radial-gradient(circle at 30% 30%, #fff9e6, #f5c842 50%, #d4860a)',
+              boxShadow: `0 0 ${p.size * 1.5}px ${p.size * 0.8}px rgba(245,200,66,0.6), 0 0 ${p.size * 3}px rgba(255,200,50,0.3)`,
+              filter: 'blur(0.5px)',
+            }}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Golden Snitch (Cinematic Prop) ──────────────────────────────────────────
+function GoldenSnitch({ open, dragVelocity }: { open: boolean; dragVelocity: { x: number; y: number } }) {
+  return (
+    <motion.div
+      className="relative flex items-center justify-center overflow-visible"
+      animate={{ y: open ? 0 : [0, -10, 0] }}
+      transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
+    >
+      {/* Stardust trail around ball */}
+      <StarDust dragVelocity={dragVelocity} />
+
+      {/* ── Wings (only when closed) ── */}
+      <AnimatePresence>
+        {!open && (
+          <motion.div
+            animate={{ rotateX: [-20, 40, -20], rotateZ: [-5, 5, -5] }}
+            transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+            className="absolute"
+            style={{ bottom: '78%', perspective: '1200px', originY: 'bottom' }}
+          >
+            <svg width="300" height="160" viewBox="0 0 300 160" fill="none" xmlns="http://www.w3.org/2000/svg"
+              className="drop-shadow-[0_4px_24px_rgba(235,192,109,0.5)]">
+              <defs>
+                {/* Iridescent silver-gold for rachis */}
+                <linearGradient id="rachis_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+                  <stop offset="40%" stopColor="#E8D5A3" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#C4973B" stopOpacity="0.9" />
+                </linearGradient>
+                {/* Feather vane gradient — white/silver near rachis, fade out at tip */}
+                <linearGradient id="vane_grad_l" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <stop offset="60%" stopColor="#E8D5A3" stopOpacity="0.5" />
+                  <stop offset="100%" stopColor="#EBC06D" stopOpacity="0.0" />
+                </linearGradient>
+                <linearGradient id="vane_grad_r" x1="100%" y1="0%" x2="0%" y2="0%">
+                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <stop offset="60%" stopColor="#E8D5A3" stopOpacity="0.5" />
+                  <stop offset="100%" stopColor="#EBC06D" stopOpacity="0.0" />
+                </linearGradient>
+                <filter id="wing_glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="1.2" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+
+              {/* LEFT WING */}
+              <g transform="translate(135,148) rotate(-8)" filter="url(#wing_glow)">
+                {/* Rachis shaft */}
+                <path d="M0,0 C-20,-22 -60,-65 -130,-148" stroke="url(#rachis_grad)" strokeWidth="3" strokeLinecap="round" />
+                {/* 38 individual feather barbs */}
+                {Array.from({ length: 38 }).map((_, i) => {
+                  const t = i / 37;
+                  // point along rachis curve
+                  const rx = -20 * t - 60 * t * t - 130 * t * t * t;
+                  const ry = -22 * t - 65 * t * t - 148 * t * t * t;
+                  // barb spreads perpendicular+slightly toward top
+                  const bLen = 14 + t * 28;
+                  const bx = rx - bLen * (1 - t * 0.3);
+                  const by = ry - bLen * 0.3;
+                  return (
+                    <line key={i}
+                      x1={rx} y1={ry}
+                      x2={bx} y2={by}
+                      stroke="url(#vane_grad_l)"
+                      strokeWidth={0.7 + t * 0.4}
+                      strokeLinecap="round"
+                      opacity={0.5 + t * 0.5}
+                    />
+                  );
+                })}
+              </g>
+
+              {/* RIGHT WING */}
+              <g transform="translate(165,148) rotate(8)" filter="url(#wing_glow)">
+                {/* Rachis shaft */}
+                <path d="M0,0 C20,-22 60,-65 130,-148" stroke="url(#rachis_grad)" strokeWidth="3" strokeLinecap="round" />
+                {/* 38 individual feather barbs */}
+                {Array.from({ length: 38 }).map((_, i) => {
+                  const t = i / 37;
+                  const rx = 20 * t + 60 * t * t + 130 * t * t * t;
+                  const ry = -22 * t - 65 * t * t - 148 * t * t * t;
+                  const bLen = 14 + t * 28;
+                  const bx = rx + bLen * (1 - t * 0.3);
+                  const by = ry - bLen * 0.3;
+                  return (
+                    <line key={i}
+                      x1={rx} y1={ry}
+                      x2={bx} y2={by}
+                      stroke="url(#vane_grad_r)"
+                      strokeWidth={0.7 + t * 0.4}
+                      strokeLinecap="round"
+                      opacity={0.5 + t * 0.5}
+                    />
+                  );
+                })}
+              </g>
+            </svg>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Sphere ── */}
+      <div
+        className="relative rounded-full overflow-hidden"
+        style={{
+          width: 80, height: 80,
+          background: 'radial-gradient(circle at 35% 30%, #FFF8DC 0%, #F5C842 20%, #D4860A 55%, #7A4400 85%, #3A1F00 100%)',
+          boxShadow: 'inset -12px -14px 30px rgba(0,0,0,0.7), inset 10px 10px 25px rgba(255,240,160,0.5), 0 8px 32px rgba(180,100,0,0.5), 0 0 60px rgba(235,192,80,0.3)',
+          border: '1.5px solid rgba(255,230,100,0.4)',
+        }}
+      >
+        <svg viewBox="0 0 100 100" className="w-full h-full" style={{ position: 'absolute', inset: 0 }}>
+          <defs>
+            {/* Warm gold specular highlight */}
+            <radialGradient id="ball_spec" cx="35%" cy="28%" r="45%">
+              <stop offset="0%" stopColor="#FFFAE0" stopOpacity="1" />
+              <stop offset="40%" stopColor="#F5C842" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+            </radialGradient>
+            {/* Brushed-gold surface micro-texture */}
+            <pattern id="gold_grain" width="3" height="3" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="3" y2="3" stroke="#7A4400" strokeWidth="0.3" opacity="0.15" />
+            </pattern>
+            {/* Dark atmosphere at base */}
+            <radialGradient id="ball_shadow" cx="65%" cy="75%" r="55%">
+              <stop offset="0%" stopColor="#3A1000" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Grain texture */}
+          <circle cx="50" cy="50" r="50" fill="url(#gold_grain)" />
+          {/* Atmospheric shadow */}
+          <circle cx="50" cy="50" r="50" fill="url(#ball_shadow)" />
+          {/* Specular highlight */}
+          <circle cx="50" cy="50" r="50" fill="url(#ball_spec)" />
+
+          {/* Main curved armor seams — like the reference image panels */}
+          <path d="M8 50 C22 38, 78 62, 92 50" fill="none" stroke="#3A1F00" strokeWidth="2" opacity="0.9" />
+          <path d="M50 8 C38 22, 62 78, 50 92" fill="none" stroke="#3A1F00" strokeWidth="2" opacity="0.9" />
+          <path d="M18 20 C35 30, 65 30, 82 20" fill="none" stroke="#3A1F00" strokeWidth="1.2" opacity="0.7" />
+          <path d="M18 80 C35 70, 65 70, 82 80" fill="none" stroke="#3A1F00" strokeWidth="1.2" opacity="0.7" />
+
+          {/* Clockwork gear port (left side — matches reference) */}
+          <g transform="translate(22,50)">
+            <circle r="16" fill="#1A0800" stroke="#C4973B" strokeWidth="1.5" />
+            <circle r="11" fill="none" stroke="#8B6020" strokeWidth="0.8" />
+            <motion.g animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <rect key={i} x="9" y="-2" width="5" height="4" rx="0.5"
+                  fill="#D4A030" transform={`rotate(${i * 45})`} />
+              ))}
+            </motion.g>
+            <circle r="5" fill="#8B6020" stroke="#C4973B" strokeWidth="0.8" />
+            <circle r="2" fill="#F0D080" />
+          </g>
+
+          {/* Wing socket rivets */}
+          <circle cx="80" cy="30" r="4.5" fill="#1A0800" stroke="#D4A030" strokeWidth="1" />
+          <circle cx="80" cy="30" r="2" fill="#D4A030" />
+          <circle cx="80" cy="70" r="4.5" fill="#1A0800" stroke="#D4A030" strokeWidth="1" />
+          <circle cx="80" cy="70" r="2" fill="#D4A030" />
+
+          {/* Equator band detail */}
+          <path d="M8 50 C18 47, 40 46, 50 46 C60 46, 82 47, 92 50" fill="none" stroke="#C4973B" strokeWidth="0.5" opacity="0.5" />
+        </svg>
+
+        {/* Rim glow */}
+        <div className="absolute inset-0 rounded-full" style={{ boxShadow: 'inset 0 0 10px 2px rgba(245,200,60,0.2)' }} />
+        {/* Primary specular bright spot */}
+        <div className="absolute" style={{
+          top: '10%', left: '20%', width: '35%', height: '20%',
+          background: 'radial-gradient(ellipse, rgba(255,255,255,0.85) 0%, transparent 80%)',
+          borderRadius: '50%', transform: 'rotate(-25deg)', filter: 'blur(3px)'
+        }} />
+        {/* Sweeping glint */}
+        <motion.div
+          animate={{ x: [-120, 200] }}
+          transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,200,0.45) 50%, transparent 70%)',
+            borderRadius: '50%',
+          }}
+        />
+      </div>
+    </motion.div>
+  );
 }
 
 // ─── Main Chatbot Widget ────────────────────────────────────────────────────
@@ -149,7 +399,6 @@ export function AaraChatbot() {
   const [properties, setProperties] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminContext, setAdminContext] = useState<any>({ properties: [], rooms: [], tickets: [] });
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [isNearRight, setIsNearRight] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -161,54 +410,14 @@ export function AaraChatbot() {
   const chatRef = useRef<HTMLDivElement>(null);
   const constraintsRef = useRef(null);
 
-  // Audio pre-warming for some browsers
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-      if ('onvoiceschanged' in window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-      }
-    }
-  }, []);
-
   const speak = useCallback((text: string) => {
     if (!voiceEnabled || !window.speechSynthesis) return;
-    
-    // Resume if paused (Chrome/Safari bug)
-    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     window.speechSynthesis.cancel();
-    
     const cleanText = text.replace(/\{.*?\}/g, '').trim();
-    if (!cleanText) return;
-
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'en-US';
-
-    // Attempt to find a warm female voice
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) {
-      // Fallback: If no voices yet, try again in 100ms
-      setTimeout(() => speak(text), 100);
-      return;
-    }
-
-    const femaleVoice = voices.find(v => 
-      v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Google UK English Female') || v.lang.includes('GB')
-    ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-    
-    if (femaleVoice) utterance.voice = femaleVoice;
-    utterance.volume = 1;
-    utterance.rate = 0.95;
-    utterance.pitch = 1.15;
-    
+    utterance.rate = 1.1; utterance.pitch = 1.05;
     window.speechSynthesis.speak(utterance);
   }, [voiceEnabled]);
-
-  const stopSpeaking = useCallback(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-  }, []);
 
   // Handle Click Outside
   useEffect(() => {
@@ -224,50 +433,25 @@ export function AaraChatbot() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open, isPinned]);
 
-  const [authReady, setAuthReady] = useState(false);
-
-  // Derived role — always up-to-date
-  const currentRole = isAdmin ? 'admin' : (user ? 'tenant' : 'guest');
-
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUser(user);
-        checkAdminStatus(user.email!).then(() => setAuthReady(true));
-      } else {
-        setAuthReady(true); // No user logged in — guest
-      }
+      if (user) { setUser(user); checkAdminStatus(user.email!); }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setUser(s?.user || null);
-      if (s?.user) checkAdminStatus(s.user.email!).then(() => setAuthReady(true));
-      else { setIsAdmin(false); setAuthReady(true); }
+      if (s?.user) checkAdminStatus(s.user.email!); else setIsAdmin(false);
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkAdminStatus = async (e: string): Promise<void> => {
+  const checkAdminStatus = async (e: string) => {
     const { data } = await supabase.from('admins').select('email').eq('email', e.toLowerCase().trim()).single();
     setIsAdmin(!!data);
   };
 
   useEffect(() => {
-    const fetchAdminData = async () => {
-      const [{ data: props }, { data: rms }, { data: tix }] = await Promise.all([
-        supabase.from('properties').select('id, name, location'),
-        supabase.from('rooms').select('id, room_number, status, property_id'),
-        supabase.from('tickets').select('id, category, status, description').eq('status', 'Pending')
-      ]);
-      setAdminContext({ properties: props || [], rooms: rms || [], tickets: tix || [] });
-      if (props) setProperties(props);
-    };
-
-    if (isAdmin) {
-      fetchAdminData();
-    } else {
-      supabase.from('properties').select('id,name,location,total_rooms').then(({ data }) => { if (data) setProperties(data); });
-    }
-  }, [isAdmin]);
+    supabase.from('properties').select('id,name,location,total_rooms').then(({ data }) => { if (data) setProperties(data); });
+  }, []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 300); }, [open]);
@@ -291,45 +475,27 @@ export function AaraChatbot() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: msg, history, 
-          context: { 
-            properties, 
-            admin_data: isAdmin ? adminContext : null,
-            user_id: user?.id, 
-            user_email: user?.email, 
-            role: currentRole
-          } 
+          context: { properties, user_id: user?.id, user_email: user?.email, role: isAdmin ? 'admin' : (user ? 'tenant' : 'public') } 
         })
       });
       const data = await res.json();
-      const cleanReply = data.reply || 'I heard you!';
-      
-      console.log('[Aara Frontend] action:', data.action, '| path:', data.data?.path, '| reply:', cleanReply.slice(0, 60));
-      
+      const cleanReply = data.reply.replace(/\{.*?\}/g, '').trim();
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', text: cleanReply, action: data.action, actionData: data.data, timestamp: new Date()
       }]);
       if (voiceEnabled) speak(cleanReply);
 
-      // ── Action Handlers ──
-      if (data.action === 'navigate' || data.action === 'app_command') {
-        const path = data.data?.path;
-        const cmd = data.data?.cmd;
-        const cmdData = data.data;
-
-        // Save command for post-navigation execution
-        if (cmd) {
-          sessionStorage.setItem('AARA_PENDING_COMMAND', JSON.stringify({ action: cmd, data: cmdData }));
-          if (!path) dispatchAaraCommand(cmd, cmdData);
+      if (data.action === 'navigate' && data.data?.path) {
+        const path = data.data.path;
+        if (path.startsWith('/admin') && !isAdmin && path !== '/adminLogin') {
+          const m = 'Please sign in to access that. I can help you with homes or login!';
+          setMessages(p => [...p, { id: Date.now().toString(), role: 'assistant', text: m, timestamp: new Date() }]);
+          if (voiceEnabled) speak(m); return;
         }
-
-        // Navigate — trust the AI's role-awareness rather than blocking here
-        if (path) {
-          setTimeout(() => { 
-            router.push(path);
-            if (!isPinned) setOpen(false);
-            if (cmd) setTimeout(() => dispatchAaraCommand(cmd, cmdData), 800);
-          }, 900);
-        }
+        setTimeout(() => { 
+          if (['/', '/adminLogin'].includes(path)) window.location.href = path; else router.push(path);
+          if (!isPinned) setOpen(false); 
+        }, 1200);
       }
     } catch {
       setMessages(prev => [...prev, { id: 'err', role: 'assistant', text: 'Magic connection lost. Try again!', timestamp: new Date() }]);
@@ -364,57 +530,37 @@ export function AaraChatbot() {
           onDragStart={handleDragStart}
           onDrag={handleDrag}
           onDragEnd={handleDragEnd}
-          className="absolute top-24 right-16 w-32 h-32 pointer-events-auto cursor-grab active:cursor-grabbing flex items-center justify-center overflow-visible"
+          className="absolute top-10 right-10 w-24 h-24 pointer-events-auto cursor-grab active:cursor-grabbing flex items-center justify-center overflow-visible"
         >
-        {/* ── Shared bob wrapper ── */}
-        <motion.div
-          className="flex flex-col items-center gap-1"
-          animate={{ y: [0, -10, 0] }}
-          transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
-        >
-            {/* Tooltip — NOW ABOVE BUTTON */}
+          <motion.div 
+            onClick={() => !isDragging && setOpen(o => !o)} 
+            className="relative"
+          >
+            <GoldenSnitch open={open} dragVelocity={dragVelocity} />
+            
             <AnimatePresence>
               {!open && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.85, y: 10, x: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0, x: -10 }}
-                  exit={{ opacity: 0, scale: 0.85, y: 10, x: -10 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative pointer-events-none mb-2"
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.8, x: isNearRight ? -20 : 20 }}
+                  animate={{ opacity: 1, scale: 1, x: isNearRight ? -10 : 10 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className={cn(
+                    "absolute top-1/2 -translate-y-1/2 whitespace-nowrap px-5 py-2.5 rounded-[22px] bg-white/70 backdrop-blur-xl border border-white/80 shadow-2xl pointer-events-none",
+                    isNearRight ? "right-[130%]" : "left-[130%]"
+                  )}
                 >
-                  <div className="px-5 py-3 rounded-[22px] bg-white/90 backdrop-blur-xl border border-white/40 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.12)] text-center">
-                    <p className="text-[11px] font-bold text-stone-600 leading-tight flex items-center justify-center gap-2 tracking-tight">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="text-left">
-                        How can I help you?<br />
-                        <span className="text-amber-500/80 font-extrabold uppercase text-[9px] tracking-widest">I&apos;m AARA</span>
-                      </span>
-                    </p>
-                  </div>
-                  {/* Downward caret */}
-                  <div className="absolute -bottom-[6px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white/95 border-b border-r border-white/60 shadow-sm rotate-45" />
+                  <p className="text-[11px] font-black uppercase tracking-tighter text-foreground italic flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Shall we talk? I&apos;m Aara.
+                  </p>
+                  <div className={cn(
+                    "absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white/70 border-t border-l border-white/80 rotate-45 shadow-sm",
+                    isNearRight ? "right-[-6px]" : "left-[-6px]"
+                  )} />
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* FAB Button — BIGGER LOGO */}
-            <motion.button
-              onClick={() => !isDragging && setOpen(o => !o)}
-              aria-label="Open Aara AI Assistant"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="relative flex items-center justify-center focus:outline-none"
-              style={{
-                width: 120, height: 120,
-                background: 'transparent',
-                border: 'none',
-                boxShadow: 'none',
-                transition: 'transform 0.2s',
-              }}
-            >
-              <AaraFABIcon size={120} isOpen={open} />
-            </motion.button>
-        </motion.div>
+          </motion.div>
         </motion.div>
       </div>
 
@@ -452,22 +598,8 @@ export function AaraChatbot() {
                 >
                   <motion.div animate={isPinned ? { rotate: 45 } : { rotate: 0 }}><Navigation className="w-4 h-4" /></motion.div>
                 </button>
-                <button 
-                  onClick={() => {
-                    if (voiceEnabled) stopSpeaking();
-                    setVoiceEnabled(!voiceEnabled);
-                  }} 
-                  className={cn("p-3 rounded-2xl transition-all border", voiceEnabled ? "bg-amber-500 text-white border-amber-400 shadow-lg" : "bg-black/5 text-foreground/40 border-transparent hover:bg-black/10")}
-                  title={voiceEnabled ? "Stop/Disable Audio" : "Enable Audio"}
-                >
-                  {voiceEnabled ? (
-                    <div className="flex gap-1 items-center">
-                      <div className="flex gap-1 items-end h-3">
-                        <div className="w-1.5 h-3 bg-white animate-pulse"/><div className="w-1.5 h-2 bg-white animate-pulse delay-75"/>
-                      </div>
-                      <span className="text-[10px] font-bold ml-1">STOP</span>
-                    </div>
-                  ) : <MicOff className="w-4 h-4" />}
+                <button onClick={() => setVoiceEnabled(!voiceEnabled)} className={cn("p-3 rounded-2xl transition-all border", voiceEnabled ? "bg-amber-500 text-white border-amber-400 shadow-lg" : "bg-black/5 text-foreground/40 border-transparent hover:bg-black/10")}>
+                  {voiceEnabled ? <div className="flex gap-1 items-end h-3"><div className="w-1.5 h-3 bg-white animate-pulse"/><div className="w-1.5 h-2 bg-white animate-pulse delay-75"/></div> : <MicOff className="w-4 h-4" />}
                 </button>
                 <button onClick={() => setOpen(false)} className="p-3 rounded-2xl bg-black/5 text-foreground/40 hover:bg-black/10 transition-all border border-transparent">
                   <X className="w-5 h-5" />
@@ -489,16 +621,6 @@ export function AaraChatbot() {
                       m.role === 'user' ? 'bg-foreground text-background rounded-tr-none shadow-xl' : 'bg-white/80 border text-foreground rounded-tl-none backdrop-blur-md'
                     )}>
                       {m.text}
-                      {m.actionData?.path && (
-                        <div className="mt-3 pt-3 border-t border-black/5">
-                          <button 
-                            onClick={() => router.push(m.actionData!.path!)}
-                            className="flex items-center gap-2 text-[10px] text-amber-600 hover:text-amber-700 font-black uppercase tracking-widest transition-colors"
-                          >
-                            <Navigation className="w-3 h-3" /> Take me there
-                          </button>
-                        </div>
-                      )}
                     </div>
                     <ActionBadge action={m.action || null} data={m.actionData} />
                   </div>

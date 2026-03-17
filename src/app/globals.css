@@ -14,18 +14,18 @@
 }
 
 :root {
-  /* Soft UI Color Palette - Refined for Warmth & organic comfort */
-  --background: #FDFBF7; /* Cream */
+  /* Soft UI Color Palette - Darkened for Premium Feel */
+  --background: #F2EEE6; /* Slightly Darker Warm Cream */
   --foreground: #3D3D3D; /* Charcoal */
   --primary: #D67D61;    /* Terracotta */
   --secondary: #8BA88E;  /* Sage Green */
-  --accent: #F4EFE8;     /* Slightly darker cream for depth */
-  --border: #E8DFD0;
+  --accent: #E8E1D5;     /* Depth Cream */
+  --border: #DBD1C1;
 
-  /* Refined Shadows for Neumorphism (Higher density, lower spread for tighter feel) */
-  --neo-out-shadow: 6px 6px 12px #E8E5E0, -6px -6px 12px #FFFFFF;
-  --neo-in-shadow: inset 4px 4px 8px #E8E5E0, inset -4px -4px 8px #FFFFFF;
-  --neo-out-shadow-sm: 4px 4px 8px #E8E5E0, -4px -4px 8px #FFFFFF;
+  /* Refined Shadows for Neumorphism */
+  --neo-out-shadow: 6px 6px 12px #E0D9CD, -6px -6px 12px #FFFFFF;
+  --neo-in-shadow: inset 4px 4px 8px #E0D9CD, inset -4px -4px 8px #FFFFFF;
+  --neo-out-shadow-sm: 4px 4px 8px #E0D9CD, -4px -4px 8px #FFFFFF;
 }
 
 html {
@@ -51,9 +51,10 @@ body::before {
   position: fixed;
   inset: 0;
   background-image: 
-    radial-gradient(circle at 2px 2px, var(--secondary) 1px, transparent 0);
-  background-size: 64px 64px;
-  opacity: 0.1;
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5c-3.3 0-6 2.7-6 6v12h12v-12c0-3.3-2.7-6-6-6zm-4 18v8c0 2.2 1.8 4 4 4s4-1.8 4-4v-8h-8z' fill='%238BA88E' fill-opacity='0.03' fill-rule='evenodd'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10c5-5 15-5 20 0s0 15-5 20-15 5-20 0-5-15 0-20z' fill='%23D67D61' fill-opacity='0.02'/%3E%3C/svg%3E");
+  background-size: 120px 120px, 200px 200px;
+  opacity: 0.6;
   pointer-events: none;
   z-index: -1;
 }
@@ -66,7 +67,7 @@ body::after {
   width: 50%;
   height: 50%;
   background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
-  opacity: 0.15;
+  opacity: 0.1;
   filter: blur(100px);
   pointer-events: none;
   z-index: -1;

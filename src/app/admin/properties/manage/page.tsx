@@ -5,10 +5,12 @@ import { useSearchParams } from 'next/navigation';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import NextImage from 'next/image';
 import { Property, Room, Benefit, AutomationSystem } from '@/lib/types';
-import { Plus, MapPin, Home, Edit2, Trash2, X, Check, Building2, Image as ImageIcon, Loader2, Search, ArrowLeft, ChevronRight, Waves, Zap, Upload, Leaf, ChevronLeft } from 'lucide-react';
+import { Plus, MapPin, Home, Edit2, Trash2, X, Check, Building2, Image as ImageIcon, Loader2, Search, ArrowLeft, ChevronRight, Waves, Zap, Upload, Leaf, ChevronLeft, Pin, PinOff, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
+import { useAaraCommands } from '@/hooks/useAaraCommands';
+import { GripVertical } from 'lucide-react';
 
 // ── Image Slider for Room cards ──────────────────────────────────────────────
 function RoomImageSlider({ images, roomName }: { images: string[]; roomName: string }) {
@@ -24,6 +26,10 @@ function RoomImageSlider({ images, roomName }: { images: string[]; roomName: str
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.35 }}
           className="w-full h-full object-cover"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = 'https://placehold.co/800x600/fecaca/991b1b?text=Room+Image';
+          }}
         />
       </AnimatePresence>
       {imgs.length > 1 && (
@@ -59,7 +65,15 @@ function AmenityCard({ benefit, onEdit, onDelete }: { benefit: Benefit; onEdit: 
   return (
     <div className="soft-card border border-white overflow-hidden group relative w-44 shrink-0">
       <div className="relative h-32 bg-foreground/5">
-        <img src={benefit.image_url || fallback} alt={benefit.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        <img 
+          src={benefit.image_url || fallback} 
+          alt={benefit.name} 
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = 'https://placehold.co/400x300/fecaca/991b1b?text=Amenity';
+          }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         <p className="absolute bottom-2 left-0 right-0 text-center text-[10px] font-extrabold text-white uppercase tracking-widest px-2 truncate">{benefit.name}</p>
       </div>
@@ -81,7 +95,15 @@ function AutomationCard({ node, onEdit, onToggle, onDelete }: { node: Automation
   return (
     <div className="soft-card border border-white overflow-hidden group relative">
       <div className="relative h-36 bg-foreground/5">
-        <img src={node.image_url || fallback} alt={node.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        <img 
+          src={node.image_url || fallback} 
+          alt={node.name} 
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = 'https://placehold.co/400x300/fecaca/991b1b?text=Automation';
+          }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-3">
           <p className="text-[11px] font-extrabold text-white uppercase tracking-widest">{node.name}</p>
@@ -119,6 +141,11 @@ function PropertyManagementContent() {
   const [editingBenefit, setEditingBenefit] = useState<Benefit | null>(null);
   const [editingAutomation, setEditingAutomation] = useState<AutomationSystem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pinnedRoomIds, setPinnedRoomIds] = useState<Set<string>>(new Set());
+  const [isUploading, setIsUploading] = useState(false);
+  const [libraryImages, setLibraryImages] = useState<string[]>([]);
+  const [showLibraryFor, setShowLibraryFor] = useState<'room' | 'benefit' | null>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState<Partial<Property>>({ name: '', location: '', total_rooms: 0, property_type: 'Villa', image_url: '/images/realistic_villa_exterior_1773522363119.png', description: '' });
 
   const searchParams = useSearchParams();
@@ -132,11 +159,45 @@ function PropertyManagementContent() {
     }
   }, [properties, propertyIdParam]);
 
+  // ─── AARA Command Integration ───
+  useAaraCommands({
+    SELECT_PROPERTY: (data) => {
+      const prop = properties.find(p => p.id === data.id);
+      if (prop) setViewingDetails(prop);
+    },
+    EDIT_PROPERTY: (data) => {
+      const prop = properties.find(p => p.id === data.id);
+      if (prop) handleOpenModal(prop);
+    }
+  });
+
   const fetchProperties = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('properties').select('*, rooms(*), benefits(*), automation_systems(*)');
-    if (!error && data) setProperties(data.map((p: any) => ({ ...p, automation: p.automation_systems })));
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*, rooms(*), benefits(*), automation_systems(*)')
+      .order('sort_order', { foreignTable: 'rooms', ascending: true });
+      
+    if (!error && data) {
+      setProperties(data.map((p: any) => ({ 
+        ...p, 
+        automation: p.automation_systems,
+        rooms: p.rooms?.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+      })));
+    }
     setLoading(false);
+  };
+
+  const saveRoomOrder = async (rooms: Room[]) => {
+    const updates = rooms.map((r, idx) => ({
+      id: r.id,
+      sort_order: idx
+    }));
+    
+    // Perform individual updates for now as Supabase doesn't support bulk update with unique IDs in a single call without RPC
+    await Promise.all(
+      updates.map(u => supabase.from('rooms').update({ sort_order: u.sort_order }).eq('id', u.id))
+    );
   };
 
   const autoSave = async (updatedProperty: Property) => {
@@ -222,6 +283,61 @@ function PropertyManagementContent() {
     if (viewingDetails) { const updated = { ...viewingDetails, automation: (viewingDetails.automation || []).filter(n => n.id !== id) as AutomationSystem[] }; setViewingDetails(updated); setProperties(prev => prev.map(p => p.id === updated.id ? updated : p)); }
   };
 
+  const handleFileUpload = async (file: File) => {
+    try {
+      setIsUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `uploads/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('property-images')
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('property-images').getPublicUrl(filePath);
+      return data.publicUrl;
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      alert(`Upload failed: ${error.message || 'Unknown error'}. Check your Storage Policies.`);
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const fetchLibraryImages = async () => {
+    try {
+      // Fetch from both root and uploads folder
+      const [rootRes, uploadRes] = await Promise.all([
+        supabase.storage.from('property-images').list('', { limit: 50, sortBy: { column: 'created_at', order: 'desc' } }),
+        supabase.storage.from('property-images').list('uploads', { limit: 50, sortBy: { column: 'created_at', order: 'desc' } })
+      ]);
+
+      const allFiles: {name: string, path: string}[] = [];
+      if (rootRes.data) rootRes.data.forEach(f => { if (!f.id) return; allFiles.push({ name: f.name, path: f.name }); });
+      if (uploadRes.data) uploadRes.data.forEach(f => { if (!f.id) return; allFiles.push({ name: f.name, path: `uploads/${f.name}` }); });
+
+      const urls = allFiles
+        .filter(f => /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(f.name))
+        .map(file => {
+          const { data } = supabase.storage.from('property-images').getPublicUrl(file.path);
+          // Add cache bust to force reload if previously broken
+          return `${data.publicUrl}?t=${Date.now()}`;
+        });
+
+      setLibraryImages(Array.from(new Set(urls))); // Unique URLs
+    } catch (error: any) {
+      console.error('Error fetching library:', error.message);
+    }
+  };
+
+  const openLibrary = (target: 'room' | 'benefit') => {
+    setShowLibraryFor(target);
+    fetchLibraryImages();
+  };
+
   if (loading && properties.length === 0) {
     return <AdminLayout><div className="min-h-[60vh] flex flex-col items-center justify-center"><Loader2 className="w-10 h-10 text-primary animate-spin mb-4" /><p className="text-sm font-bold text-foreground/40 uppercase tracking-widest">Loading</p></div></AdminLayout>;
   }
@@ -267,38 +383,118 @@ function PropertyManagementContent() {
               {/* ── ROOM DISTRIBUTION — Image cards with slider ── */}
               <section className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" /> Room Distribution</h2>
-                  <button onClick={handleAddRoom} className="text-[10px] font-extrabold text-primary uppercase tracking-widest flex items-center gap-1 hover:translate-x-1 transition-all">Add Room <Plus className="w-3 h-3" /></button>
+                  <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-primary" /> Room Distribution
+                  </h2>
+                  <div className="flex items-center gap-4">
+                    <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest hidden sm:block">
+                      Drag handle to reorder · Use pin to lock
+                    </p>
+                    <button onClick={handleAddRoom} className="text-[10px] font-extrabold text-primary uppercase tracking-widest flex items-center gap-1 hover:translate-x-1 transition-all">
+                      Add Room <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {(viewingDetails.rooms || []).map(room => (
-                    <div key={room.id} className="soft-card border border-white overflow-hidden group">
-                      <RoomImageSlider images={room.image_urls || []} roomName={room.name} />
-                      <div className="p-4 space-y-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-bold text-foreground">{room.name}</p>
-                            <p className="text-[10px] text-foreground/40 font-bold uppercase tracking-widest">{room.type} · {room.sqft} sqft</p>
-                          </div>
-                          <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
-                            <button onClick={() => handleCloneRoom(room)} className="soft-button w-7 h-7 border border-white text-primary/40 hover:text-primary" title="Clone"><Plus className="w-3 h-3" /></button>
-                            <button onClick={() => setEditingRoom(room)} className="soft-button w-7 h-7 border border-secondary/30 bg-secondary/5 text-secondary hover:bg-secondary hover:text-white" title="Edit"><Edit2 className="w-3 h-3" /></button>
-                            <button onClick={() => handleDeleteRoom(room.id)} className="soft-button w-7 h-7 border border-white text-primary/40 hover:text-primary"><Trash2 className="w-3 h-3" /></button>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {room.features.slice(0, 3).map(f => (
-                            <span key={f} className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/60 border border-white/50 text-foreground/60 font-bold">{f}</span>
-                          ))}
-                          {(room.image_urls?.length ?? 0) > 0 && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-secondary/10 border border-secondary/20 text-secondary font-bold flex items-center gap-1">
-                              <ImageIcon className="w-2.5 h-2.5" />{room.image_urls!.length}
-                            </span>
+                
+                <div ref={containerRef} className="relative min-h-[200px]">
+                  <Reorder.Group 
+                    axis="y" 
+                    values={viewingDetails.rooms || []} 
+                    onReorder={(newOrder) => {
+                      const currentRooms = viewingDetails.rooms || [];
+                      const updatedRooms = [...newOrder];
+                      
+                      // Inject pinned items back to their original positions
+                      const pins: {idx: number, room: Room}[] = [];
+                      currentRooms.forEach((r, i) => {
+                        if (pinnedRoomIds.has(r.id)) pins.push({idx: i, room: r});
+                      });
+
+                      const unpinnedPool = updatedRooms.filter(r => !pinnedRoomIds.has(r.id));
+                      const final: Room[] = [];
+                      let poolIdx = 0;
+                      for (let i = 0; i < currentRooms.length; i++) {
+                        const pin = pins.find(p => p.idx === i);
+                        if (pin) final.push(pin.room);
+                        else if (poolIdx < unpinnedPool.length) final.push(unpinnedPool[poolIdx++]);
+                      }
+
+                      const updated = { ...viewingDetails, rooms: final };
+                      setViewingDetails(updated);
+                      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+                      saveRoomOrder(final);
+                    }}
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  >
+                    {(viewingDetails.rooms || []).map(room => {
+                      const isPinned = pinnedRoomIds.has(room.id);
+                      return (
+                        <Reorder.Item 
+                          key={room.id} 
+                          value={room}
+                          id={`room-${room.id}`} 
+                          dragListener={!isPinned}
+                          dragConstraints={containerRef}
+                          className={cn(
+                            "soft-card border overflow-hidden group relative transition-all duration-300",
+                            isPinned ? "border-secondary/40 bg-secondary/5 opacity-80" : "border-white"
                           )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        >
+                          {/* Control Bar (Pin & Grip) */}
+                          <div className="absolute top-2 left-2 z-20 flex gap-1 items-center">
+                            {!isPinned && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1.5 bg-white/80 backdrop-blur-sm rounded-lg border border-white/40 shadow-sm">
+                                <GripVertical className="w-3.5 h-3.5 text-foreground/40" />
+                              </div>
+                            )}
+                            <button 
+                              onClick={() => {
+                                setPinnedRoomIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(room.id)) next.delete(room.id);
+                                  else next.add(room.id);
+                                  return next;
+                                });
+                              }}
+                              className={cn(
+                                "flex items-center justify-center p-1.5 rounded-lg border backdrop-blur-sm transition-all shadow-sm",
+                                isPinned 
+                                  ? "bg-secondary text-white border-secondary" 
+                                  : "bg-white/80 text-foreground/30 border-white/40 opacity-0 group-hover:opacity-100"
+                              )}
+                            >
+                              {isPinned ? <Pin size={13} className="fill-current" /> : <Pin size={13} />}
+                            </button>
+                          </div>
+
+                          <RoomImageSlider images={room.image_urls || []} roomName={room.name} />
+                          <div className="p-4 space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-bold text-foreground">{room.name}</p>
+                                <p className="text-[10px] text-foreground/40 font-bold uppercase tracking-widest">{room.type} · {room.sqft} sqft</p>
+                              </div>
+                              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={() => handleCloneRoom(room)} className="soft-button w-7 h-7 border border-white text-primary/40 hover:text-primary" title="Clone"><Plus className="w-3 h-3" /></button>
+                                <button onClick={() => setEditingRoom(room)} className="soft-button w-7 h-7 border border-secondary/30 bg-secondary/5 text-secondary hover:bg-secondary hover:text-white" title="Edit"><Edit2 className="w-3 h-3" /></button>
+                                <button onClick={() => handleDeleteRoom(room.id)} className="soft-button w-7 h-7 border border-white text-primary/40 hover:text-primary"><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {room.features.slice(0, 3).map(f => (
+                                <span key={f} className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/60 border border-white/50 text-foreground/60 font-bold">{f}</span>
+                              ))}
+                              {(room.image_urls?.length ?? 0) > 0 && (
+                                <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-secondary/10 border border-secondary/20 text-secondary font-bold flex items-center gap-1">
+                                  <ImageIcon className="w-2.5 h-2.5" />{room.image_urls!.length}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </Reorder.Item>
+                      );
+                    })}
+                  </Reorder.Group>
                 </div>
               </section>
 
@@ -397,16 +593,54 @@ function PropertyManagementContent() {
                         </div>
                       ))}
                       <label className="aspect-square rounded-xl border-2 border-dashed border-secondary/30 bg-secondary/5 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-secondary/10 transition-all">
-                        <Upload className="w-5 h-5 text-secondary/40" /><span className="text-[8px] font-bold text-secondary/40 uppercase">Add</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={() => alert('Paste URL below for now.')} />
+                        {isUploading ? <Loader2 className="w-5 h-5 text-secondary animate-spin" /> : <Upload className="w-5 h-5 text-secondary/40" />}
+                        <span className="text-[8px] font-bold text-secondary/40 uppercase">{isUploading ? '...' : 'Add'}</span>
+                        <input type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (files.length > 0) {
+                            setIsUploading(true);
+                            const newUrls: string[] = [];
+                            for (const file of files) {
+                              const url = await handleFileUpload(file);
+                              if (url) newUrls.push(url);
+                            }
+                            const updated = { ...editingRoom, image_urls: [...(editingRoom.image_urls || []), ...newUrls] };
+                            setEditingRoom(updated);
+                            handleUpdateRoom(updated);
+                            setIsUploading(false);
+                          }
+                        }} />
                       </label>
                     </div>
                     <div className="flex gap-2">
-                      <input type="url" id="ri-in" placeholder="Paste image URL..." className="soft-ui-in flex-1 py-3 px-4 text-[10px] bg-white/40 border border-white outline-none"
+                       <input type="url" id="ri-in" placeholder="Paste image URL..." className="soft-ui-in flex-1 py-3 px-4 text-[10px] bg-white/40 border border-white outline-none"
                         onKeyDown={(e) => { if (e.key==='Enter'){const v=(e.currentTarget as HTMLInputElement).value.trim();if(v){setEditingRoom({...editingRoom,image_urls:[...(editingRoom.image_urls||[]),v]});(e.currentTarget as HTMLInputElement).value='';}}} } />
-                      <button onClick={() => {const i=document.getElementById('ri-in') as HTMLInputElement;const v=i?.value.trim();if(v){setEditingRoom({...editingRoom,image_urls:[...(editingRoom.image_urls||[]),v]});i.value='';}}} className="soft-button px-4 border border-white text-secondary"><Plus className="w-4 h-4" /></button>
+                       <button onClick={() => openLibrary('room')} className="soft-button px-3 border border-white text-secondary flex items-center gap-2 text-[9px] font-bold">
+                         <LayoutGrid className="w-3.5 h-3.5" /> Gallery
+                       </button>
+                       <button onClick={() => {const i=document.getElementById('ri-in') as HTMLInputElement;const v=i?.value.trim();if(v){setEditingRoom({...editingRoom,image_urls:[...(editingRoom.image_urls||[]),v]});i.value='';}}} className="soft-button px-4 border border-white text-secondary"><Plus className="w-4 h-4" /></button>
                     </div>
                   </div>
+
+                  {/* Media Library View for Room */}
+                  <AnimatePresence>
+                    {showLibraryFor === 'room' && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="p-4 bg-white/40 rounded-2xl border border-white/60 space-y-3 overflow-hidden">
+                        <div className="flex justify-between items-center">
+                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/50">Media Library</p>
+                          <button onClick={() => setShowLibraryFor(null)} className="text-[10px] font-bold text-primary">Close</button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                          {libraryImages.map((url, i) => (
+                            <button key={i} onClick={() => setEditingRoom({...editingRoom, image_urls: [...(editingRoom.image_urls || []), url]})} className="aspect-square rounded-lg border border-white overflow-hidden hover:scale-105 transition-transform">
+                              <img src={url} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                          {libraryImages.length === 0 && <p className="col-span-4 py-8 text-center text-[10px] font-bold text-foreground/20 italic">No uploads found in bucket.</p>}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <button onClick={() => { handleUpdateRoom(editingRoom); setEditingRoom(null); }} className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2">
                     <Check className="w-4 h-4" /> Save Room Changes
                   </button>
@@ -430,7 +664,15 @@ function PropertyManagementContent() {
                   {/* Preview */}
                   {editingBenefit.image_url && (
                     <div className="relative h-36 rounded-2xl overflow-hidden border border-white">
-                      <img src={editingBenefit.image_url} className="w-full h-full object-cover" alt="preview" />
+                      <img 
+                        src={editingBenefit.image_url} 
+                        className="w-full h-full object-cover" 
+                        alt="preview"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://placehold.co/600x400/fecaca/991b1b?text=Image+Unavailable';
+                        }}
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                       <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] font-extrabold text-white uppercase tracking-widest">{editingBenefit.name}</p>
                     </div>
@@ -438,13 +680,50 @@ function PropertyManagementContent() {
                   <div className="space-y-2"><label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Amenity Name</label>
                     <input type="text" value={editingBenefit.name} onChange={(e) => setEditingBenefit({...editingBenefit, name: e.target.value})} className="soft-ui-in w-full py-4 px-5 text-sm bg-white/60 border border-white outline-none font-semibold" />
                   </div>
-                  <div className="space-y-2"><label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Photo URL</label>
-                    <input type="url" value={editingBenefit.image_url || ''} onChange={(e) => setEditingBenefit({...editingBenefit, image_url: e.target.value})} className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" placeholder="https://..." />
+                  <div className="space-y-2"><label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Amenity Photo</label>
+                    <div className="flex gap-2">
+                       <input type="url" value={editingBenefit.image_url || ''} onChange={(e) => setEditingBenefit({...editingBenefit, image_url: e.target.value})} className="soft-ui-in flex-1 py-4 px-5 text-xs bg-white/60 border border-white outline-none" placeholder="https://..." />
+                       <button onClick={() => openLibrary('benefit')} className="soft-button px-3 border border-white text-secondary flex items-center gap-2 text-[9px] font-bold">
+                         <LayoutGrid className="w-3.5 h-3.5" /> Browse
+                       </button>
+                       <label className="soft-button px-4 border border-white text-secondary flex items-center justify-center cursor-pointer hover:bg-white/40 transition-all">
+                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                         <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                           const file = e.target.files?.[0];
+                           if (file) {
+                             const url = await handleFileUpload(file);
+                             if (url) {
+                               setEditingBenefit({...editingBenefit, image_url: url});
+                               fetchLibraryImages(); // Refresh gallery
+                             }
+                           }
+                         }} />
+                       </label>
+                    </div>
                   </div>
+
+                  {/* Media Library View for Benefit */}
+                  <AnimatePresence>
+                    {showLibraryFor === 'benefit' && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="p-4 bg-white/40 rounded-2xl border border-white/60 space-y-3 overflow-hidden">
+                        <div className="flex justify-between items-center">
+                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/50">Media Gallery</p>
+                          <button onClick={() => setShowLibraryFor(null)} className="text-[10px] font-bold text-primary">Close</button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                          {libraryImages.map((url, i) => (
+                            <button key={i} onClick={() => setEditingBenefit({...editingBenefit, image_url: url})} className="aspect-square rounded-lg border border-white overflow-hidden hover:scale-105 transition-transform">
+                              <img src={url} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <div className="space-y-2"><label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Description (optional)</label>
                     <input type="text" value={editingBenefit.description || ''} onChange={(e) => setEditingBenefit({...editingBenefit, description: e.target.value})} className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" placeholder="Short description..." />
                   </div>
-                  <button onClick={() => { handleUpdateBenefit(editingBenefit); setEditingBenefit(null); }} className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2">
+                  <button onClick={() => { handleUpdateBenefit(editingBenefit); setEditingBenefit(null); }} className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2" disabled={isUploading}>
                     <Check className="w-4 h-4" /> Save Amenity
                   </button>
                 </div>
@@ -561,7 +840,7 @@ function PropertyManagementContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence mode="popLayout">
             {filteredProperties.map((property, idx) => (
-              <motion.div key={property.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: idx * 0.05 }} className="soft-card p-0 overflow-hidden border border-white group">
+              <motion.div key={property.id} id={`property-${property.id}`} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: idx * 0.05 }} className="soft-card p-0 overflow-hidden border border-white group">
                 <div className="relative h-56 w-full overflow-hidden bg-white/10">
                   <NextImage src={property.image_url || '/images/realistic_villa_exterior_1773522363119.png'} alt={property.name} fill className="object-cover group-hover:scale-110 transition-transform duration-700" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />

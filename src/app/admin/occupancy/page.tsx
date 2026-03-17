@@ -10,6 +10,7 @@ import {
   Loader2, Search, MapPin, Home, TrendingUp, BarChart2, ChevronRight
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAaraCommands } from '@/hooks/useAaraCommands';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type RoomWithOccupancy = Room & {
@@ -52,6 +53,7 @@ function RoomCard({ room, tenant, onEdit }: { room: RoomWithOccupancy; tenant?: 
     <motion.div
       whileHover={{ y: -3, scale: 1.02 }}
       onClick={onEdit}
+      id={`room-${room.id}`}
       className={cn(
         'relative rounded-3xl border overflow-hidden cursor-pointer group transition-all duration-300 soft-card',
         STATUS_COLOR[room.occupancy_status]
@@ -129,6 +131,28 @@ export default function OccupancyPage() {
   const [expandedProperties, setExpandedProperties] = useState<Set<string>>(new Set());
 
   useEffect(() => { fetchData(); }, []);
+
+  // ─── AARA Command Integration ───
+  useAaraCommands({
+    SELECT_PROPERTY: (data) => {
+      const el = document.getElementById(`property-${data.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setExpandedProperties(prev => new Set(prev).add(data.id));
+      }
+    },
+    SELECT_ROOM: (data) => {
+      const room = rooms.find(r => r.id === data.id);
+      if (room) {
+        setExpandedProperties(prev => new Set(prev).add(room.property_id));
+        setTimeout(() => {
+          setEditingRoom(room);
+          const el = document.getElementById(`room-${room.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    }
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -351,7 +375,7 @@ export default function OccupancyPage() {
               const isExpanded = expandedProperties.has(property.id);
 
               return (
-                <div key={property.id} className="space-y-5">
+                <div key={property.id} id={`property-${property.id}`} className="space-y-5">
                   {/* Property Header */}
                   <div
                     onClick={() => toggleProperty(property.id)}

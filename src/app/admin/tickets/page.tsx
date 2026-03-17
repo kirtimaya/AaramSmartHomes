@@ -16,10 +16,22 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { useAaraCommands } from '@/hooks/useAaraCommands';
 
 export default function TicketsPage() {
   const [filter, setFilter] = useState<'All' | 'Pending' | 'In-Progress' | 'Resolved'>('All');
-  
+
+  // ─── AARA Command Integration ───
+  useAaraCommands({
+    FILTER_TICKETS: (data) => {
+      if (data.status) setFilter(data.status as any);
+    },
+    SELECT_TICKET: (data) => {
+      const el = document.getElementById(`ticket-${data.id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
   const filteredTickets = filter === 'All' 
     ? mockTickets 
     : mockTickets.filter(t => t.status === filter);
@@ -77,6 +89,7 @@ export default function TicketsPage() {
             return (
               <motion.div
                 key={ticket.id}
+                id={`ticket-${ticket.id}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}

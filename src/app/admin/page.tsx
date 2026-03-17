@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { useAaraCommands } from '@/hooks/useAaraCommands';
 
 export default function AdminDashboard() {
   const [data, setData] = useState<{
@@ -32,6 +33,14 @@ export default function AdminDashboard() {
     waterLogs: []
   });
   const [loading, setLoading] = useState(true);
+
+  // ─── AARA Command Integration ───
+  useAaraCommands({
+    SHOW_METRIC: (data) => {
+      const el = document.getElementById(`stat-${data.label.toLowerCase()}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
 
   useEffect(() => {
     fetchDashboardData();
@@ -100,6 +109,7 @@ export default function AdminDashboard() {
           {stats.map((stat, idx) => (
             <Link key={stat.label} href={stat.href}>
               <motion.div
+                id={`stat-${stat.label.toLowerCase().replace(/\s+/g, '-')}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
