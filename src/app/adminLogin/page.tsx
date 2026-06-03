@@ -23,7 +23,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 
-const ROOT_EMAIL = 'kirtimayaswain@gmail.com';
+const ROOT_EMAIL = process.env.NEXT_PUBLIC_ROOT_EMAIL || '';
 
 function AdminLoginContent() {
   const [email, setEmail] = useState('');
@@ -233,7 +233,7 @@ function AdminLoginContent() {
       // PROACTIVELY CREATE REQUEST
       const { error: reqErr } = await supabase.from('admin_requests').insert([{ 
         email: email, 
-        token: Math.random().toString(36).substring(2, 15),
+        token: crypto.randomUUID(),
         status: 'pending' 
       }]);
       
@@ -259,7 +259,7 @@ function AdminLoginContent() {
         return;
       }
 
-      const verifyToken = Math.random().toString(36).substring(2, 15);
+      const verifyToken = crypto.randomUUID();
       const { error } = await supabase.from('admin_requests').insert([{ 
         email: user.email, 
         token: verifyToken,

@@ -14,11 +14,10 @@ export async function GET(request: NextRequest) {
     
     const { data: { session } } = await supabase.auth.exchangeCodeForSession(code);
     
-    const email = session?.user?.email?.toLowerCase() ?? '';
-    const redirect = requestUrl.searchParams.get('redirect') || '/tenant';
-    
-    // Standard login has no additional check.
-    // Admin checking is done at the Layout level using the dynamic admins table.
+    const rawRedirect = requestUrl.searchParams.get('redirect') || '/tenant';
+    // Only allow relative paths; block open redirects like //evil.com or https://evil.com
+    const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/tenant';
+
     return NextResponse.redirect(new URL(redirect, requestUrl.origin));
   }
 

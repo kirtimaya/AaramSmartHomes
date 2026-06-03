@@ -10,7 +10,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [adminList, setAdminList] = React.useState<string[]>([]);
-  const ROOT_EMAIL = 'kirtimayaswain@gmail.com';
+  const ROOT_EMAIL = process.env.NEXT_PUBLIC_ROOT_EMAIL || '';
 
   useEffect(() => {
     async function fetchAdmins() {
@@ -25,28 +25,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = React.useMemo(() => {
     if (!user?.email) return false;
     const normalizedEmail = user.email.toLowerCase().trim();
-    const result = 
-      normalizedEmail === ROOT_EMAIL || 
-      normalizedEmail.includes('admin') || 
+    const result =
+      (ROOT_EMAIL && normalizedEmail === ROOT_EMAIL) ||
       adminList.includes(normalizedEmail);
-    console.log('[Auth Debug] Email:', normalizedEmail, 'isAdmin:', result);
     return result;
   }, [user, adminList]);
 
   useEffect(() => {
     if (!loading && !user) {
-      console.log('[Auth Debug] No user, redirecting to admin login');
       router.push('/adminLogin');
       return;
-    }
-
-    // Root bypass logic inside useEffect to ensure redirect if not admin
-    if (!loading && user && !isAdmin) {
-      const normalized = user.email?.toLowerCase().trim();
-      if (normalized === ROOT_EMAIL) {
-        console.log('[Auth Debug] Root detected in guard, allowing access');
-        return; 
-      }
     }
   }, [user, loading, router, isAdmin]);
 
@@ -70,14 +58,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-foreground/40 font-medium leading-relaxed">
             Your account (<span className="text-foreground font-bold">{user.email}</span>) does not have administrative privileges for Aaram Smart Homes.
           </p>
-        </div>
-        <div className="p-4 rounded-2xl bg-white/40 border border-white soft-well space-y-2 text-left">
-          <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-widest">Diagnostic Info</p>
-          <code className="block text-[10px] font-mono text-primary/70 break-all leading-tight">
-            Auth ID: {user.id}<br/>
-            Email: {user.email}<br/>
-            Admin List: {adminList.join(', ') || 'Fetching...'}
-          </code>
         </div>
         <div className="flex flex-col w-full gap-3 pt-4">
           <button 

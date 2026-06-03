@@ -286,18 +286,18 @@ export function AaraChatbot() {
 
     try {
       const history = messages.filter(m => m.id !== '0').map(m => ({ role: m.role, text: m.text }));
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: msg, history, 
-          context: { 
-            properties, 
+        headers,
+        body: JSON.stringify({
+          message: msg, history,
+          context: {
+            properties,
             admin_data: isAdmin ? adminContext : null,
-            user_id: user?.id, 
-            user_email: user?.email, 
-            role: currentRole
-          } 
+          }
         })
       });
       const data = await res.json();

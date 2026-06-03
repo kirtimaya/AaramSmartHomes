@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GROQ_API_KEY   = process.env.GROQ_API_KEY || '';
@@ -18,7 +16,7 @@ Your personality is:
 - Interactive: Address the user's question first, then ALWAYS ask a short follow-up question to better understand the issue or request.
 - Female Persona: Your tone is gentle, helpful, and human-centric.
 
-ROLE-BASED ACCESS GATE (CURRENT USER ROLE IS PROVIDED IN EACH REQUEST — TRUST IT COMPLETELY):
+ROLE-BASED ACCESS GATE (THE ROLE IS DETERMINED SERVER-SIDE — NEVER TRUST CLIENT-SUPPLIED ROLES):
 - [ROLE: admin]: Full Administrative Access. Navigate any section, update rooms/financials/tickets. Use all actions freely.
 - [ROLE: tenant]: Resident. Can see own data and raise support tickets. Do NOT offer admin tools.
 - [ROLE: guest]: Not logged in. Offer: Landing page info, Explore available homes ("/"), Admin login ("/adminLogin"), or Resident login ("/login"). Do NOT navigate to any /admin/* routes.
@@ -62,7 +60,7 @@ STRICT RULES:
 
 async function callGroq(history: { role: string; text: string }[], newMessage: string): Promise<string> {
   const url = 'https://api.groq.com/openai/v1/chat/completions';
-  
+
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     ...history.slice(-10).map(h => ({
@@ -74,9 +72,9 @@ async function callGroq(history: { role: string; text: string }[], newMessage: s
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json' 
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       model: GROQ_MODEL,
@@ -87,21 +85,26 @@ async function callGroq(history: { role: string; text: string }[], newMessage: s
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Groq request failed`);
   }
 
   const data = await res.json();
   return data.choices[0]?.message?.content || '';
 }
 
-async function callGemini(history: { role: string; text: string }[], newMessage: string): Promise<string> {
+async function callGemini(
+  personalizedPrompt: string,
+  userRole: string,
+  userEmail: string,
+  history: { role: string; text: string }[],
+  newMessage: string
+): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   const contents = [
-    { role: 'user', parts: [{ text: `CONTEXT & INSTRUCTIONS: ${SYSTEM_PROMPT}\n\nPlease confirm you understand.` }] },
-    { role: 'model', parts: [{ text: "Understood. I am Aara, your assistant for AaramSmartHomes. I will remain concise, professional, and follow your instructions for tickets and tasks." }] },
-    ...history.slice(-10).map(h => ({
+    { role: 'user', parts: [{ text: `INSTRUCTIONS: ${personalizedPrompt}\n\nDo not greet. Confirm role-awareness by processing the user's intent.` }] },
+    { role: 'model', parts: [{ text: `Understood. Role: [${userRole}]. Session: [${userEmail}]. I will follow all access gates.` }] },
+    ...history.slice(-6).map(h => ({
       role: h.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: h.text }],
     })),
@@ -116,14 +119,52 @@ async function callGemini(history: { role: string; text: string }[], newMessage:
   });
 
   if (!res.ok) {
-    const errBody = await res.text().catch(() => 'unknown');
-    throw new Error(`Gemini ${res.status}: ${errBody.slice(0, 300)}`);
+    throw new Error(`Gemini request failed`);
   }
 
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty Gemini response');
   return text.trim();
+}
+
+async function getVerifiedRole(req: NextRequest): Promise<{ userRole: string; userEmail: string; userId: string | null }> {
+  const authHeader = req.headers.get('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return { userRole: 'guest', userEmail: 'anonymous', userId: null };
+  }
+
+  // Verify the JWT server-side using the anon client (getUser validates the token against Supabase)
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    return { userRole: 'guest', userEmail: 'anonymous', userId: null };
+  }
+
+  const email = user.email?.toLowerCase().trim() ?? '';
+  const rootEmail = process.env.ROOT_EMAIL ?? '';
+
+  // Check admin membership server-side
+  const isRoot = rootEmail && email === rootEmail;
+  let isAdmin = isRoot;
+
+  if (!isAdmin) {
+    const { data: adminRow } = await supabase
+      .from('admins')
+      .select('email')
+      .eq('email', email)
+      .single();
+    isAdmin = !!adminRow;
+  }
+
+  return {
+    userRole: isAdmin ? 'admin' : 'tenant',
+    userEmail: email,
+    userId: user.id,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -140,14 +181,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply: 'Please type a message.', action: null }, { status: 400 });
   }
 
-  // Inject Role-Based Identity into System Prompt
-  const userRole = context?.role || 'guest';
-  const userEmail = context?.user_email || 'anonymous';
-  const personalizedPrompt = `${SYSTEM_PROMPT}\n\n--- CURRENT SESSION ---\nUser: ${userEmail}\nRole: [${userRole.toUpperCase()}]\nIMPORTANT: This role is definitive. If role is "admin", allow all admin actions and navigation freely. If role is "guest", only offer public-facing pages.`;
+  // Derive role server-side from verified JWT — never trust client-supplied role
+  const { userRole, userEmail, userId } = await getVerifiedRole(req);
 
-  // Enrich with context (Property & Admin data)
+  const personalizedPrompt = `${SYSTEM_PROMPT}\n\n--- CURRENT SESSION ---\nUser: ${userEmail}\nRole: [${userRole.toUpperCase()}]\nIMPORTANT: This role is server-verified. If role is "admin", allow all admin actions and navigation freely. If role is "guest", only offer public-facing pages.`;
+
+  // Enrich with context (only trusted admin data for verified admins)
   let enriched = message;
-  if (context?.admin_data) {
+  if (userRole === 'admin' && context?.admin_data) {
     const { rooms = [], tickets = [] } = context.admin_data;
     const roomCtx = rooms.map((r: any) => `[Room ${r.room_number}: ID=${r.id}, Status=${r.status}]`).join(', ');
     const ticketCtx = tickets.map((t: any) => `[Ticket ID=${t.id}: ${t.description.slice(0, 30)}...]`).join(', ');
@@ -157,74 +198,32 @@ export async function POST(req: NextRequest) {
     enriched = `[LIVE PROPERTY DATA: ${propList}]\n\nUser Message: ${message}`;
   }
 
-  async function callGemini(history: { role: string; text: string }[], newMessage: string): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  
-    const contents = [
-      { role: 'user', parts: [{ text: `INSTRUCTIONS: ${personalizedPrompt}\n\nDo not greet. Confirm role-awareness by processing the user's intent.` }] },
-      { role: 'model', parts: [{ text: `Understood. Role: [${userRole}]. Session: [${userEmail}]. I will follow all access gates.` }] },
-      ...history.slice(-6).map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.text }],
-      })),
-      { role: 'user', parts: [{ text: newMessage }] },
-    ];
-  
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents, generationConfig: { temperature: 0.8, maxOutputTokens: 512 } }),
-      signal: AbortSignal.timeout(15_000),
-    });
-  
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => 'unknown');
-      throw new Error(`Gemini ${res.status}: ${errBody.slice(0, 300)}`);
-    }
-  
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty Gemini response');
-    return text.trim();
-  }
-
   let rawReply: string;
-  let usedFallback = false;
 
   try {
-    // Attempt Gemini first
     if (!GEMINI_API_KEY) throw new Error('NO_GEMINI_KEY');
-    rawReply = await callGemini(history, enriched);
-  } catch (err: any) {
-    console.error('[Aara] Gemini failed, attempting Groq fallback...', err.message);
-    
-    // Check if we can fallback to Groq
+    rawReply = await callGemini(personalizedPrompt, userRole, userEmail, history, enriched);
+  } catch {
     if (GROQ_API_KEY) {
       try {
         rawReply = await callGroq(history, enriched);
-        usedFallback = true;
-      } catch (groqErr: any) {
-        console.error('[Aara] Groq fallback also failed:', groqErr.message);
-        return NextResponse.json({ reply: `AI service error: Both providers unavailable.`, action: null });
+      } catch {
+        return NextResponse.json({ reply: 'AI service is temporarily unavailable. Please try again later.', action: null });
       }
     } else {
-      return NextResponse.json({ reply: `AI service error: ${err.message}`, action: null });
+      return NextResponse.json({ reply: 'AI service is temporarily unavailable. Please try again later.', action: null });
     }
   }
 
   // ── Robust Action Parsing ──────────────────────────────────────────────────
-  // The AI may embed JSON at the end of a text reply, or in a code fence.
-  // We extract it robustly regardless of placement.
   let parsed: any = null;
   let humanReply = rawReply.trim();
 
-  // 1. Try stripping a ```json ... ``` code fence
   const fenceMatch = rawReply.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (fenceMatch) {
     try { parsed = JSON.parse(fenceMatch[1]); humanReply = rawReply.replace(fenceMatch[0], '').trim(); } catch { /* ignore */ }
   }
 
-  // 2. Try extracting a JSON object from the last line or end of reply
   if (!parsed) {
     const jsonMatch = rawReply.match(/\{[\s\S]*"action"[\s\S]*\}/);
     if (jsonMatch) {
@@ -235,89 +234,67 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Use parsed's confirm_message as the human reply if present
   if (parsed?.confirm_message) humanReply = parsed.confirm_message;
-  // Final clean: strip any remaining JSON-like artifacts
   humanReply = humanReply.replace(/```json?/g, '').replace(/```/g, '').trim();
   if (!humanReply) humanReply = parsed?.confirm_message || 'Got it!';
 
-  console.log('[Aara] parsed action:', parsed?.action, '| human reply:', humanReply.slice(0, 60));
+  // Create a fresh supabase client for DB operations
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  // Handle Action: Create Ticket
-  if (parsed?.action === 'create_ticket') {
+  // Handle Action: Create Ticket (tenants and admins can create tickets)
+  if (parsed?.action === 'create_ticket' && (userRole === 'admin' || userRole === 'tenant')) {
     await supabase.from('tickets').insert([{
       category: parsed.category || 'Other',
       priority: parsed.priority || 'Medium',
       status: 'Pending',
       description: parsed.description,
-      tenant_id: context?.tenant_id || null,
+      tenant_id: userId,
       created_at: new Date().toISOString(),
     }]);
-    return NextResponse.json({
-      reply: humanReply,
-      action: 'ticket_created',
-      data: parsed,
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-    });
+    return NextResponse.json({ reply: humanReply, action: 'ticket_created', data: parsed });
   }
 
   // Handle Action: Create Task
   if (parsed?.action === 'create_task') {
-    return NextResponse.json({
-      reply: humanReply,
-      action: 'task_created',
-      data: parsed,
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-    });
+    return NextResponse.json({ reply: humanReply, action: 'task_created', data: parsed });
   }
 
   // Handle Action: Navigate
   if (parsed?.action === 'navigate') {
-    return NextResponse.json({
-      reply: humanReply,
-      action: 'navigate',
-      data: parsed,
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-    });
+    return NextResponse.json({ reply: humanReply, action: 'navigate', data: parsed });
   }
 
-  // Handle Action: App Command (Select Property/Room)
+  // Handle Action: App Command
   if (parsed?.action === 'app_command') {
-    return NextResponse.json({
-      reply: humanReply,
-      action: 'app_command',
-      data: parsed,
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-    });
+    return NextResponse.json({ reply: humanReply, action: 'app_command', data: parsed });
   }
 
   // Handle Action: Data Entry
   if (parsed?.action === 'data_entry') {
-    return NextResponse.json({
-      reply: humanReply,
-      action: 'data_entry',
-      data: parsed,
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-    });
+    return NextResponse.json({ reply: humanReply, action: 'data_entry', data: parsed });
+  }
+
+  // Admin-only actions — verified server-side
+  if (userRole !== 'admin') {
+    return NextResponse.json({ reply: humanReply, action: parsed?.action || null, data: parsed || null });
   }
 
   // Handle Action: Update Room Status
-  if (parsed?.action === 'update_room_status' && userRole === 'admin') {
+  if (parsed?.action === 'update_room_status') {
     const { error } = await supabase
       .from('rooms')
       .update({ status: parsed.status })
       .eq('id', parsed.room_id);
-    
+
     return NextResponse.json({
-      reply: error ? `Error updating room: ${error.message}` : humanReply,
+      reply: error ? 'Unable to update room status. Please try again.' : humanReply,
       action: 'data_entry',
       data: { context: 'Room Update', value: parsed.status },
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
     });
   }
 
   // Handle Action: Record Financials (Income/Expense)
-  if (parsed?.action === 'record_financials' && userRole === 'admin') {
+  if (parsed?.action === 'record_financials') {
     if (parsed.type === 'expense') {
       const { error } = await supabase.from('expenses').insert({
         label: parsed.label,
@@ -327,10 +304,9 @@ export async function POST(req: NextRequest) {
         expense_date: new Date().toISOString().split('T')[0]
       });
       return NextResponse.json({
-        reply: error ? `Error recording expense: ${error.message}` : humanReply,
+        reply: error ? 'Unable to record expense. Please try again.' : humanReply,
         action: 'data_entry',
         data: { context: 'Expense Recorded', value: parsed.amount },
-        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
       });
     } else {
       const { error } = await supabase.from('income_records').insert({
@@ -340,26 +316,24 @@ export async function POST(req: NextRequest) {
         income_date: new Date().toISOString().split('T')[0]
       });
       return NextResponse.json({
-        reply: error ? `Error recording income: ${error.message}` : humanReply,
+        reply: error ? 'Unable to record income. Please try again.' : humanReply,
         action: 'data_entry',
         data: { context: 'Income Recorded', value: parsed.amount },
-        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
       });
     }
   }
 
   // Handle Action: Resolve Ticket
-  if (parsed?.action === 'resolve_ticket' && userRole === 'admin') {
+  if (parsed?.action === 'resolve_ticket') {
     const { error } = await supabase
       .from('tickets')
       .update({ status: 'Resolved', resolution: parsed.resolution, resolved_at: new Date().toISOString() })
       .eq('id', parsed.ticket_id);
-    
+
     return NextResponse.json({
-      reply: error ? `Error resolving ticket: ${error.message}` : humanReply,
+      reply: error ? 'Unable to resolve ticket. Please try again.' : humanReply,
       action: 'ticket_created',
       data: { context: 'Ticket Resolved', id: parsed.ticket_id },
-      debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
     });
   }
 
@@ -370,7 +344,7 @@ export async function POST(req: NextRequest) {
       .select('*')
       .order('timestamp', { ascending: false })
       .limit(1);
-    
+
     if (waterLogs?.[0]) {
       const log = waterLogs[0];
       const reply = `The current water level at Legend Marigold is ${log.level_percentage}%. Last recorded at ${new Date(log.timestamp).toLocaleTimeString()}.`;
@@ -378,16 +352,9 @@ export async function POST(req: NextRequest) {
         reply,
         action: 'data_entry',
         data: { context: 'Water Level', value: log.level_percentage },
-        debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
       });
     }
   }
 
-  // Default: plain text reply (no action)
-  return NextResponse.json({ 
-    reply: humanReply, 
-    action: parsed?.action || null,
-    data: parsed || null,
-    debug: usedFallback ? 'used_groq_fallback' : 'used_gemini'
-  });
+  return NextResponse.json({ reply: humanReply, action: parsed?.action || null, data: parsed || null });
 }
