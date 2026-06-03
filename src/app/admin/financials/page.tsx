@@ -14,6 +14,7 @@ import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContaine
 import { supabase } from '@/lib/supabase';
 import { Property, Room } from '@/lib/types';
 import { useAaraCommands } from '@/hooks/useAaraCommands';
+import { ElectricityTab } from './ElectricityTab';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type ExpenseCategory = 'rent' | 'maintenance' | 'electricity' | 'gas' | 'wifi' | 'maid' | 'furniture' | 'smart_devices' | 'organic_nature' | 'utilities' | 'other' | 'custom';
@@ -617,6 +618,9 @@ export default function FinancialHub() {
   // View toggle: 'property' or 'overall'
   const [expView, setExpView] = useState<'property' | 'overall'>('property');
 
+  // Top-level tab: 'overview' | 'electricity'
+  const [mainTab, setMainTab] = useState<'overview' | 'electricity'>('overview');
+
   // Modal States
   const [roomModal, setRoomModal] = useState<{ roomId: string; propertyId: string } | null>(null);
   const [sharedExpModal, setSharedExpModal] = useState<{ propertyId: string | null } | null>(null);
@@ -878,32 +882,68 @@ export default function FinancialHub() {
             <p className="text-foreground/40 text-sm">Historical rent tracking · Business expenses</p>
           </div>
 
-          {/* Month Selector */}
-          <div className="flex items-center gap-3 soft-well border border-white p-2 bg-white/40">
-            <button 
-              onClick={() => {
-                const d = new Date(selectedMonth);
-                d.setMonth(d.getMonth() - 1);
-                setSelectedMonth(getFirstDayOfMonth(d));
-              }}
-              className="w-10 h-10 rounded-xl soft-button border border-white bg-white/60 text-secondary hover:text-white hover:bg-secondary">
-              <ArrowDownRight className="w-4 h-4 rotate-45" />
-            </button>
-            <div className="px-6 text-center">
-              <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] mb-0.5">Operating Month</p>
-              <p className="text-sm font-black text-foreground uppercase tracking-tighter">{formatMonthName(selectedMonth)}</p>
+          {/* Month Selector — only shown on overview tab */}
+          {mainTab === 'overview' && (
+            <div className="flex items-center gap-3 soft-well border border-white p-2 bg-white/40">
+              <button
+                onClick={() => {
+                  const d = new Date(selectedMonth);
+                  d.setMonth(d.getMonth() - 1);
+                  setSelectedMonth(getFirstDayOfMonth(d));
+                }}
+                className="w-10 h-10 rounded-xl soft-button border border-white bg-white/60 text-secondary hover:text-white hover:bg-secondary">
+                <ArrowDownRight className="w-4 h-4 rotate-45" />
+              </button>
+              <div className="px-6 text-center">
+                <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] mb-0.5">Operating Month</p>
+                <p className="text-sm font-black text-foreground uppercase tracking-tighter">{formatMonthName(selectedMonth)}</p>
+              </div>
+              <button
+                onClick={() => {
+                  const d = new Date(selectedMonth);
+                  d.setMonth(d.getMonth() + 1);
+                  setSelectedMonth(getFirstDayOfMonth(d));
+                }}
+                className="w-10 h-10 rounded-xl soft-button border border-white bg-white/60 text-secondary hover:text-white hover:bg-secondary">
+                <ArrowUpRight className="w-4 h-4 -rotate-45" />
+              </button>
             </div>
-            <button 
-              onClick={() => {
-                const d = new Date(selectedMonth);
-                d.setMonth(d.getMonth() + 1);
-                setSelectedMonth(getFirstDayOfMonth(d));
-              }}
-              className="w-10 h-10 rounded-xl soft-button border border-white bg-white/60 text-secondary hover:text-white hover:bg-secondary">
-              <ArrowUpRight className="w-4 h-4 -rotate-45" />
-            </button>
-          </div>
+          )}
         </div>
+
+        {/* ── Tab Switcher ── */}
+        <div className="flex gap-2 p-1.5 soft-well border border-white bg-white/30 w-fit rounded-2xl">
+          <button
+            onClick={() => setMainTab('overview')}
+            className={cn(
+              'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all',
+              mainTab === 'overview'
+                ? 'bg-white shadow-md text-foreground border border-white/80'
+                : 'text-foreground/40 hover:text-foreground'
+            )}
+          >
+            <IndianRupee className="w-3.5 h-3.5" />
+            Overview
+          </button>
+          <button
+            onClick={() => setMainTab('electricity')}
+            className={cn(
+              'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all',
+              mainTab === 'electricity'
+                ? 'bg-amber-500 shadow-md text-white border border-amber-500/80'
+                : 'text-foreground/40 hover:text-foreground'
+            )}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Electricity Bills
+          </button>
+        </div>
+
+        {/* ── Electricity Tab ── */}
+        {mainTab === 'electricity' && <ElectricityTab properties={properties} />}
+
+        {/* ── Overview content (hidden when electricity tab active) ── */}
+        {mainTab === 'overview' && <>
 
         {/* Lifetime Performance (Interactive) */}
         <div className="space-y-4">
@@ -1283,6 +1323,7 @@ export default function FinancialHub() {
             )}
           </AnimatePresence>
         </section>
+        </> /* end mainTab === 'overview' */}
       </div>
 
       {/* ── Modals ── */}

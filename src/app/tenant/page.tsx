@@ -33,7 +33,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Tenant, Property } from '@/lib/types';
+import { Tenant, Property, RoomElectricityBill, ElectricityBill } from '@/lib/types';
 
 import { supabase } from '@/lib/supabase';
 
@@ -44,6 +44,7 @@ export default function UnifiedUserDashboard() {
   const [tenantProfile, setTenantProfile] = useState<Tenant | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [electricityBill, setElectricityBill] = useState<(RoomElectricityBill & { electricity_bills: ElectricityBill }) | null>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -90,6 +91,19 @@ export default function UnifiedUserDashboard() {
 
       if (!propsError && props) {
         setProperties(props as Property[]);
+      }
+
+      // 3. Fetch current month electricity sub-bill for this tenant's unit
+      if (currentProfile.room_id) {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const { data: elecBill } = await supabase
+          .from('room_electricity_bills')
+          .select('*, electricity_bills!inner(*)')
+          .eq('unit_id', currentProfile.room_id)
+          .eq('electricity_bills.status', 'published')
+          .eq('electricity_bills.bill_month', currentMonth)
+          .single();
+        if (elecBill) setElectricityBill(elecBill as any);
       }
     } catch (err) {
       console.error('Dashboard initialization error:', err);
@@ -280,6 +294,54 @@ export default function UnifiedUserDashboard() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Electricity Sub-bill card */}
+                    {electricityBill && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="soft-card border border-amber-500/20 bg-amber-500/5 p-8 space-y-5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 shadow-inner">
+                              <Zap className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-extrabold uppercase tracking-widest text-foreground/40">Electricity Bill</p>
+                              <p className="text-sm font-black text-foreground uppercase">
+                                {(electricityBill as any).electricity_bills?.bill_month}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-3xl font-black text-primary tracking-tighter">
+                            ₹{electricityBill.total_amount.toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-amber-500/10">
+                          <div className="soft-well border border-white p-3">
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-0.5 flex items-center gap-1">
+                              <Wind className="w-3 h-3 text-blue-500" /> AC Charge
+                            </p>
+                            <p className="text-lg font-black text-blue-600">₹{electricityBill.ac_amount.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-foreground/30 font-bold">{electricityBill.ac_units} units</p>
+                          </div>
+                          <div className="soft-well border border-white p-3">
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-0.5 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-amber-500" /> Common Share
+                            </p>
+                            <p className="text-lg font-black text-amber-600">₹{electricityBill.common_share_amount.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-foreground/30 font-bold">{Number(electricityBill.common_share_units.toFixed(1))} units</p>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-widest border',
+                          electricityBill.status === 'paid'
+                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                            : 'bg-red-500/10 text-red-600 border-red-500/20'
+                        )}>
+                          {electricityBill.status === 'paid' ? <CheckCircle2 className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+                          {electricityBill.status === 'paid' ? 'Paid' : 'Payment Due'}
+                        </div>
+                      </motion.div>
+                    )}
                     
                     <div className="soft-card p-10 border border-white bg-white/40 flex flex-col md:flex-row gap-10 items-center">
                         <div className="space-y-4 flex-1">
