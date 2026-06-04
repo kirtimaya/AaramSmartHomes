@@ -187,6 +187,9 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
   const [loadingBills, setLoadingBills] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [savingBill, setSavingBill] = useState(false);
+  const [billImagePreview, setBillImagePreview] = useState<string | null>(null);
+  const [billImageFile, setBillImageFile] = useState<File | null>(null);
+  const [ocrRunning, setOcrRunning] = useState(false);
 
   // Bill form
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -197,6 +200,7 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
   const [preview, setPreview] = useState<SplitPreview[] | null>(null);
   const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -245,20 +249,196 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
     setPreview(null);
   };
 
+  // OCR helpers: parse invoice text to extract amounts and units
+  const parseBillText = (text: string) => {
+    // normalise
+    const norm = (s: string) => s.replace(/\r/g, '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const lower = norm(text).toLowerCase();
+
+    const parseNumber = (s?: string) => {
+      if (!s) return null;
+      const cleaned = s.replace(/[, ]+/g, '').trim();
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    // Generic amount patterns
+    const amountPattern = /(?:grand total|total amount|amount payable|amount due|amount|total payable|net amount|grand total payable|total due)[^0-9₹inr]{0,40}([\d,]+(?:\.\d+)?)/i;
+    const altAmount = /(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d+)?)/i;
+    const unitsPattern = /(?:units consumed|units|kwh|kwh consumed|consumed|units\s*:\s*)([^\s,]+[\d,.]*)/i;
+
+    const amountMatch = amountPattern.exec(text) || altAmount.exec(text);
+    const unitsMatch = unitsPattern.exec(text);
+
+    return {
+      amount: parseNumber(amountMatch?.[1]),
+      units: parseNumber(unitsMatch?.[1]),
+      raw: norm(text),
+    };
+  };
+
+  // extract structured fields: USC No, present date, previous date, units, total due
+  const parseBillFields = (text: string) => {
+    const raw = text.replace(/\r/g, '').replace(/\t/g, ' ').replace(/\s+/g, ' ');
+    const lower = raw.toLowerCase();
+
+    const findLabel = (labels: string[]) => {
+      for (const lbl of labels) {
+        const idx = lower.indexOf(lbl);
+        if (idx !== -1) return { idx, lbl };
+      }
+      return null;
+    };
+
+    const uscMatch = /usc\s*no\.?\s*[:\-\s]*([A-Za-z0-9-]+)/i.exec(raw) || /consumer\s*no\.?\s*[:\-\s]*([A-Za-z0-9-]+)/i.exec(raw);
+
+    // dates: look for dd/mm/yyyy or yyyy-mm-dd
+    const datePattern = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/g;
+    const dates = Array.from(raw.matchAll(datePattern)).map(m => m[1]);
+    // fallback: words like 'present' and 'previous' near dates
+    let presentDate: string | null = null;
+    let previousDate: string | null = null;
+    if (dates.length >= 2) {
+      // try to find occurrences of present/previous
+      const presentIdx = lower.indexOf('present');
+      const previousIdx = lower.indexOf('previous');
+      if (presentIdx !== -1 && previousIdx !== -1) {
+        // choose nearest
+        const presentCandidates = Array.from(raw.matchAll(datePattern), m => ({ date: m[1], idx: lower.indexOf(m[1].toLowerCase()) }));
+        if (presentCandidates.length > 0) {
+          presentDate = presentCandidates.reduce((a, b) => Math.abs(a.idx - presentIdx) < Math.abs(b.idx - presentIdx) ? a : b).date;
+        }
+        if (presentCandidates.length > 1) {
+          previousDate = presentCandidates.reduce((a, b) => Math.abs(a.idx - previousIdx) < Math.abs(b.idx - previousIdx) ? a : b).date;
+        }
+      }
+      // if still not found, assign last as present, second last as previous
+      if (!presentDate) presentDate = dates[dates.length - 1];
+      if (!previousDate && dates.length >= 2) previousDate = dates[dates.length - 2];
+    } else if (dates.length === 1) {
+      presentDate = dates[0];
+    }
+
+    // units and amount detection
+    const unitMatch = /(?:units consumed|consumed|units|kwh)[:\s]*([\d,.]+)/i.exec(raw) || /([\d,.]+)\s*(?:kwh|units)/i.exec(raw);
+    const amountMatch = /(?:total due|total amount|amount payable|amount due|net amount|grand total)[:\s]*([₹Rs\.\s]*[\d,]+(?:\.\d+)?)/i.exec(raw) || /(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d+)?)/i.exec(raw);
+
+    const parseNumber = (s?: string) => {
+      if (!s) return null;
+      const cleaned = s.replace(/[₹Rs\.\s,]/gi, '').trim();
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const units = parseNumber(unitMatch?.[1]);
+    const totalDue = parseNumber(amountMatch?.[1]);
+
+    return {
+      usc: uscMatch?.[1] ?? null,
+      presentDate,
+      previousDate,
+      units,
+      totalDue,
+      raw,
+    };
+  };
+
+  const handleBillImage = async (file: File) => {
+    setBillImageFile(file);
+    const url = URL.createObjectURL(file);
+    setBillImagePreview(url);
+    setOcrRunning(true);
+    try {
+      // dynamic import to avoid SSR load
+      const tesseract = await import('tesseract.js');
+      const { createWorker } = tesseract;
+      const worker = createWorker({ logger: m => {/* could show progress */} });
+      await worker.load();
+      await worker.loadLanguage('eng');
+      await worker.initialize('eng');
+      const { data } = await worker.recognize(file);
+      await worker.terminate();
+      const text = data.text || '';
+      const parsed = parseBillFields(text);
+
+      // If we have a present/previous date, deduce bill month from presentDate
+      if (parsed.presentDate) {
+        // try dd/mm/yyyy or yyyy-mm-dd
+        const d = parsed.presentDate.replace(/-/g, '/');
+        const parts = d.split('/');
+        let dt: Date | null = null;
+        if (parts.length === 3) {
+          // handle dd/mm/yyyy or yyyy/mm/dd
+          const [p1, p2, p3] = parts.map(pt => pt.trim());
+          if (p1.length === 4) dt = new Date(Number(p1), Number(p2) - 1, Number(p3));
+          else dt = new Date(Number(p3), Number(p2) - 1, Number(p1));
+        }
+        if (dt && !isNaN(dt.getTime())) {
+          setBillMonth(dt.toISOString().slice(0, 7));
+        }
+      }
+
+      // Fill units and total if detected
+      if (parsed.units) setTotalUnits(String(parsed.units));
+      if (parsed.totalDue) setTotalAmount(String(parsed.totalDue));
+
+      // Validate required fields
+      const requiredOk = parsed.presentDate && parsed.previousDate && parsed.units && parsed.totalDue && parsed.usc;
+      if (!requiredOk) {
+        // Notify admin and give options
+        const retry = confirm('Uploaded bill could not be fully parsed for required fields (USC No, Present/Previous dates, Units, Total Due).\n\nPress OK to re-upload a different bill, or Cancel to enter details manually.');
+        if (retry) {
+          // clear current upload so admin can try again
+          setBillImageFile(null);
+          setBillImagePreview(null);
+          setTotalUnits('');
+          setTotalAmount('');
+        } else {
+          showToast('Please enter details manually', false);
+        }
+      } else {
+        showToast('Parsed bill image — values auto-filled. Verify before saving.');
+      }
+    } catch (err) {
+      console.error('OCR error', err);
+      showToast('Failed to process image', false);
+    } finally {
+      setOcrRunning(false);
+    }
+  };
+
   const saveRoomConfig = async () => {
     setSavingConfig(true);
-    const updates = units.map(u =>
+    if (!selectedPropertyId) { showToast('Select a property first', false); setSavingConfig(false); return; }
+
+    // Split into existing units (update) and temporary imported rooms (insert)
+    const toUpdate = units.filter(u => !String(u.id).startsWith('tmp-'));
+    const toInsert = units.filter(u => String(u.id).startsWith('tmp-'));
+
+    const updatePromises = toUpdate.map(u =>
       supabase.from('units').update({
         has_ac: u.has_ac,
         ac_units_used: u.ac_units_used,
         is_occupied: u.is_occupied,
       }).eq('id', u.id)
     );
-    const results = await Promise.all(updates);
-    const failed = results.filter(r => r.error);
+
+    const insertPayload = toInsert.map(u => ({
+      property_id: selectedPropertyId,
+      room_number: u.room_number,
+      status: u.is_occupied ? 'Occupied' : 'Vacant',
+      has_ac: u.has_ac,
+      ac_units_used: u.ac_units_used,
+      is_occupied: u.is_occupied,
+    }));
+
+    const results = await Promise.all([...updatePromises, ...(insertPayload.length ? [supabase.from('units').insert(insertPayload)] : [])]);
+    const failed = results.filter((r: any) => r?.error);
     if (failed.length > 0) showToast('Some rooms failed to save', false);
     else showToast('Room configuration saved');
     setSavingConfig(false);
+    // Refresh units from server to pick up inserted rows
+    fetchUnits(selectedPropertyId);
   };
 
   const handlePreview = () => {
@@ -276,6 +456,25 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
     setSavingBill(true);
     const tu = parseFloat(totalUnits);
     const ta = parseFloat(totalAmount);
+    // If an image was uploaded, attempt to store it in Supabase Storage and retrieve its public URL
+    let uploadedImageUrl: string | undefined = undefined;
+    if (billImageFile && selectedPropertyId) {
+      try {
+        const fileExt = billImageFile.name.split('.').pop();
+        const filePath = `electricity_bills/${selectedPropertyId}/${billMonth}/${Date.now()}.${fileExt}`;
+        const { error: upErr } = await supabase.storage.from('electricity_bills').upload(filePath, billImageFile, { upsert: true });
+        if (upErr) {
+          console.warn('Storage upload error', upErr);
+          showToast('Failed to upload bill image; continuing without image', false);
+        } else {
+          const { data: urlData } = supabase.storage.from('electricity_bills').getPublicUrl(filePath);
+          uploadedImageUrl = urlData.publicUrl;
+        }
+      } catch (e) {
+        console.error('Upload error', e);
+        showToast('Failed to upload bill image; continuing without image', false);
+      }
+    }
 
     // Check if bill for this month already exists
     const { data: existing } = await supabase
@@ -289,22 +488,25 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
 
     if (existing) {
       // Update existing draft
-      const { error } = await supabase.from('electricity_bills').update({
-        total_units: tu, total_amount: ta, ac_rate_per_unit: acRate, status: 'draft'
-      }).eq('id', existing.id);
+      const updatePayload: any = { total_units: tu, total_amount: ta, ac_rate_per_unit: acRate, status: 'draft' };
+      if (uploadedImageUrl) updatePayload.image_url = uploadedImageUrl;
+      const { error } = await supabase.from('electricity_bills').update(updatePayload).eq('id', existing.id);
       if (error) { showToast('Failed to update bill: ' + error.message, false); setSavingBill(false); return; }
       billId = existing.id;
       // Delete old room bills
       await supabase.from('room_electricity_bills').delete().eq('bill_id', billId);
     } else {
-      const { data: bill, error } = await supabase.from('electricity_bills').insert({
+      const insertPayload: any = {
         property_id: selectedPropertyId,
         bill_month: billMonth,
         total_units: tu,
         total_amount: ta,
         ac_rate_per_unit: acRate,
         status: 'draft',
-      }).select().single();
+      };
+      if (uploadedImageUrl) insertPayload.image_url = uploadedImageUrl;
+
+      const { data: bill, error } = await supabase.from('electricity_bills').insert(insertPayload).select().single();
       if (error || !bill) { showToast('Failed to create bill: ' + (error?.message || ''), false); setSavingBill(false); return; }
       billId = bill.id;
     }
@@ -364,6 +566,25 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
             {toast.msg}
           </motion.div>
         )}
+        {/* Bill image lightbox preview */}
+        {previewImageUrl && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          >
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="relative bg-white rounded-md shadow-xl max-w-[90vw] max-h-[90vh] p-4">
+              <button
+                onClick={() => setPreviewImageUrl(null)}
+                className="absolute top-3 right-3 p-2 rounded-full soft-button"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center justify-center">
+                <img src={previewImageUrl} alt="Bill preview" className="max-w-[80vw] max-h-[80vh] object-contain rounded" />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* Section header */}
@@ -414,14 +635,50 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={saveRoomConfig}
-                disabled={savingConfig || loadingUnits}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl btn-terracotta text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-50"
-              >
-                {savingConfig ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                Save Config
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    // Import rooms structure from property listing into local units list
+                    if (!selectedProperty) { showToast('Select a property first', false); return; }
+                    if (!selectedProperty.rooms || selectedProperty.rooms.length === 0) { showToast('No rooms found on property listing', false); return; }
+                    const imported = selectedProperty.rooms.map(r => ({
+                      id: `tmp-${r.id}`,
+                      property_id: selectedProperty.id,
+                      room_number: r.name,
+                      status: 'Vacant',
+                      has_ac: false,
+                      ac_units_used: 0,
+                      is_occupied: true,
+                    }));
+                    setUnits(imported);
+                    showToast('Imported rooms from property listing');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl soft-button text-[10px] font-extrabold uppercase tracking-widest"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Import Rooms
+                </button>
+                <button
+                  onClick={() => {
+                    const name = prompt('Room name (e.g. Master Bedroom)');
+                    if (!name) return;
+                    const id = `tmp-${Date.now()}`;
+                    setUnits(prev => [{ id, property_id: selectedPropertyId, room_number: name, status: 'Vacant', has_ac: false, ac_units_used: 0, is_occupied: true }, ...prev]);
+                    showToast('Added room — save config to persist');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl soft-button text-[10px] font-extrabold uppercase tracking-widest"
+                >
+                  + Add Room
+                </button>
+
+                <button
+                  onClick={saveRoomConfig}
+                  disabled={savingConfig || loadingUnits}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl btn-terracotta text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-50"
+                >
+                  {savingConfig ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  Save Config
+                </button>
+              </div>
             </div>
 
             {loadingUnits ? (
@@ -521,6 +778,26 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
                 </div>
               </div>
 
+              {/* Image upload for bill (OCR) */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Upload Bill Image (jpg, png)</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) handleBillImage(f);
+                    }}
+                    className="py-2"
+                  />
+                  {ocrRunning && <div className="text-[10px] font-bold text-foreground/40">Processing OCR...</div>}
+                </div>
+                {billImagePreview && (
+                  <img src={billImagePreview} alt="bill preview" className="w-48 h-auto rounded-md border border-white/30 mt-2" />
+                )}
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={handlePreview}
@@ -549,7 +826,7 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
                   <span className="flex items-center gap-1.5"><Wind className="w-3 h-3 text-blue-500" /> AC charge = AC units used × ₹{acRate} per room</span>
                   <span className="flex items-center gap-1.5"><Users className="w-3 h-3 text-amber-500" /> Common = (Total − AC) ÷ occupied rooms</span>
                   <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-foreground/30" /> Vacant rooms pay ₹0 common share</span>
-                  <span className="flex items-center gap-1.5"><Zap className="w-3 h-3 text-amber-500" /> AC charge applies regardless of occupancy</span>
+                  <span className="flex items-center gap-1.5"><Wind className="w-3 h-3 text-blue-500" /> AC charge applies only for rooms with AC installed</span>
                 </div>
               </div>
             </div>
@@ -626,14 +903,25 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
                           'w-2 h-2 rounded-full',
                           bill.status === 'published' ? 'bg-secondary' : 'bg-amber-400'
                         )} />
-                        <div>
-                          <p className="text-sm font-extrabold uppercase tracking-tight text-foreground">{bill.bill_month}</p>
-                          <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">
-                            {bill.total_units} units · {fmt(bill.total_amount)} ·{' '}
-                            <span className={bill.status === 'published' ? 'text-secondary' : 'text-amber-600'}>
-                              {bill.status}
-                            </span>
-                          </p>
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <p className="text-sm font-extrabold uppercase tracking-tight text-foreground">{bill.bill_month}</p>
+                            <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">
+                              {bill.total_units} units · {fmt(bill.total_amount)} ·{' '}
+                              <span className={bill.status === 'published' ? 'text-secondary' : 'text-amber-600'}>
+                                {bill.status}
+                              </span>
+                            </p>
+                          </div>
+                          {bill.image_url && (
+                            <button
+                              onClick={() => setPreviewImageUrl(bill.image_url || null)}
+                              className="flex items-center gap-2 p-1 rounded-md border border-white/20 hover:border-white/40"
+                              title="View bill image"
+                            >
+                              <img src={bill.image_url} alt="bill thumb" className="w-14 h-10 object-cover rounded" />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

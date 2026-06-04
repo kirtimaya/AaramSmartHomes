@@ -111,6 +111,7 @@ export type ElectricityBill = {
   ac_rate_per_unit: number;  // default 10
   status: ElectricityBillStatus;
   created_at: string;
+  image_url?: string;        // optional URL to uploaded bill image
 };
 
 export type RoomElectricityBill = {
