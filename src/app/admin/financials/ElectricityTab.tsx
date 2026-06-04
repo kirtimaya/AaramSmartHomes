@@ -350,12 +350,9 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
     setOcrRunning(true);
     try {
       // dynamic import to avoid SSR load
-      const tesseract = await import('tesseract.js');
-      const { createWorker } = tesseract;
-      const worker = createWorker({ logger: m => {/* could show progress */} });
-      await worker.load();
-      await worker.loadLanguage('eng');
-      await worker.initialize('eng');
+      const { createWorker } = await import('tesseract.js');
+      // dynamic import narrows the overload — cast to bypass the stale v2 type
+      const worker = await (createWorker as (lang: string) => Promise<any>)('eng');
       const { data } = await worker.recognize(file);
       await worker.terminate();
       const text = data.text || '';
@@ -645,7 +642,7 @@ export function ElectricityTab({ properties }: { properties: Property[] }) {
                       id: `tmp-${r.id}`,
                       property_id: selectedProperty.id,
                       room_number: r.name,
-                      status: 'Vacant',
+                      status: 'Vacant' as const,
                       has_ac: false,
                       ac_units_used: 0,
                       is_occupied: true,
