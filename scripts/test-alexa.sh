@@ -309,8 +309,12 @@ print(json.dumps({
 }))
 PY
 )
+# Include test-secret so signature check passes and timestamp guard is reached
+t12_extra_headers=()
+if [ -n "$TEST_SECRET" ]; then t12_extra_headers=(-H "x-alexa-test-secret: $TEST_SECRET"); fi
 RESP=$(curl -s -o - -w "\nHTTP_STATUS:%{http_code}" -X POST "$ENDPOINT" \
   -H "Content-Type: application/json" \
+  "${t12_extra_headers[@]}" \
   --data-raw "$OLD_PAYLOAD")
 HTTP_CODE=$(echo "$RESP" | grep -oE "HTTP_STATUS:[0-9]+" | cut -d: -f2)
 BODY=$(echo "$RESP" | grep -v "HTTP_STATUS")
