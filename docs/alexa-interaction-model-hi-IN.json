@@ -1,0 +1,216 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "आरम किचन",
+      "intents": [
+        {
+          "name": "ArrivalIntent",
+          "slots": [],
+          "samples": [
+            "मैं आ गया हूँ",
+            "मैं आ गई हूँ",
+            "मैं यहाँ हूँ",
+            "मैं यहां आ गया",
+            "मैं यहां आ गई",
+            "शेफ आ गया है",
+            "रसोइया आ गया",
+            "रसोइया आ गई",
+            "मेरी शिफ्ट शुरू हो गई है",
+            "काम शुरू करते हैं",
+            "किचन खोलो",
+            "मैं तैयार हूँ",
+            "कुक आ गया",
+            "दीदी आ गई",
+            "भैया आ गए"
+          ]
+        },
+        {
+          "name": "DepartureIntent",
+          "slots": [],
+          "samples": [
+            "मैं जा रहा हूँ",
+            "मैं जा रही हूँ",
+            "मेरा काम हो गया",
+            "शिफ्ट खत्म हो गई",
+            "खाना बन गया है",
+            "मैं निकल रहा हूँ",
+            "मैं निकल रही हूँ",
+            "घर जा रहा हूँ",
+            "घर जा रही हूँ",
+            "काम खत्म हो गया",
+            "खाना तैयार है",
+            "सब बन गया"
+          ]
+        },
+        {
+          "name": "QueryMenuIntent",
+          "slots": [
+            {
+              "name": "RequestedBlock",
+              "type": "MealBlockType"
+            }
+          ],
+          "samples": [
+            "आज का मेनू क्या है",
+            "आज क्या बना है",
+            "आज खाने में क्या है",
+            "आज क्या खाना है",
+            "मेनू बताओ",
+            "खाने में क्या है आज",
+            "आज का खाना क्या है",
+            "{RequestedBlock} में क्या बना है",
+            "{RequestedBlock} का मेनू क्या है",
+            "आज के {RequestedBlock} में क्या है",
+            "{RequestedBlock} में क्या है",
+            "आज क्या पकाया है",
+            "रसोई में क्या बन रहा है"
+          ]
+        },
+        {
+          "name": "FoodSuggestionIntent",
+          "slots": [
+            {
+              "name": "SuggestionText",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "मेरा सुझाव है {SuggestionText}",
+            "मुझे {SuggestionText} चाहिए",
+            "क्या हम {SuggestionText} बना सकते हैं",
+            "मेरी राय है {SuggestionText}",
+            "मैं {SuggestionText} का सुझाव देता हूँ",
+            "मैं {SuggestionText} का सुझाव देती हूँ",
+            "एक सुझाव है {SuggestionText}",
+            "मेरी इच्छा है {SuggestionText}",
+            "कृपया {SuggestionText} बनाइए",
+            "मुझे लगता है {SuggestionText} अच्छा होगा",
+            "हम {SuggestionText} क्यों नहीं बनाते",
+            "फीडबैक देना चाहता हूँ {SuggestionText}",
+            "फीडबैक देना चाहती हूँ {SuggestionText}"
+          ]
+        },
+        {
+          "name": "MissingItemsIntent",
+          "slots": [
+            {
+              "name": "MissingItems",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "हमारे पास {MissingItems} नहीं है",
+            "हमारे पास {MissingItems} नहीं हैं",
+            "{MissingItems} नहीं है",
+            "{MissingItems} नहीं हैं",
+            "{MissingItems} खत्म हो गया",
+            "{MissingItems} खत्म हो गई",
+            "हमें {MissingItems} चाहिए",
+            "{MissingItems} लाना होगा",
+            "{MissingItems} मंगाना होगा",
+            "{MissingItems} उपलब्ध नहीं है",
+            "{MissingItems} की कमी है",
+            "{MissingItems} स्टॉक में नहीं है",
+            "नहीं है {MissingItems}",
+            "कमी है {MissingItems} की"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": [
+            "हाँ",
+            "हां",
+            "जी हाँ",
+            "हाँ है",
+            "सब है",
+            "सब उपलब्ध है",
+            "ठीक है"
+          ]
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": [
+            "नहीं",
+            "जी नहीं",
+            "नहीं है",
+            "नहीं हैं",
+            "कुछ नहीं है"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": [
+            "मदद करो",
+            "मदद चाहिए",
+            "क्या कर सकते हो",
+            "बताओ क्या कर सकते हो"
+          ]
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": [
+            "बंद करो",
+            "रुको",
+            "बस"
+          ]
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": [
+            "रद्द करो",
+            "छोड़ो"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "MealBlockType",
+          "values": [
+            {
+              "name": {
+                "value": "Breakfast",
+                "synonyms": [
+                  "नाश्ता",
+                  "सुबह का खाना",
+                  "सुबह का नाश्ता",
+                  "ब्रेकफास्ट",
+                  "प्रातः का भोजन"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Lunch",
+                "synonyms": [
+                  "दोपहर का खाना",
+                  "दोपहर का भोजन",
+                  "लंच",
+                  "मध्याह्न भोजन",
+                  "दोपहरी"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Dinner",
+                "synonyms": [
+                  "रात का खाना",
+                  "रात का भोजन",
+                  "डिनर",
+                  "शाम का खाना",
+                  "रात्रि भोजन",
+                  "सपर"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [],
+      "delegationStrategy": "ALWAYS"
+    },
+    "prompts": []
+  }
+}
