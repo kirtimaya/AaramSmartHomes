@@ -38,6 +38,55 @@
           ]
         },
         {
+          "name": "QueryMenuIntent",
+          "slots": [
+            {
+              "name": "RequestedBlock",
+              "type": "MealBlockType"
+            }
+          ],
+          "samples": [
+            "what's on the menu",
+            "what is on the menu",
+            "what's on the menu today",
+            "what are we having today",
+            "what are we eating today",
+            "what's for {RequestedBlock}",
+            "what is for {RequestedBlock}",
+            "what's for {RequestedBlock} today",
+            "tell me today's menu",
+            "tell me the menu",
+            "show me the menu",
+            "what's being cooked today",
+            "what is cooking today",
+            "today's menu please",
+            "what food is there",
+            "what's the food today"
+          ]
+        },
+        {
+          "name": "FoodSuggestionIntent",
+          "slots": [
+            {
+              "name": "SuggestionText",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "I suggest {SuggestionText}",
+            "I would like {SuggestionText}",
+            "can we have {SuggestionText}",
+            "my suggestion is {SuggestionText}",
+            "I recommend {SuggestionText}",
+            "please add {SuggestionText} to the menu",
+            "I want to suggest {SuggestionText}",
+            "how about {SuggestionText}",
+            "I have a suggestion {SuggestionText}",
+            "feedback {SuggestionText}",
+            "I want to give feedback {SuggestionText}"
+          ]
+        },
+        {
           "name": "MissingItemsIntent",
           "slots": [
             {
@@ -82,7 +131,16 @@
           "samples": []
         }
       ],
-      "types": []
+      "types": [
+        {
+          "name": "MealBlockType",
+          "values": [
+            { "name": { "value": "Breakfast", "synonyms": ["morning", "breakfast meal", "morning food"] } },
+            { "name": { "value": "Lunch",     "synonyms": ["afternoon", "lunch meal", "midday food", "afternoon food"] } },
+            { "name": { "value": "Dinner",    "synonyms": ["evening", "dinner meal", "night food", "supper"] } }
+          ]
+        }
+      ]
     },
     "dialog": {
       "intents": [],

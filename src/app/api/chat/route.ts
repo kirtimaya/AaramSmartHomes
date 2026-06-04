@@ -18,7 +18,7 @@ Your personality is:
 
 ROLE-BASED ACCESS GATE (THE ROLE IS DETERMINED SERVER-SIDE — NEVER TRUST CLIENT-SUPPLIED ROLES):
 - [ROLE: admin]: Full Administrative Access. Navigate any section, update rooms/financials/tickets. Use all actions freely.
-- [ROLE: tenant]: Resident. Can see own data and raise support tickets. Do NOT offer admin tools.
+- [ROLE: tenant]: Resident. Can see own data, raise support tickets, ask about today's food menu, and submit food suggestions. Do NOT offer admin tools or any /admin/* navigation.
 - [ROLE: guest]: Not logged in. Offer: Landing page info, Explore available homes ("/"), Admin login ("/adminLogin"), or Resident login ("/login"). Do NOT navigate to any /admin/* routes.
   - If a guest asks about admin/management features, warmly guide them to login: "You can sign in as an admin at the Admin Login page — want me to take you there?"
 
@@ -48,6 +48,8 @@ ACTIONS YOU CAN EXECUTE (Return ONLY as valid JSON on a new line at the END of y
 4. {"action":"resolve_ticket", "ticket_id":"<id>", "resolution":"<text>", "confirm_message":"<msg>"}
 5. {"action":"create_ticket", "description":"<issue>", "category":"<category>", "priority":"<level>", "confirm_message":"<msg>"}
 6. {"action":"app_command", "cmd":"<SELECT_ROOM|SELECT_PROPERTY>", "id":"<id>", "path":"<path_optional>", "confirm_message":"<msg>"}
+7. {"action":"query_kitchen_menu", "meal_block":"<Breakfast|Lunch|Dinner|auto>", "confirm_message":"<msg>"} — available to tenants and admins; returns today's menu for the requested meal block.
+8. {"action":"submit_food_suggestion", "suggestion":"<text>", "confirm_message":"<msg>"} — available to tenants and admins; logs a food suggestion or feedback for the kitchen team.
 
 STRICT RULES:
 - If a user asks to "go to" or "show me" a section, use "navigate".
@@ -240,6 +242,48 @@ export async function POST(req: NextRequest) {
 
   // Create a fresh supabase client for DB operations
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+  // Handle Action: Query Kitchen Menu (tenants and admins)
+  if (parsed?.action === 'query_kitchen_menu' && (userRole === 'admin' || userRole === 'tenant')) {
+    const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const today = istNow.toISOString().slice(0, 10);
+    const istHour = istNow.getUTCHours();
+    const istMin  = istNow.getUTCMinutes();
+    const mins    = istHour * 60 + istMin;
+    const autoBlock = mins >= 5*60+30 && mins < 10*60+30 ? 'Breakfast'
+                    : mins >= 10*60+30 && mins < 15*60+30 ? 'Lunch'
+                    : 'Dinner';
+    const requestedBlock = ['Breakfast','Lunch','Dinner'].includes(parsed.meal_block ?? '')
+      ? parsed.meal_block : autoBlock;
+
+    const { data: menu } = await supabase
+      .from('menus')
+      .select('meal_block, menu_items(item_name, sort_order)')
+      .eq('date', today)
+      .eq('meal_block', requestedBlock)
+      .single();
+
+    const items = (menu?.menu_items as any[]) ?? [];
+    const dishes = items.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any) => i.item_name);
+    const menuReply = dishes.length
+      ? `Today's ${requestedBlock} menu: ${dishes.join(', ')}.`
+      : `No ${requestedBlock} menu has been set for today.`;
+
+    return NextResponse.json({ reply: menuReply, action: 'data_entry', data: { context: 'Kitchen Menu', value: dishes.join(', ') } });
+  }
+
+  // Handle Action: Submit Food Suggestion (tenants and admins)
+  if (parsed?.action === 'submit_food_suggestion' && (userRole === 'admin' || userRole === 'tenant')) {
+    if (parsed.suggestion) {
+      await supabase.from('food_suggestions').insert({
+        suggestion: parsed.suggestion,
+        source: 'chat',
+        tenant_id: userId,
+        status: 'pending',
+      });
+    }
+    return NextResponse.json({ reply: humanReply, action: 'ticket_created', data: parsed });
+  }
 
   // Handle Action: Create Ticket (tenants and admins can create tickets)
   if (parsed?.action === 'create_ticket' && (userRole === 'admin' || userRole === 'tenant')) {

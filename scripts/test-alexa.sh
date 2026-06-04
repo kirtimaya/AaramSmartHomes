@@ -1,15 +1,42 @@
 #!/usr/bin/env bash
-# Test the Alexa /api/alexa webhook locally.
-# Signature verification is bypassed in NODE_ENV=development.
-# Usage:  ./scripts/test-alexa.sh [BASE_URL]
-#   BASE_URL defaults to http://localhost:3000
-#   Pass ngrok URL once exposed:  ./scripts/test-alexa.sh https://xxxx.ngrok-free.app
+# Test the Alexa /api/alexa webhook.
+# Signature verification is bypassed in dev (NODE_ENV != production).
+# In production the x-alexa-test-secret header is used as bypass.
+#
+# Usage:
+#   ./scripts/test-alexa.sh [BASE_URL] [--block Breakfast|Lunch|Dinner]
+#
+# Examples:
+#   ./scripts/test-alexa.sh                                        # localhost, auto IST block
+#   ./scripts/test-alexa.sh --block Breakfast                      # localhost, force Breakfast
+#   ./scripts/test-alexa.sh https://aaram-smart-homes.vercel.app   # production, auto block
+#   ./scripts/test-alexa.sh https://aaram-smart-homes.vercel.app --block Dinner
 
 set -euo pipefail
 
-BASE="${1:-http://localhost:3000}"
+# ── Parse arguments ───────────────────────────────────────────────────────────
+FORCE_BLOCK=""
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --block)
+      FORCE_BLOCK="${2:-}"
+      shift 2 ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift ;;
+  esac
+done
+
+BASE="${POSITIONAL_ARGS[0]:-http://localhost:3000}"
 ENDPOINT="$BASE/api/alexa"
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+# Validate --block value
+if [ -n "$FORCE_BLOCK" ] && [[ ! "$FORCE_BLOCK" =~ ^(Breakfast|Lunch|Dinner)$ ]]; then
+  echo "Error: --block must be Breakfast, Lunch, or Dinner (got: $FORCE_BLOCK)"
+  exit 1
+fi
 
 # Load ALEXA_SKILL_ID from .env.local if not already in environment
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,7 +151,10 @@ PY
 alexa_post() {
   local extra_headers=()
   if [ -n "$TEST_SECRET" ]; then
-    extra_headers=(-H "x-alexa-test-secret: $TEST_SECRET")
+    extra_headers+=(-H "x-alexa-test-secret: $TEST_SECRET")
+  fi
+  if [ -n "$FORCE_BLOCK" ]; then
+    extra_headers+=(-H "x-alexa-force-block: $FORCE_BLOCK")
   fi
   curl -s -X POST "$ENDPOINT" \
     -H "Content-Type: application/json" \
@@ -177,9 +207,14 @@ echo ""
 echo -e "${CYAN}╔════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║   Aaram Kitchen — Alexa Webhook Local Test Suite    ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════╝${NC}"
-info "Endpoint : $ENDPOINT"
-info "Skill ID : $SKILL_ID"
-info "IST time : $(TZ=Asia/Kolkata date '+%H:%M %Z  (meal block auto-detected by webhook)')"
+info "Endpoint    : $ENDPOINT"
+info "Skill ID    : $SKILL_ID"
+info "IST time    : $(TZ=Asia/Kolkata date '+%H:%M %Z')"
+if [ -n "$FORCE_BLOCK" ]; then
+  info "Force block : $FORCE_BLOCK  (--block override active — bypasses IST detection)"
+else
+  info "Force block : none  (auto-detected from IST time)"
+fi
 
 header "0 / Connectivity"
 RETRIES=0
@@ -265,6 +300,37 @@ RESP=$(alexa_post "$(make_intent "AMAZON.StopIntent")")
 show_response "$RESP"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10b: QueryMenuIntent — tenant asks what's on the menu (no block)
+# ─────────────────────────────────────────────────────────────────────────────
+header "10b / QueryMenuIntent  (no block slot — auto IST or forceBlock)"
+RESP=$(alexa_post "$(make_intent "QueryMenuIntent")")
+show_response "$RESP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10c: QueryMenuIntent — tenant explicitly asks for Lunch
+# ─────────────────────────────────────────────────────────────────────────────
+header "10c / QueryMenuIntent  (slot: RequestedBlock=Lunch)"
+SLOTS='{"RequestedBlock":{"name":"RequestedBlock","value":"Lunch","confirmationStatus":"NONE"}}'
+RESP=$(alexa_post "$(make_intent "QueryMenuIntent" "{}" "$SLOTS")")
+show_response "$RESP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10d: FoodSuggestionIntent — tenant suggests a dish
+# ─────────────────────────────────────────────────────────────────────────────
+header "10d / FoodSuggestionIntent  →  food_suggestions.insert"
+SLOTS='{"SuggestionText":{"name":"SuggestionText","value":"can we have biryani next week","confirmationStatus":"NONE"}}'
+RESP=$(alexa_post "$(make_intent "FoodSuggestionIntent" "{}" "$SLOTS")")
+show_response "$RESP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10e: FoodSuggestionIntent — empty slot (error path)
+# ─────────────────────────────────────────────────────────────────────────────
+header "10e / FoodSuggestionIntent  — empty slot  (error-handling path)"
+SLOTS='{"SuggestionText":{"name":"SuggestionText","confirmationStatus":"NONE"}}'
+RESP=$(alexa_post "$(make_intent "FoodSuggestionIntent" "{}" "$SLOTS")")
+show_response "$RESP"
+
 # TEST 10: Unknown intent (fallback path)
 # ─────────────────────────────────────────────────────────────────────────────
 header "10 / Unknown intent  (fallback path)"

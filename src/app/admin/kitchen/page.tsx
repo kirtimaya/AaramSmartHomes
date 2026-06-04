@@ -9,13 +9,13 @@ import {
   ChefHat, ShoppingCart, MessageSquare,
   Plus, Trash2, CheckCircle2, Loader2,
   Save, RefreshCw, UtensilsCrossed, Mic,
-  AlertCircle, Package, Clock
+  AlertCircle, Package, Clock, Lightbulb, Edit3
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
-type Tab = 'menu' | 'log' | 'reorder';
+type Tab = 'menu' | 'log' | 'reorder' | 'suggestions';
 
 interface MenuRow { id: string; notes: string | null; }
 interface Dish    { id?: string; name: string; }
@@ -38,6 +38,15 @@ interface GroceryAlert {
   extracted_items: string[];
   logged_at: string;
   resolved_at: string | null;
+}
+
+interface FoodSuggestion {
+  id: string;
+  suggestion: string;
+  source: 'alexa' | 'chat' | 'web';
+  status: 'pending' | 'noted' | 'implemented';
+  admin_note: string | null;
+  created_at: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -602,15 +611,180 @@ function ReorderListTab() {
   );
 }
 
+// ── Tab 4: Food Suggestions ───────────────────────────────────────────────────
+
+const STATUS_META = {
+  pending:     { label: 'Pending',     color: 'bg-amber-400/10 text-amber-600 border-amber-400/20'   },
+  noted:       { label: 'Noted',       color: 'bg-blue-400/10 text-blue-600 border-blue-400/20'      },
+  implemented: { label: 'Implemented', color: 'bg-emerald-400/10 text-emerald-600 border-emerald-400/20' },
+};
+
+const SOURCE_META = {
+  alexa: { label: 'Alexa', color: 'text-primary'         },
+  chat:  { label: 'Chat',  color: 'text-emerald-600'     },
+  web:   { label: 'Web',   color: 'text-foreground/40'   },
+};
+
+function SuggestionsTab() {
+  const [suggestions, setSuggestions] = useState<FoodSuggestion[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [filter, setFilter]           = useState<'pending' | 'noted' | 'implemented' | 'all'>('pending');
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteText, setNoteText]       = useState('');
+  const [saving, setSaving]           = useState(false);
+
+  const fetchSuggestions = useCallback(async () => {
+    setLoading(true);
+    let query = supabase.from('food_suggestions').select('*').order('created_at', { ascending: false });
+    if (filter !== 'all') query = query.eq('status', filter);
+    const { data } = await query;
+    setSuggestions(data ?? []);
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+
+  const updateStatus = async (id: string, status: FoodSuggestion['status']) => {
+    await supabase.from('food_suggestions').update({ status }).eq('id', id);
+    setSuggestions(p => p.map(s => s.id === id ? { ...s, status } : s));
+  };
+
+  const saveNote = async (id: string) => {
+    setSaving(true);
+    await supabase.from('food_suggestions').update({ admin_note: noteText.trim() || null }).eq('id', id);
+    setSuggestions(p => p.map(s => s.id === id ? { ...s, admin_note: noteText.trim() || null } : s));
+    setEditingNote(null);
+    setSaving(false);
+  };
+
+  const counts = {
+    pending:     suggestions.filter(s => s.status === 'pending').length,
+    noted:       suggestions.filter(s => s.status === 'noted').length,
+    implemented: suggestions.filter(s => s.status === 'implemented').length,
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        {(['pending', 'noted', 'implemented'] as const).map(s => (
+          <div key={s} className="soft-card p-4 border border-white bg-white/40">
+            <p className="text-[10px] font-black text-foreground/30 uppercase tracking-widest capitalize">{s}</p>
+            <p className="text-2xl font-black text-foreground mt-1">{counts[s]}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter + refresh */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 bg-foreground/5 p-1 rounded-xl">
+          {(['pending', 'noted', 'implemented', 'all'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={cn('px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all',
+                filter === f ? 'bg-white shadow-lg text-primary' : 'text-foreground/30 hover:text-foreground')}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button onClick={fetchSuggestions} className="soft-button w-8 h-8 border border-white text-foreground/30 hover:text-primary">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
+      ) : suggestions.length === 0 ? (
+        <EmptyState icon={Lightbulb} text="No suggestions yet. Tenants can give feedback via Alexa or the Aara chatbot." />
+      ) : (
+        <div className="space-y-3">
+          {suggestions.map(s => {
+            const meta   = STATUS_META[s.status];
+            const source = SOURCE_META[s.source] ?? SOURCE_META.web;
+            return (
+              <motion.div key={s.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className="soft-card p-5 border border-white bg-white/40 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-foreground leading-relaxed">"{s.suggestion}"</p>
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      <span className={cn('text-[10px] font-black uppercase tracking-widest', source.color)}>
+                        via {source.label}
+                      </span>
+                      <span className="text-[10px] text-foreground/30 font-bold flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {timeAgo(s.created_at)}
+                      </span>
+                      <span className={cn('px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest', meta.color)}>
+                        {meta.label}
+                      </span>
+                    </div>
+                    {s.admin_note && (
+                      <p className="mt-2 text-xs text-foreground/50 italic bg-foreground/5 px-3 py-2 rounded-xl border border-foreground/10">
+                        Note: {s.admin_note}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Status actions */}
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    {s.status !== 'noted' && (
+                      <button onClick={() => updateStatus(s.id, 'noted')}
+                        className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-400/20 text-[10px] font-black uppercase tracking-wide hover:bg-blue-500/20 transition-all">
+                        Mark Noted
+                      </button>
+                    )}
+                    {s.status !== 'implemented' && (
+                      <button onClick={() => updateStatus(s.id, 'implemented')}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-400/20 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-500/20 transition-all">
+                        Mark Done
+                      </button>
+                    )}
+                    <button onClick={() => { setEditingNote(s.id); setNoteText(s.admin_note ?? ''); }}
+                      className="px-3 py-1.5 rounded-lg soft-button border border-white text-foreground/40 text-[10px] font-black uppercase tracking-wide flex items-center gap-1">
+                      <Edit3 className="w-3 h-3" /> Note
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inline note editor */}
+                {editingNote === s.id && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 pt-1">
+                    <input
+                      autoFocus
+                      value={noteText}
+                      onChange={e => setNoteText(e.target.value)}
+                      placeholder="Add an internal note for this suggestion…"
+                      className="soft-ui-in flex-1 px-4 py-2.5 text-xs focus:outline-none bg-white/70 border border-white"
+                    />
+                    <button onClick={() => saveNote(s.id)} disabled={saving}
+                      className="btn-terracotta px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      Save
+                    </button>
+                    <button onClick={() => setEditingNote(null)}
+                      className="soft-button px-3 py-2 border border-white text-foreground/30 text-[10px] font-black">
+                      ✕
+                    </button>
+                  </motion.div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function KitchenPage() {
   const [tab, setTab] = useState<Tab>('menu');
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: 'menu',    label: 'Menu Builder',   icon: ChefHat      },
-    { id: 'log',     label: 'Alexa Log',      icon: MessageSquare },
-    { id: 'reorder', label: 'Reorder List',   icon: ShoppingCart },
+    { id: 'menu',        label: 'Menu Builder',  icon: ChefHat       },
+    { id: 'log',         label: 'Alexa Log',     icon: MessageSquare },
+    { id: 'reorder',     label: 'Reorder List',  icon: ShoppingCart  },
+    { id: 'suggestions', label: 'Suggestions',   icon: Lightbulb     },
   ];
 
   return (
@@ -658,9 +832,10 @@ export default function KitchenPage() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
           >
-            {tab === 'menu'    && <MenuBuilderTab />}
-            {tab === 'log'     && <AlexaLogTab />}
-            {tab === 'reorder' && <ReorderListTab />}
+            {tab === 'menu'        && <MenuBuilderTab />}
+            {tab === 'log'         && <AlexaLogTab />}
+            {tab === 'reorder'     && <ReorderListTab />}
+            {tab === 'suggestions' && <SuggestionsTab />}
           </motion.div>
         </AnimatePresence>
       </div>

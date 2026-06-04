@@ -1,18 +1,16 @@
 /**
  * Alexa Custom Skill Webhook — Aaram Kitchen
  *
- * Single POST endpoint that handles every Alexa request:
- *   LaunchRequest / ArrivalIntent  → read today's menu for current IST meal block
- *   DepartureIntent                → read next meal's ingredients, ask for availability
- *   AMAZON.NoIntent                → prompt cook to say what's missing
- *   MissingItemsIntent             → Gemini extracts ingredients → logs to grocery_alerts
- *   AMAZON.YesIntent               → confirm all items available, end session
+ * Intent routing and access levels:
+ *   LaunchRequest / ArrivalIntent  → read today's menu              (all users)
+ *   QueryMenuIntent                → read menu for any block         (all users / tenants)
+ *   FoodSuggestionIntent           → log a food suggestion           (all users / tenants)
+ *   DepartureIntent                → read next meal's ingredients    (cook / admin)
+ *   MissingItemsIntent             → Gemini extract → grocery_alerts (cook / admin)
+ *   AMAZON.Yes/NoIntent            → inventory confirmation flow     (cook / admin)
  *
- * Env vars required:
- *   NEXT_PUBLIC_SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY   (or NEXT_PUBLIC_SUPABASE_ANON_KEY as fallback)
- *   GEMINI_API_KEY
- *   ALEXA_SKILL_ID              (amzn1.ask.skill.xxx — from Alexa Developer Console)
+ * Developer test mode (requires ALEXA_TEST_SECRET header):
+ *   x-alexa-force-block: Breakfast|Lunch|Dinner  → override IST time detection
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -265,9 +263,17 @@ Example output: ["onions", "tomatoes", "chicken breast", "cumin seeds"]`;
 
 interface HandlerResult { response: NextResponse; reply: string; mealBlock?: string; }
 
-async function handleArrival(sessionAttrs: Record<string, unknown>): Promise<HandlerResult> {
-  const { date, hour, minute } = getIST();
-  const block = currentMealBlock(hour, minute);
+// resolveBlock: forceBlock (dev override) → slotBlock (user said "breakfast") → IST time
+function resolveBlock(forceBlock: MealBlock | null, slotBlock?: string | null): MealBlock {
+  if (forceBlock) return forceBlock;
+  if (slotBlock === 'Breakfast' || slotBlock === 'Lunch' || slotBlock === 'Dinner') return slotBlock;
+  const { hour, minute } = getIST();
+  return currentMealBlock(hour, minute);
+}
+
+async function handleArrival(sessionAttrs: Record<string, unknown>, forceBlock: MealBlock | null): Promise<HandlerResult> {
+  const { date } = getIST();
+  const block = resolveBlock(forceBlock);
   const menu = await fetchMenu(date, block);
 
   if (!menu?.menu_items?.length) {
@@ -308,9 +314,82 @@ async function handleArrival(sessionAttrs: Record<string, unknown>): Promise<Han
   };
 }
 
-async function handleDeparture(sessionAttrs: Record<string, unknown>): Promise<HandlerResult> {
-  const { date, hour, minute } = getIST();
-  const block = (sessionAttrs?.currentBlock as MealBlock | undefined) ?? currentMealBlock(hour, minute);
+async function handleQueryMenu(
+  sessionAttrs: Record<string, unknown>,
+  forceBlock: MealBlock | null,
+  slotBlock?: string | null
+): Promise<HandlerResult> {
+  const { date } = getIST();
+  const block = resolveBlock(forceBlock, slotBlock);
+  const menu = await fetchMenu(date, block);
+
+  if (!menu?.menu_items?.length) {
+    const reply = `No ${block} menu has been set for today.`;
+    return {
+      reply, mealBlock: block,
+      response: speak(
+        `The ${block} menu for today hasn't been set yet. Please check with the kitchen team.`,
+        { endSession: true }
+      ),
+    };
+  }
+
+  const dishes = menu.menu_items
+    .slice().sort((a, b) => a.sort_order - b.sort_order)
+    .map((i) => i.item_name);
+
+  const reply = `Today's ${block}: ${dishes.join(', ')}.`;
+  return {
+    reply, mealBlock: block,
+    response: speak(
+      `Today's <emphasis level="moderate">${block}</emphasis> menu is:
+       <break time="400ms"/>
+       ${dishes.join(', <break time="200ms"/> ')}.
+       Enjoy your meal!`,
+      { endSession: true }
+    ),
+  };
+}
+
+async function handleFoodSuggestion(
+  suggestion: string,
+  userId: string | null
+): Promise<HandlerResult> {
+  if (!suggestion.trim()) {
+    return {
+      reply: 'No suggestion captured.',
+      response: speak(
+        "I didn't catch your suggestion. Please say, for example: " +
+        '<emphasis level="moderate">I suggest we have biryani next week</emphasis>.',
+        { reprompt: 'What would you like to suggest?', endSession: false }
+      ),
+    };
+  }
+
+  await db.from('food_suggestions').insert({
+    suggestion: suggestion.trim(),
+    source: 'alexa',
+    tenant_id: userId ?? null,
+    status: 'pending',
+  });
+
+  const reply = `Logged suggestion: "${suggestion}".`;
+  return {
+    reply,
+    response: speak(
+      `Thank you! I've passed your suggestion to the kitchen team:
+       <break time="300ms"/>
+       <emphasis level="moderate">${suggestion}</emphasis>.
+       <break time="400ms"/>
+       We appreciate your feedback. Goodbye!`,
+      { endSession: true }
+    ),
+  };
+}
+
+async function handleDeparture(sessionAttrs: Record<string, unknown>, forceBlock: MealBlock | null): Promise<HandlerResult> {
+  const { date } = getIST();
+  const block = resolveBlock(forceBlock, sessionAttrs?.currentBlock as string | undefined);
   const { block: nextBlock, addDays } = nextMealBlock(block);
   const nextDate = addDays > 0 ? istDatePlusDays(addDays) : date;
 
@@ -426,12 +505,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { request, session } = body;
-  const sessionId   = session?.sessionId ?? 'unknown';
+  const sessionId    = session?.sessionId ?? 'unknown';
   const sessionAttrs = (session?.attributes ?? {}) as Record<string, unknown>;
+
+  // Developer test mode: extract forceBlock from header (only valid with test secret)
+  const isTestMode = !!(
+    process.env.ALEXA_TEST_SECRET &&
+    req.headers.get('x-alexa-test-secret') === process.env.ALEXA_TEST_SECRET
+  );
+  const forceBlockRaw = isTestMode ? req.headers.get('x-alexa-force-block') : null;
+  const forceBlock: MealBlock | null =
+    forceBlockRaw === 'Breakfast' || forceBlockRaw === 'Lunch' || forceBlockRaw === 'Dinner'
+      ? forceBlockRaw
+      : null;
 
   // Helper: log + return in one step
   const log = (
-    result: HandlerResult | { response: NextResponse; reply: string; mealBlock?: string },
+    result: HandlerResult,
     intent: string,
     utterance?: string | null
   ) => {
@@ -446,12 +536,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ version: '1.0', response: {} });
     }
 
-    // ── Skill opened or ArrivalIntent ──
+    // ── Skill opened or ArrivalIntent (cook check-in — all roles) ──
     if (
       request.type === 'LaunchRequest' ||
       request.intent?.name === 'ArrivalIntent'
     ) {
-      return log(await handleArrival(sessionAttrs), 'ArrivalIntent');
+      return log(await handleArrival(sessionAttrs, forceBlock), 'ArrivalIntent');
     }
 
     // ── Intent routing ──
@@ -460,8 +550,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       switch (intent) {
 
+        // ── All roles: read-only menu query ──
+        case 'QueryMenuIntent': {
+          const slotBlock = slots?.RequestedBlock?.value ?? null;
+          return log(await handleQueryMenu(sessionAttrs, forceBlock, slotBlock), 'QueryMenuIntent');
+        }
+
+        // ── All roles: food suggestion ──
+        case 'FoodSuggestionIntent': {
+          const suggestion = slots?.SuggestionText?.value?.trim() ?? '';
+          // userId is not available from Alexa without account linking; pass null
+          return log(await handleFoodSuggestion(suggestion, null), 'FoodSuggestionIntent', suggestion);
+        }
+
+        // ── Cook / admin only: departure + inventory check ──
         case 'DepartureIntent':
-          return log(await handleDeparture(sessionAttrs), 'DepartureIntent');
+          return log(await handleDeparture(sessionAttrs, forceBlock), 'DepartureIntent');
 
         case 'MissingItemsIntent': {
           const utterance = slots?.MissingItems?.value?.trim() ?? '';
@@ -502,12 +606,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         case 'AMAZON.HelpIntent':
           return speak(
-            'I can help with your kitchen workflow. ' +
-            'When you arrive, say <emphasis level="moderate">I have arrived</emphasis> to hear today\'s menu. ' +
-            'When you finish cooking, say <emphasis level="moderate">I am leaving</emphasis> ' +
-            'and I will read out tomorrow\'s ingredient list.',
+            'Here is what I can do. ' +
+            'To hear today\'s menu, say <emphasis level="moderate">what\'s on the menu</emphasis> ' +
+            'or <emphasis level="moderate">what\'s for breakfast</emphasis>. ' +
+            'To give a suggestion, say <emphasis level="moderate">I suggest we have biryani</emphasis>. ' +
+            'For the kitchen crew: say <emphasis level="moderate">I have arrived</emphasis> to start your shift, ' +
+            'or <emphasis level="moderate">I am leaving</emphasis> to check tomorrow\'s ingredients.',
             {
-              reprompt: "Say 'I have arrived' or 'I am leaving'.",
+              reprompt: "Say 'what's on the menu' or 'I have arrived'.",
               endSession: false,
               sessionAttributes: sessionAttrs,
             }
