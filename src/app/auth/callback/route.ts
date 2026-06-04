@@ -11,9 +11,13 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
-    
-    const { data: { session } } = await supabase.auth.exchangeCodeForSession(code);
-    
+
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      return NextResponse.redirect(new URL('/login?error=auth_failed', requestUrl.origin));
+    }
+
     const rawRedirect = requestUrl.searchParams.get('redirect') || '/tenant';
     // Only allow relative paths; block open redirects like //evil.com or https://evil.com
     const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/tenant';

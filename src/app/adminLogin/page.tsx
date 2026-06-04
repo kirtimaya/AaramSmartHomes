@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
-  ShieldCheck, 
-  Mail, 
-  Lock, 
-  ArrowRight, 
-  Loader2, 
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  ArrowRight,
+  Loader2,
   AlertCircle,
   Fingerprint,
   ChevronLeft,
@@ -23,8 +23,6 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 
-const ROOT_EMAIL = process.env.NEXT_PUBLIC_ROOT_EMAIL || '';
-
 function AdminLoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,13 +30,60 @@ function AdminLoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'login' | 'signup' | 'pending-verify' | 'request-access' | 'pending-approval' | 'verifying-token'>('login');
   const [user, setUser] = useState<any>(null);
+  const [isRoot, setIsRoot] = useState(false);
   const [tableMissing, setTableMissing] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
-  
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
+
+  const fetchPendingRequests = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    try {
+      const res = await fetch('/api/admin/pending-requests', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) {
+        if (res.status !== 403) setError('Unable to load pending requests.');
+        return;
+      }
+      const { requests } = await res.json();
+      setPendingRequests(requests);
+    } catch {
+      setError('Unable to load pending requests.');
+    }
+  };
+
+  const checkAdminStatus = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setStep('login'); return; }
+    try {
+      const res = await fetch('/api/admin/status', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error();
+      const { isAdmin, isRoot: root, hasPendingRequest } = await res.json();
+      setIsRoot(root);
+      if (root) {
+        await fetchPendingRequests();
+        setLoading(false);
+      } else if (isAdmin) {
+        router.push('/admin');
+      } else if (hasPendingRequest) {
+        setStep('pending-approval');
+        setLoading(false);
+      } else {
+        setStep('request-access');
+        setLoading(false);
+      }
+    } catch {
+      setError('Unable to verify access. Please try again.');
+      setLoading(false);
+    }
+  };
 
   // 1. Initial State & Token Handling
   useEffect(() => {
@@ -48,10 +93,7 @@ function AdminLoginContent() {
       const params = new URLSearchParams(hash.replace('#', '?'));
       const errorMsg = params.get('error_description') || params.get('error') || 'Authentication failed';
       setError(errorMsg.replace(/\+/g, ' '));
-      // If OTP expired, we still want to let them see the login form
-      if (hash.includes('otp_expired')) {
-        setStep('login');
-      }
+      if (hash.includes('otp_expired')) setStep('login');
     }
 
     // Check if tables exist
@@ -60,115 +102,52 @@ function AdminLoginContent() {
     });
 
     // Check current auth status
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUser(user);
-        const email = user.email?.toLowerCase().trim();
-        if (email === ROOT_EMAIL) {
-          fetchPendingRequests();
-        }
-        checkAdminStatus(user.email!);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        checkAdminStatus();
       }
     });
 
     // Handle verification token from root approval link
     if (token) handleTokenVerification(token);
-  }, [token]);
-
-  const fetchPendingRequests = async () => {
-    const { data, error } = await supabase
-      .from('admin_requests')
-      .select('*')
-      .eq('status', 'pending');
-    if (data) setPendingRequests(data);
-    if (error) {
-      console.error('Fetch requests error:', error);
-      setError(`Fetch failed [${error.code}]: ${error.message}`);
-      if (error.code === '42P01') setTableMissing(true);
-    }
-  };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Subscribe to realtime updates for root
   useEffect(() => {
-    const email = user?.email?.toLowerCase().trim();
-    if (email === ROOT_EMAIL) {
-      const channel = supabase
-        .channel('admin-grid-sync')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'admin_requests' 
-        }, () => {
-          fetchPendingRequests();
-        })
-        .subscribe();
-      
-      return () => { channel.unsubscribe(); };
-    }
-  }, [user]);
+    if (!isRoot) return;
+    const channel = supabase
+      .channel('admin-grid-sync')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'admin_requests'
+      }, () => {
+        fetchPendingRequests();
+      })
+      .subscribe();
+    return () => { channel.unsubscribe(); };
+  }, [isRoot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const approveRequest = async (request: any) => {
     setApprovingId(request.id);
     try {
-      // 1. Add to admins
-      const { error: adminErr } = await supabase
-        .from('admins')
-        .insert([{ email: request.email, added_by: 'ROOT_DIRECT' }]);
-      
-      if (adminErr && adminErr.code !== '23505') throw adminErr;
-
-      // 2. Update request status
-      await supabase
-        .from('admin_requests')
-        .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: ROOT_EMAIL })
-        .eq('id', request.id);
-
-      // 3. Refresh
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session expired');
+      const res = await fetch('/api/admin/approve', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requestId: request.id, requestEmail: request.email }),
+      });
+      if (!res.ok) throw new Error();
       fetchPendingRequests();
-    } catch (err: any) {
-      alert('Approval failed: ' + err.message);
+    } catch {
+      setError('Approval failed. Please try again.');
     } finally {
       setApprovingId(null);
-    }
-  };
-
-  const checkAdminStatus = async (userEmail: string) => {
-    if (!userEmail) return;
-    const normalized = userEmail.toLowerCase().trim();
-    
-    // ROOT BYPASS
-    if (normalized === ROOT_EMAIL) {
-      // Stay on login page to manage requests, or we can add a bypass button
-      return;
-    }
-
-    const { data: admin, error: adminErr } = await supabase.from('admins').select('*').eq('email', normalized).single();
-    
-    if (adminErr && adminErr.code !== 'PGRST116') { // Ignore 'not found'
-      console.error('Admin check error:', adminErr);
-      setError('Admin verification failed: ' + adminErr.message);
-    }
-
-    if (admin) {
-      router.push('/admin');
-    } else {
-      // Check if there's already a pending request
-      const { data: request, error: reqErr } = await supabase
-        .from('admin_requests')
-        .select('*')
-        .eq('email', normalized)
-        .eq('status', 'pending')
-        .single();
-      
-      if (reqErr && reqErr.code !== 'PGRST116') {
-        console.error('Request status check error:', reqErr);
-      }
-      
-      if (request) {
-        setStep('pending-approval');
-      } else {
-        setStep('request-access');
-      }
     }
   };
 
@@ -176,21 +155,15 @@ function AdminLoginContent() {
     setStep('verifying-token');
     setLoading(true);
     try {
-      const { data: request, error: reqErr } = await supabase
-        .from('admin_requests')
-        .select('*')
-        .eq('token', verifyToken)
-        .eq('status', 'pending')
-        .single();
-
-      if (reqErr || !request) throw new Error('Invalid token');
-
-      await supabase.from('admins').insert([{ email: request.email, added_by: 'ROOT_LINK' }]);
-      await supabase.from('admin_requests').update({ status: 'approved' }).eq('id', request.id);
-      
+      const res = await fetch('/api/admin/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: verifyToken }),
+      });
+      if (!res.ok) throw new Error('Invalid or expired token');
       router.push('/admin');
-    } catch (err: any) {
-      setError('Token verification failed: ' + err.message);
+    } catch {
+      setError('Token verification failed. The link may be invalid or expired.');
       setStep('login');
     } finally {
       setLoading(false);
@@ -202,17 +175,14 @@ function AdminLoginContent() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { data: { user }, error } = await supabase.auth.signInWithPassword({ email, password });
-    
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else if (user) {
-      setUser(user);
-      if (user.email === ROOT_EMAIL) {
-        fetchPendingRequests();
-      }
-      checkAdminStatus(user.email!);
+    } else if (data.user) {
+      setUser(data.user);
+      checkAdminStatus();
     }
   };
 
@@ -220,8 +190,8 @@ function AdminLoginContent() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { data, error } = await supabase.auth.signUp({ 
-      email, 
+    const { data, error } = await supabase.auth.signUp({
+      email,
       password,
       options: { emailRedirectTo: `${window.location.origin}/adminLogin` }
     });
@@ -230,18 +200,17 @@ function AdminLoginContent() {
       setError(error.message);
       setLoading(false);
     } else {
-      // PROACTIVELY CREATE REQUEST
-      const { error: reqErr } = await supabase.from('admin_requests').insert([{ 
-        email: email, 
+      // Pre-register the admin access request
+      const { error: reqErr } = await supabase.from('admin_requests').insert([{
+        email: email.toLowerCase().trim(),
         token: crypto.randomUUID(),
-        status: 'pending' 
+        status: 'pending'
       }]);
-      
-      if (reqErr && reqErr.code !== '23505') { 
-        console.error('Request creation failed:', reqErr);
-        setError(`Onboarding request failed [${reqErr.code}]: ${reqErr.message}`);
+
+      if (reqErr && reqErr.code !== '23505') {
+        setError('Account created, but access request failed. Please contact the administrator.');
       }
-      
+
       setStep('pending-verify');
       setLoading(false);
     }
@@ -251,24 +220,16 @@ function AdminLoginContent() {
     if (!user) return;
     setLoading(true);
     try {
-      const email = user.email?.toLowerCase().trim();
-      if (email === ROOT_EMAIL) {
-        // Just refresh if they are actually root but stuck
-        await fetchPendingRequests();
-        setStep('login'); // This will trigger the useEffect re-check
-        return;
-      }
-
-      const verifyToken = crypto.randomUUID();
-      const { error } = await supabase.from('admin_requests').insert([{ 
-        email: user.email, 
-        token: verifyToken,
-        status: 'pending' 
-      }]);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session expired');
+      const res = await fetch('/api/admin/request', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error();
       setStep('pending-approval');
-    } catch (err: any) {
-      setError(err.message);
+    } catch {
+      setError('Unable to submit request. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -285,7 +246,7 @@ function AdminLoginContent() {
             <ChevronLeft className="w-4 h-4 text-foreground/40 group-hover:-translate-x-1 transition-transform" />
             <span className="text-[10px] font-extrabold tracking-widest text-foreground/40 uppercase">Gate Switch</span>
           </Link>
-          
+
           <div className="pt-2">
             <div className="mx-auto w-20 h-20 rounded-[2.5rem] bg-foreground text-background flex items-center justify-center shadow-2xl mb-6 border-4 border-white/20">
                 <ShieldCheck className="w-10 h-10" />
@@ -309,8 +270,8 @@ function AdminLoginContent() {
           )}
 
           {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }} 
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-6 p-4 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold flex gap-3 italic"
             >
@@ -321,14 +282,14 @@ function AdminLoginContent() {
 
           <AnimatePresence mode="wait">
             {/* Root Approval View */}
-            {user?.email?.toLowerCase()?.trim() === ROOT_EMAIL ? (
+            {isRoot ? (
               <motion.div key="root-dashboard" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="text-left space-y-1">
                     <h3 className="text-xl font-black uppercase text-foreground italic">Root Dashboard</h3>
                     <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">{pendingRequests.length} Pending Auth Nodes</p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => { setLoading(true); fetchPendingRequests().finally(() => setLoading(false)); }}
                     className="w-10 h-10 rounded-xl bg-white/60 border border-white flex items-center justify-center hover:bg-white transition-all shadow-sm"
                     title="Refresh Grid"
@@ -350,7 +311,7 @@ function AdminLoginContent() {
                               <p className="text-[9px] font-bold text-foreground/20 uppercase tracking-widest">Request Pending</p>
                            </div>
                         </div>
-                        <button 
+                        <button
                           onClick={() => approveRequest(req)}
                           disabled={approvingId === req.id}
                           className="w-full py-3 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-md flex items-center justify-center gap-2"
@@ -363,10 +324,10 @@ function AdminLoginContent() {
                   </div>
                 ) : (
                   <div className="p-8 rounded-2xl bg-foreground/5 border border-white/50 text-center space-y-3">
-                    {error?.includes('Fetch failed') ? (
+                    {error ? (
                       <>
                         <AlertCircle className="w-10 h-10 text-destructive/30 mx-auto" />
-                        <p className="text-[10px] font-black text-destructive/40 uppercase tracking-widest leading-relaxed">Database Access Error<br/>Check SQL Policies</p>
+                        <p className="text-[10px] font-black text-destructive/40 uppercase tracking-widest leading-relaxed">Unable to Load Requests<br/>Check Database Policies</p>
                       </>
                     ) : (
                       <>
@@ -378,14 +339,14 @@ function AdminLoginContent() {
                 )}
 
                 <div className="flex flex-col gap-3 pt-4 border-t border-white">
-                   <button 
+                   <button
                     onClick={() => router.push('/admin')}
                     className="btn-terracotta w-full py-4 text-xs font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 group"
                   >
                     Enter Admin Console <ArrowRight className="w-4 h-4 group-hover:translate-x-1" />
                   </button>
-                  <button 
-                    onClick={() => supabase.auth.signOut().then(() => { setUser(null); setPendingRequests([]); })}
+                  <button
+                    onClick={() => supabase.auth.signOut().then(() => { setUser(null); setIsRoot(false); setPendingRequests([]); })}
                     className="soft-button w-full py-4 text-[10px] font-black uppercase tracking-widest border border-white text-foreground/30"
                   >
                     Sign Out (Root)
@@ -414,20 +375,9 @@ function AdminLoginContent() {
                         </div>
                       </div>
 
-
                       <button type="submit" disabled={loading} className="btn-terracotta w-full py-5 font-black flex items-center justify-center gap-3 shadow-2xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 text-xs uppercase tracking-widest">
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Key className="w-4 h-4" />{step === 'login' ? 'Establish Link' : 'Initialize Node'}</>}
                       </button>
-                      
-                      {user?.email === ROOT_EMAIL && (
-                        <button 
-                          type="button"
-                          onClick={() => router.push('/admin')}
-                          className="w-full text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline pt-2"
-                        >
-                          Root Bypass: Enter Console
-                        </button>
-                      )}
                     </form>
                   </motion.div>
                 )}
@@ -463,7 +413,7 @@ function AdminLoginContent() {
                     <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 mx-auto shadow-inner"><Clock className="w-10 h-10 animate-pulse" /></div>
                     <div className="space-y-4">
                       <h3 className="text-2xl font-black uppercase text-foreground tracking-tighter italic">Approval Pending</h3>
-                      <p className="text-sm text-foreground/50 font-bold leading-relaxed uppercase tracking-wider">Wait for root sync:<br/><span className="text-primary font-black block mt-1">{ROOT_EMAIL}</span></p>
+                      <p className="text-sm text-foreground/50 font-bold leading-relaxed uppercase tracking-wider">Your request is awaiting approval from the system administrator.</p>
                     </div>
                     <button onClick={() => setStep('login')} className="text-[10px] font-black text-primary uppercase tracking-[0.3em] hover:underline">System Reset</button>
                   </motion.div>
@@ -478,12 +428,6 @@ function AdminLoginContent() {
               </>
             )}
           </AnimatePresence>
-        </div>
-
-        <div className="mt-12 text-center">
-           <div className="inline-block p-4 rounded-3xl bg-white/30 border border-white backdrop-blur-md">
-              <p className="text-[9px] font-black text-foreground/30 leading-tight uppercase tracking-[0.4em]">Root Control Console: <span className="text-foreground/20">{ROOT_EMAIL}</span></p>
-           </div>
         </div>
       </motion.div>
     </div>

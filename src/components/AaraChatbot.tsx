@@ -233,22 +233,33 @@ export function AaraChatbot() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setUser(user);
-        checkAdminStatus(user.email!).then(() => setAuthReady(true));
+        checkAdminStatus().then(() => setAuthReady(true));
       } else {
-        setAuthReady(true); // No user logged in — guest
+        setAuthReady(true);
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setUser(s?.user || null);
-      if (s?.user) checkAdminStatus(s.user.email!).then(() => setAuthReady(true));
+      if (s?.user) checkAdminStatus().then(() => setAuthReady(true));
       else { setIsAdmin(false); setAuthReady(true); }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkAdminStatus = async (e: string): Promise<void> => {
-    const { data } = await supabase.from('admins').select('email').eq('email', e.toLowerCase().trim()).single();
-    setIsAdmin(!!data);
+  const checkAdminStatus = async (): Promise<void> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setIsAdmin(false); return; }
+    try {
+      const res = await fetch('/api/admin/status', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (res.ok) {
+        const { isAdmin: adminStatus } = await res.json();
+        setIsAdmin(adminStatus);
+      }
+    } catch {
+      setIsAdmin(false);
+    }
   };
 
   useEffect(() => {
@@ -303,7 +314,6 @@ export function AaraChatbot() {
       const data = await res.json();
       const cleanReply = data.reply || 'I heard you!';
       
-      console.log('[Aara Frontend] action:', data.action, '| path:', data.data?.path, '| reply:', cleanReply.slice(0, 60));
       
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', text: cleanReply, action: data.action, actionData: data.data, timestamp: new Date()

@@ -21,10 +21,7 @@ export function useAaraCommands(handlers: AaraCommandMap) {
     const { action, data } = (e as CustomEvent).detail ?? {};
     if (!action) return;
     const fn = handlers[action];
-    if (fn) {
-      console.log(`[AARA Command] ${action}`, data);
-      fn(data ?? {});
-    }
+    if (fn) fn(data ?? {});
   }, [handlers]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

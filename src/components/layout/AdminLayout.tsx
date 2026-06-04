@@ -3,42 +3,40 @@ import { Sidebar } from './Sidebar';
 import { Shield, Bell, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, session, loading, signOut } = useAuth();
   const router = useRouter();
 
-  const [adminList, setAdminList] = React.useState<string[]>([]);
-  const ROOT_EMAIL = process.env.NEXT_PUBLIC_ROOT_EMAIL || '';
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [statusChecked, setStatusChecked] = React.useState(false);
 
   useEffect(() => {
-    async function fetchAdmins() {
-      const { data } = await supabase.from('admins').select('email');
-      if (data) {
-        setAdminList(data.map((a: { email: string }) => a.email.toLowerCase()));
+    if (!user || !session) return;
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/admin/status', {
+          headers: { 'Authorization': `Bearer ${session!.access_token}` }
+        });
+        if (res.ok) {
+          const { isAdmin: adminStatus } = await res.json();
+          setIsAdmin(adminStatus);
+        }
+      } finally {
+        setStatusChecked(true);
       }
     }
-    fetchAdmins();
-  }, []);
-
-  const isAdmin = React.useMemo(() => {
-    if (!user?.email) return false;
-    const normalizedEmail = user.email.toLowerCase().trim();
-    const result =
-      (ROOT_EMAIL && normalizedEmail === ROOT_EMAIL) ||
-      adminList.includes(normalizedEmail);
-    return result;
-  }, [user, adminList]);
+    checkStatus();
+  }, [user, session]);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/adminLogin');
       return;
     }
-  }, [user, loading, router, isAdmin]);
+  }, [user, loading, router]);
 
-  if (loading) {
+  if (loading || (user && !statusChecked)) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
