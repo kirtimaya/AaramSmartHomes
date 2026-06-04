@@ -141,6 +141,11 @@ async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<
   // In development, skip cryptographic verification for local testing.
   if (process.env.NODE_ENV !== 'production') return;
 
+  // Allow automated tests in production via a pre-shared secret header.
+  // Set ALEXA_TEST_SECRET in env and pass x-alexa-test-secret: <value> in requests.
+  const testSecret = process.env.ALEXA_TEST_SECRET;
+  if (testSecret && req.headers.get('x-alexa-test-secret') === testSecret) return;
+
   const certUrl   = req.headers.get('SignatureCertChainUrl') ?? '';
   const signature = req.headers.get('Signature') ?? '';
 

@@ -19,6 +19,12 @@ if [ -z "${ALEXA_SKILL_ID:-}" ] && [ -f "$ENV_FILE" ]; then
 fi
 SKILL_ID="${ALEXA_SKILL_ID:-amzn1.ask.skill.local-test}"
 
+# Load ALEXA_TEST_SECRET for production signature bypass
+if [ -z "${ALEXA_TEST_SECRET:-}" ] && [ -f "$ENV_FILE" ]; then
+  ALEXA_TEST_SECRET=$(grep -E "^ALEXA_TEST_SECRET=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+fi
+TEST_SECRET="${ALEXA_TEST_SECRET:-}"
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -116,9 +122,14 @@ PY
 # ── POST helper ───────────────────────────────────────────────────────────────
 
 alexa_post() {
+  local extra_headers=()
+  if [ -n "$TEST_SECRET" ]; then
+    extra_headers=(-H "x-alexa-test-secret: $TEST_SECRET")
+  fi
   curl -s -X POST "$ENDPOINT" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
+    "${extra_headers[@]}" \
     --data-raw "$1"
 }
 
@@ -313,10 +324,17 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 ok "All tests complete."
 echo ""
 echo -e "${YELLOW}Notes:${NC}"
-echo -e "  • Tests 1–3 query Supabase → 'No X menu set' is correct until you seed data."
-echo -e "  • Test 6 calls Gemini and inserts into grocery_alerts — check Supabase table."
-echo -e "  • To test with the real Alexa device, expose with ngrok:"
-echo -e "    ${CYAN}ngrok http 3000${NC}"
-echo -e "    Then paste the ngrok URL into Alexa Developer Console → Build → Endpoint"
-echo -e "    and re-run:  ${CYAN}./scripts/test-alexa.sh https://xxxx.ngrok-free.app${NC}"
+echo -e "  • Tests 1–3 query Supabase → 'No X menu set' is expected until menus are seeded."
+echo -e "  • Test 6 calls Gemini and inserts into grocery_alerts — verify in Supabase."
+echo -e "  • In production, ${CYAN}x-alexa-test-secret${NC} header bypasses Alexa signature verification."
+echo -e "    Real Alexa device requests are always fully verified."
+echo -e ""
+echo -e "  ${YELLOW}Production URL (already deployed):${NC}"
+echo -e "    Alexa endpoint → ${CYAN}https://aaram-smart-homes.vercel.app/api/alexa${NC}"
+echo -e "    Test against it → ${CYAN}./scripts/test-alexa.sh https://aaram-smart-homes.vercel.app${NC}"
+echo -e ""
+echo -e "  ${YELLOW}Alexa Developer Console setup:${NC}"
+echo -e "    Build → Endpoint → HTTPS → Default Region:"
+echo -e "    ${CYAN}https://aaram-smart-homes.vercel.app/api/alexa${NC}"
+echo -e "    SSL cert: 'My development endpoint has a certificate from a trusted CA'"
 echo ""
