@@ -1,0 +1,93 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "aaram kitchen",
+      "intents": [
+        {
+          "name": "ArrivalIntent",
+          "slots": [],
+          "samples": [
+            "I have arrived",
+            "I am here",
+            "I have come",
+            "good morning I am here",
+            "I am ready to cook",
+            "start my shift",
+            "open the kitchen",
+            "I arrived",
+            "morning I am here",
+            "chef has arrived"
+          ]
+        },
+        {
+          "name": "DepartureIntent",
+          "slots": [],
+          "samples": [
+            "I am leaving",
+            "I am done",
+            "leaving now",
+            "my shift is over",
+            "I am finished",
+            "I have completed cooking",
+            "I am going",
+            "I am going home",
+            "cooking is done",
+            "I finished my work",
+            "shift complete",
+            "I am done cooking"
+          ]
+        },
+        {
+          "name": "MissingItemsIntent",
+          "slots": [
+            {
+              "name": "MissingItems",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "we are missing {MissingItems}",
+            "we don't have {MissingItems}",
+            "we do not have {MissingItems}",
+            "I need {MissingItems}",
+            "{MissingItems} are missing",
+            "{MissingItems} is missing",
+            "no we are missing {MissingItems}",
+            "we need {MissingItems}",
+            "missing items are {MissingItems}",
+            "the missing items are {MissingItems}",
+            "we are short of {MissingItems}",
+            "there is no {MissingItems}",
+            "there are no {MissingItems}"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        }
+      ],
+      "types": []
+    },
+    "dialog": {
+      "intents": [],
+      "delegationStrategy": "ALWAYS"
+    },
+    "prompts": []
+  }
+}
