@@ -3,19 +3,20 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  BarChart3, 
-  Home, 
-  Users, 
-  ClipboardList, 
-  Droplets, 
-  LogOut, 
+import {
+  BarChart3,
+  Home,
+  Users,
+  ClipboardList,
+  Droplets,
+  LogOut,
   PieChart,
   Calendar,
   Settings,
   Bell,
   Shield,
-  User
+  User,
+  ChefHat
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,7 @@ const sidebarItems = [
   { icon: BarChart3, label: 'Financials', href: '/admin/financials' },
   { icon: ClipboardList, label: 'Tickets', href: '/admin/tickets' },
   { icon: Droplets, label: 'Water Levels', href: '/admin/iot' },
+  { icon: ChefHat, label: 'Kitchen', href: '/admin/kitchen' },
 ];
 
 import { useAuth } from '@/context/AuthContext';

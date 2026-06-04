@@ -65,6 +65,24 @@ const db = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// ── Conversation logging (fire-and-forget) ────────────────────────────────────
+
+function logAsync(params: {
+  sessionId: string;
+  intent: string;
+  utterance?: string | null;
+  reply?: string | null;
+  mealBlock?: string | null;
+}) {
+  db.from('alexa_logs').insert({
+    session_id: params.sessionId,
+    intent:     params.intent,
+    utterance:  params.utterance  ?? null,
+    reply:      params.reply      ?? null,
+    meal_block: params.mealBlock  ?? null,
+  }).then(() => {}, () => {});
+}
+
 // ── IST Helpers ───────────────────────────────────────────────────────────────
 
 function getIST(): { date: string; hour: number; minute: number } {
@@ -245,50 +263,52 @@ Example output: ["onions", "tomatoes", "chicken breast", "cumin seeds"]`;
 
 // ── Intent Handlers ───────────────────────────────────────────────────────────
 
-async function handleArrival(sessionAttrs: Record<string, unknown>): Promise<NextResponse> {
+interface HandlerResult { response: NextResponse; reply: string; mealBlock?: string; }
+
+async function handleArrival(sessionAttrs: Record<string, unknown>): Promise<HandlerResult> {
   const { date, hour, minute } = getIST();
   const block = currentMealBlock(hour, minute);
   const menu = await fetchMenu(date, block);
 
   if (!menu?.menu_items?.length) {
-    return speak(
-      `Welcome to Aaram Smart Homes Kitchen! <break time="300ms"/>
-       No ${block} menu has been set for today.
-       Please check with your supervisor and have a great shift!`,
-      {
-        endSession: true,
-        sessionAttributes: { currentBlock: block },
-      }
-    );
+    const reply = `No ${block} menu set for today. Check with your supervisor.`;
+    return {
+      reply, mealBlock: block,
+      response: speak(
+        `Welcome to Aaram Smart Homes Kitchen! <break time="300ms"/>
+         No ${block} menu has been set for today.
+         Please check with your supervisor and have a great shift!`,
+        { endSession: true, sessionAttributes: { currentBlock: block } }
+      ),
+    };
   }
 
   const dishes = menu.menu_items
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
-    .map((i) => i.item_name)
-    .join(', <break time="200ms"/> ');
+    .map((i) => i.item_name);
 
-  return speak(
-    `Welcome to Aaram Smart Homes Kitchen!
-     <break time="400ms"/>
-     Today's ${block} menu is:
-     <break time="400ms"/>
-     ${dishes}.
-     <break time="600ms"/>
-     Have a wonderful cooking session!
-     Say <emphasis level="moderate">I am leaving</emphasis> when you finish.`,
-    {
-      endSession: false,
-      sessionAttributes: {
-        ...sessionAttrs,
-        currentBlock: block,
-        currentMenuId: menu.id,
-      },
-    }
-  );
+  const reply = `Today's ${block} menu: ${dishes.join(', ')}.`;
+  return {
+    reply, mealBlock: block,
+    response: speak(
+      `Welcome to Aaram Smart Homes Kitchen!
+       <break time="400ms"/>
+       Today's ${block} menu is:
+       <break time="400ms"/>
+       ${dishes.join(', <break time="200ms"/> ')}.
+       <break time="600ms"/>
+       Have a wonderful cooking session!
+       Say <emphasis level="moderate">I am leaving</emphasis> when you finish.`,
+      {
+        endSession: false,
+        sessionAttributes: { ...sessionAttrs, currentBlock: block, currentMenuId: menu.id },
+      }
+    ),
+  };
 }
 
-async function handleDeparture(sessionAttrs: Record<string, unknown>): Promise<NextResponse> {
+async function handleDeparture(sessionAttrs: Record<string, unknown>): Promise<HandlerResult> {
   const { date, hour, minute } = getIST();
   const block = (sessionAttrs?.currentBlock as MealBlock | undefined) ?? currentMealBlock(hour, minute);
   const { block: nextBlock, addDays } = nextMealBlock(block);
@@ -297,57 +317,60 @@ async function handleDeparture(sessionAttrs: Record<string, unknown>): Promise<N
   const menu = await fetchMenu(nextDate, nextBlock);
 
   if (!menu?.menu_ingredients?.length) {
-    return speak(
-      `Good job today! No ingredient list has been set for ${nextBlock} yet.
-       Please check with your supervisor. Goodbye!`,
-      { endSession: true }
-    );
+    const reply = `No ingredient list set for ${nextBlock} yet.`;
+    return {
+      reply, mealBlock: block,
+      response: speak(
+        `Good job today! No ingredient list has been set for ${nextBlock} yet.
+         Please check with your supervisor. Goodbye!`,
+        { endSession: true }
+      ),
+    };
   }
 
-  // Build a natural-language ingredient list for Alexa to read
-  const ingredientList = menu.menu_ingredients
-    .map((i) => {
-      if (i.quantity && i.unit) return `${i.quantity} ${i.unit} of ${i.ingredient_name}`;
-      if (i.quantity)           return `${i.quantity} ${i.ingredient_name}`;
-      return i.ingredient_name;
-    })
-    .join(', <break time="200ms"/> ');
+  const ingredientList = menu.menu_ingredients.map((i) => {
+    if (i.quantity && i.unit) return `${i.quantity} ${i.unit} of ${i.ingredient_name}`;
+    if (i.quantity) return `${i.quantity} ${i.ingredient_name}`;
+    return i.ingredient_name;
+  });
 
   const label = addDays > 0 ? `tomorrow's ${nextBlock}` : nextBlock;
+  const reply = `Ingredients for ${label}: ${ingredientList.join(', ')}.`;
 
-  return speak(
-    `Great work! Before you leave, for <emphasis level="moderate">${label}</emphasis>,
-     you will need:
-     <break time="500ms"/>
-     ${ingredientList}.
-     <break time="800ms"/>
-     Are all these items available in the kitchen?`,
-    {
-      reprompt:
-        'Please say <emphasis level="moderate">Yes</emphasis> if everything is available, ' +
-        'or <emphasis level="moderate">No</emphasis> followed by what is missing.',
-      endSession: false,
-      sessionAttributes: {
-        ...sessionAttrs,
-        awaitingInventoryCheck: true,
-        nextMenuId: menu.id,
-        nextBlock,
-      },
-    }
-  );
+  return {
+    reply, mealBlock: block,
+    response: speak(
+      `Great work! Before you leave, for <emphasis level="moderate">${label}</emphasis>,
+       you will need:
+       <break time="500ms"/>
+       ${ingredientList.join(', <break time="200ms"/> ')}.
+       <break time="800ms"/>
+       Are all these items available in the kitchen?`,
+      {
+        reprompt:
+          'Please say <emphasis level="moderate">Yes</emphasis> if everything is available, ' +
+          'or <emphasis level="moderate">No</emphasis> followed by what is missing.',
+        endSession: false,
+        sessionAttributes: {
+          ...sessionAttrs,
+          awaitingInventoryCheck: true,
+          nextMenuId: menu.id,
+          nextBlock,
+        },
+      }
+    ),
+  };
 }
 
 async function handleMissingItems(
   utterance: string,
   sessionAttrs: Record<string, unknown>
-): Promise<NextResponse> {
-  const menuId    = sessionAttrs?.nextMenuId  as string | undefined;
-  const mealBlock = sessionAttrs?.nextBlock   as string | undefined;
+): Promise<HandlerResult> {
+  const menuId    = sessionAttrs?.nextMenuId as string | undefined;
+  const mealBlock = sessionAttrs?.nextBlock  as string | undefined;
 
-  // ── Gemini extraction ──
   const extractedItems = await extractIngredients(utterance);
 
-  // ── Persist to Supabase ──
   await db.from('grocery_alerts').insert({
     menu_id:         menuId    ?? null,
     meal_block:      mealBlock ?? null,
@@ -356,19 +379,19 @@ async function handleMissingItems(
     logged_at:       new Date().toISOString(),
   });
 
-  const itemReadout = extractedItems
-    .map((item) => `<emphasis level="moderate">${item}</emphasis>`)
-    .join(', <break time="200ms"/> ');
-
-  return speak(
-    `Understood! I have logged the following missing items:
-     <break time="400ms"/>
-     ${itemReadout}.
-     <break time="600ms"/>
-     The kitchen manager has been notified.
-     Goodbye and have a great day!`,
-    { endSession: true }
-  );
+  const reply = `Logged missing items: ${extractedItems.join(', ')}.`;
+  return {
+    reply, mealBlock: mealBlock ?? undefined,
+    response: speak(
+      `Understood! I have logged the following missing items:
+       <break time="400ms"/>
+       ${extractedItems.map((item) => `<emphasis level="moderate">${item}</emphasis>`).join(', <break time="200ms"/> ')}.
+       <break time="600ms"/>
+       The kitchen manager has been notified.
+       Goodbye and have a great day!`,
+      { endSession: true }
+    ),
+  };
 }
 
 // ── Main Route Handler ────────────────────────────────────────────────────────
@@ -403,7 +426,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { request, session } = body;
+  const sessionId   = session?.sessionId ?? 'unknown';
   const sessionAttrs = (session?.attributes ?? {}) as Record<string, unknown>;
+
+  // Helper: log + return in one step
+  const log = (
+    result: HandlerResult | { response: NextResponse; reply: string; mealBlock?: string },
+    intent: string,
+    utterance?: string | null
+  ) => {
+    logAsync({ sessionId, intent, utterance, reply: result.reply, mealBlock: result.mealBlock });
+    return result.response;
+  };
 
   // 5. Route by request type + intent — always return a valid Alexa response
   try {
@@ -417,7 +451,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       request.type === 'LaunchRequest' ||
       request.intent?.name === 'ArrivalIntent'
     ) {
-      return await handleArrival(sessionAttrs);
+      return log(await handleArrival(sessionAttrs), 'ArrivalIntent');
     }
 
     // ── Intent routing ──
@@ -427,36 +461,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       switch (intent) {
 
         case 'DepartureIntent':
-          return await handleDeparture(sessionAttrs);
+          return log(await handleDeparture(sessionAttrs), 'DepartureIntent');
 
         case 'MissingItemsIntent': {
           const utterance = slots?.MissingItems?.value?.trim() ?? '';
           if (!utterance) {
-            return speak(
+            const r = speak(
               "I didn't catch what was missing. " +
               'Please try again and say, for example: ' +
               '<emphasis level="moderate">we are missing onions and tomatoes</emphasis>.',
-              {
-                reprompt: 'What items are missing from the list?',
-                endSession: false,
-                sessionAttributes: sessionAttrs,
-              }
+              { reprompt: 'What items are missing from the list?', endSession: false, sessionAttributes: sessionAttrs }
             );
+            logAsync({ sessionId, intent: 'MissingItemsIntent', utterance: null, reply: 'Prompt: what is missing?' });
+            return r;
           }
-          return await handleMissingItems(utterance, sessionAttrs);
+          return log(await handleMissingItems(utterance, sessionAttrs), 'MissingItemsIntent', utterance);
         }
 
         case 'AMAZON.YesIntent':
           if (sessionAttrs?.awaitingInventoryCheck) {
-            return speak(
-              'Great! All ingredients are available. Have a wonderful cooking session. Goodbye!',
-              { endSession: true }
-            );
+            logAsync({ sessionId, intent: 'AMAZON.YesIntent', reply: 'All ingredients available.' });
+            return speak('Great! All ingredients are available. Have a wonderful cooking session. Goodbye!', { endSession: true });
           }
           return speak('Alright! Goodbye!', { endSession: true });
 
         case 'AMAZON.NoIntent':
           if (sessionAttrs?.awaitingInventoryCheck) {
+            logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: 'Prompted for missing items.' });
             return speak(
               'No problem. Please tell me what is missing. ' +
               'For example, say: <emphasis level="moderate">we are missing onions and tomatoes</emphasis>.',
