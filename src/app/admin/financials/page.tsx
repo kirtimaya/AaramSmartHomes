@@ -841,7 +841,7 @@ export default function FinancialHub() {
 
   // ─── AARA Command Integration ───
   useAaraCommands({
-    SELECT_PROPERTY: (data: { id: string }) => {
+    SELECT_PROPERTY: (data: Record<string, any>) => {
       const el = document.getElementById(`property-${data.id}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -852,7 +852,7 @@ export default function FinancialHub() {
         });
       }
     },
-    SELECT_ROOM: (data: { id: string }) => {
+    SELECT_ROOM: (data: Record<string, any>) => {
       const room = rooms.find(r => r.id === data.id);
       if (room) {
         setRoomModal({ roomId: room.id, propertyId: room.property_id });
