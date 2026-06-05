@@ -1,0 +1,8 @@
+{
+	"appId": "com.aaramsmarthomes.app",
+	"appName": "AaramSmartHomes",
+	"webDir": "out",
+	"server": {
+		"androidScheme": "https"
+	}
+}

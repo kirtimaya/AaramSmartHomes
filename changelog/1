@@ -1,0 +1,60 @@
+ Changes Made
+
+  New Server-Side API Routes (src/app/api/admin/)
+
+  ┌───────────────────────────┬─────────────────────────────────────────────────────────────────┬────────────────────┐
+  │           Route           │                             Purpose                             │        Auth        │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────┤
+  │ status/route.ts           │ Returns { isAdmin, isRoot, hasPendingRequest } via verified JWT │ Any user           │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────┤
+  │ pending-requests/route.ts │ Lists pending admin requests                                    │ Root only          │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────┤
+  │ approve/route.ts          │ Inserts into admins table                                       │ Root only          │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────┤
+  │ verify-token/route.ts     │ Validates approval link token, inserts into admins              │ None (token-based) │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────┤
+  │ request/route.ts          │ Submits an admin access request                                 │ Authenticated user │
+  └───────────────────────────┴─────────────────────────────────────────────────────────────────┴────────────────────┘
+
+  Client Files Updated
+
+  adminLogin/page.tsx (C3, M2, M3):
+  - Removed ROOT_EMAIL entirely from the client bundle — root identity no longer exposed in browser
+  - All direct admins table writes moved to the new server routes
+  - checkAdminStatus, fetchPendingRequests, approveRequest, handleTokenVerification, requestRootApproval all now call authenticated server endpoints
+  - Error messages are generic (no raw DB error codes)
+  - Removed ROOT_EMAIL from the footer display and pending-approval text
+  - Removed the "Root Bypass: Enter Console" button
+
+  AdminLayout.tsx (M1):
+  - Replaced supabase.from('admins').select('email') (which leaked all admin emails via the network tab) with a single boolean /api/admin/status call
+
+  adminLogin/page.tsx (C3, M2, M3):
+  - Removed ROOT_EMAIL entirely from the client bundle — root identity no longer exposed in browser
+  - All direct admins table writes moved to the new server routes
+  - checkAdminStatus, fetchPendingRequests, approveRequest, handleTokenVerification, requestRootApproval all now call authenticated server endpoints
+  - Error messages are generic (no raw DB error codes)
+  - Removed ROOT_EMAIL from the footer display and pending-approval text
+  - Removed the "Root Bypass: Enter Console" button
+
+  AdminLayout.tsx (M1):
+  - Replaced supabase.from('admins').select('email') (which leaked all admin emails via the network tab) with a single boolean /api/admin/status call
+
+  AaraChatbot.tsx (M1, M2):
+  - Same admin check switched to server route — no longer fetches all admin emails
+  - Removed console.log that was leaking action/path/reply data
+
+  useAaraCommands.ts (M2):
+  - Removed console.log leaking command details
+
+  auth/callback/route.ts (H4 remainder):
+  - exchangeCodeForSession errors now redirect to /login?error=auth_failed instead of being silently ignored
+
+  What Still Needs Manual Action
+
+  - Enable Postgres RLS on admins, admin_requests, tickets, expenses, etc. (database-level change)
+  - Add SUPABASE_SERVICE_ROLE_KEY to .env.local (server routes use it if available for admins inserts)
+  - Remove NEXT_PUBLIC_ROOT_EMAIL from env; it's no longer read by any client code — only ROOT_EMAIL (server-only) is needed
+
+✻ Churned for 13m 50s
+

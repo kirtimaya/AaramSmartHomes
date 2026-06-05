@@ -87,21 +87,21 @@ CREATE POLICY "admins_all_grocery_alerts" ON grocery_alerts FOR ALL
 -- ── Seed: example menu for today ─────────────────────────────────────────────
 -- Uncomment and adjust to populate test data.
 
--- INSERT INTO menus (date, meal_block, notes)
--- VALUES (CURRENT_DATE, 'Breakfast', 'South Indian spread')
--- ON CONFLICT DO NOTHING;
---
--- WITH m AS (SELECT id FROM menus WHERE date = CURRENT_DATE AND meal_block = 'Breakfast' LIMIT 1)
--- INSERT INTO menu_items (menu_id, item_name, sort_order) VALUES
---   ((SELECT id FROM m), 'Idli',    1),
---   ((SELECT id FROM m), 'Sambar',  2),
---   ((SELECT id FROM m), 'Chutney', 3);
---
--- WITH m AS (SELECT id FROM menus WHERE date = CURRENT_DATE AND meal_block = 'Breakfast' LIMIT 1)
--- INSERT INTO menu_ingredients (menu_id, ingredient_name, quantity, unit) VALUES
---   ((SELECT id FROM m), 'Idli rice',  '500',  'grams'),
---   ((SELECT id FROM m), 'Urad dal',   '200',  'grams'),
---   ((SELECT id FROM m), 'Toor dal',   '200',  'grams'),
---   ((SELECT id FROM m), 'Tomatoes',   '4',    'pieces'),
---   ((SELECT id FROM m), 'Onions',     '3',    'pieces'),
---   ((SELECT id FROM m), 'Coconut',    '1',    'piece');
+INSERT INTO menus (date, meal_block, notes)
+VALUES (CURRENT_DATE, 'Breakfast', 'South Indian spread')
+ON CONFLICT DO NOTHING;
+
+WITH m AS (SELECT id FROM menus WHERE date = CURRENT_DATE AND meal_block = 'Breakfast' LIMIT 1)
+INSERT INTO menu_items (menu_id, item_name, sort_order) VALUES
+  ((SELECT id FROM m), 'Idli',    1),
+  ((SELECT id FROM m), 'Sambar',  2),
+  ((SELECT id FROM m), 'Chutney', 3);
+
+WITH m AS (SELECT id FROM menus WHERE date = CURRENT_DATE AND meal_block = 'Breakfast' LIMIT 1)
+INSERT INTO menu_ingredients (menu_id, ingredient_name, quantity, unit) VALUES
+  ((SELECT id FROM m), 'Idli rice',  '500',  'grams'),
+  ((SELECT id FROM m), 'Urad dal',   '200',  'grams'),
+  ((SELECT id FROM m), 'Toor dal',   '200',  'grams'),
+  ((SELECT id FROM m), 'Tomatoes',   '4',    'pieces'),
+  ((SELECT id FROM m), 'Onions',     '3',    'pieces'),
+  ((SELECT id FROM m), 'Coconut',    '1',    'piece');
