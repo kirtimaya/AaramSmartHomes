@@ -90,3 +90,39 @@ export type MealOptIn = {
   meal_type: 'Breakfast' | 'Lunch' | 'Dinner';
   opt_in: boolean;
 };
+
+// ── Electricity Bill Splitting ───────────────────────────────────────────────
+
+export type RoomElectricConfig = {
+  unit_id: string;           // FK → units.id
+  has_ac: boolean;
+  ac_units_used: number;
+  is_occupied: boolean;
+};
+
+export type ElectricityBillStatus = 'draft' | 'published';
+
+export type ElectricityBill = {
+  id: string;
+  property_id: string;
+  bill_month: string;        // "YYYY-MM"
+  total_units: number;
+  total_amount: number;
+  ac_rate_per_unit: number;  // default 10
+  status: ElectricityBillStatus;
+  created_at: string;
+  image_url?: string;
+};
+
+export type RoomElectricityBill = {
+  id: string;
+  bill_id: string;
+  unit_id: string;
+  room_number: string;
+  ac_units: number;
+  ac_amount: number;
+  common_share_units: number;
+  common_share_amount: number;
+  total_amount: number;
+  status: 'unpaid' | 'paid';
+};
