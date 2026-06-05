@@ -8,6 +8,8 @@ export type Property = {
   property_type: PropertyType;
   image_url?: string;
   description?: string;
+  usc_no?: string;
+  ac_rate_per_unit?: number;
   rooms?: Room[];
   benefits?: Benefit[];
   automation?: AutomationSystem[];
@@ -15,11 +17,15 @@ export type Property = {
 
 export type Room = {
   id: string;
+  property_id?: string;
   name: string; // e.g., Master Bedroom, Living Room
   type: string;
   sqft?: number;
   features: string[];
   image_urls?: string[];
+  has_ac?: boolean;
+  occupancy_status?: string;
+  tenant_name?: string;
 };
 
 export type Benefit = {
@@ -100,18 +106,55 @@ export type RoomElectricConfig = {
   is_occupied: boolean;
 };
 
-export type ElectricityBillStatus = 'draft' | 'published';
+export type ElectricityBillStatus =
+  | 'draft' | 'published'  // legacy values
+  | 'pending' | 'validated' | 'rejected' | 'split_calculated' | 'locked';
 
 export type ElectricityBill = {
   id: string;
   property_id: string;
-  bill_month: string;        // "YYYY-MM"
+  bill_month: string;           // "YYYY-MM" or "YYYY-MM-01"
+  usc_no?: string;
+  present_reading?: number;
+  previous_reading?: number;
+  present_date?: string;
+  previous_date?: string;
   total_units: number;
   total_amount: number;
-  ac_rate_per_unit: number;  // default 10
+  ac_rate_per_unit: number;
+  bill_image_url?: string;
+  image_url?: string;           // legacy field
+  uploaded_by?: string;
+  uploaded_by_name?: string;
+  upload_source?: 'tenant' | 'admin';
   status: ElectricityBillStatus;
+  rejection_reason?: string;
   created_at: string;
-  image_url?: string;
+  updated_at?: string;
+};
+
+export type TenantACSubmission = {
+  id: string;
+  bill_id: string;
+  tenant_id: string;
+  room_id: string;
+  ac_units_submitted: number;
+  submitted_at: string;
+  is_admin_override: boolean;
+  admin_override_value?: number;
+};
+
+export type BillSplit = {
+  id: string;
+  bill_id: string;
+  tenant_id: string;
+  room_id: string;
+  tenant_name?: string;
+  ac_units: number;
+  ac_charge: number;
+  common_share: number;
+  total_payable: number;
+  locked_at?: string;
 };
 
 export type RoomElectricityBill = {

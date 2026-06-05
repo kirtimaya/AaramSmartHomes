@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import NextImage from 'next/image';
 import { Property, Room, Benefit, AutomationSystem } from '@/lib/types';
-import { Plus, MapPin, Home, Edit2, Trash2, X, Check, Building2, Image as ImageIcon, Loader2, Search, ArrowLeft, ChevronRight, Waves, Zap, Upload, Leaf, ChevronLeft } from 'lucide-react';
+import { Plus, MapPin, Home, Edit2, Trash2, X, Check, Building2, Image as ImageIcon, Loader2, Search, ArrowLeft, ChevronRight, Waves, Zap, Upload, Leaf, ChevronLeft, Wind, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -222,6 +222,42 @@ function PropertyManagementContent() {
     if (viewingDetails) { const updated = { ...viewingDetails, automation: (viewingDetails.automation || []).filter(n => n.id !== id) as AutomationSystem[] }; setViewingDetails(updated); setProperties(prev => prev.map(p => p.id === updated.id ? updated : p)); }
   };
 
+  // Electricity Config
+  const [elecConfig, setElecConfig] = useState<{ usc_no: string; ac_rate_per_unit: string }>({ usc_no: '', ac_rate_per_unit: '9.00' });
+  const [elecConfigSaving, setElecConfigSaving] = useState(false);
+
+  useEffect(() => {
+    if (viewingDetails) {
+      setElecConfig({
+        usc_no: viewingDetails.usc_no || '',
+        ac_rate_per_unit: viewingDetails.ac_rate_per_unit != null ? String(viewingDetails.ac_rate_per_unit) : '9.00',
+      });
+    }
+  }, [viewingDetails?.id]);
+
+  const handleSaveElecConfig = async () => {
+    if (!viewingDetails) return;
+    setElecConfigSaving(true);
+    await supabase.from('properties').update({
+      usc_no: elecConfig.usc_no,
+      ac_rate_per_unit: parseFloat(elecConfig.ac_rate_per_unit) || 9.00,
+    }).eq('id', viewingDetails.id);
+    const updated = { ...viewingDetails, usc_no: elecConfig.usc_no, ac_rate_per_unit: parseFloat(elecConfig.ac_rate_per_unit) || 9.00 };
+    setViewingDetails(updated);
+    setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setElecConfigSaving(false);
+  };
+
+  const handleToggleRoomAC = async (roomId: string, current: boolean) => {
+    const newVal = !current;
+    await supabase.from('rooms').update({ has_ac: newVal }).eq('id', roomId);
+    if (viewingDetails) {
+      const updated = { ...viewingDetails, rooms: (viewingDetails.rooms || []).map(r => r.id === roomId ? { ...r, has_ac: newVal } : r) };
+      setViewingDetails(updated);
+      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+    }
+  };
+
   if (loading && properties.length === 0) {
     return <AdminLayout><div className="min-h-[60vh] flex flex-col items-center justify-center"><Loader2 className="w-10 h-10 text-primary animate-spin mb-4" /><p className="text-sm font-bold text-foreground/40 uppercase tracking-widest">Loading</p></div></AdminLayout>;
   }
@@ -258,6 +294,33 @@ function PropertyManagementContent() {
                     <div className="soft-well p-4 border border-white space-y-1"><p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Rooms</p><p className="text-2xl font-bold">{viewingDetails.total_rooms}</p></div>
                     <div className="soft-well p-4 border border-white space-y-1"><p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Type</p><p className="text-[12px] font-bold uppercase pt-1">{viewingDetails.property_type}</p></div>
                   </div>
+
+                  {/* ── Electricity Configuration ── */}
+                  <div className="border-t border-white/40 pt-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/50">Electricity Config</p>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">USC No. (Meter)</label>
+                        <input value={elecConfig.usc_no} onChange={e => setElecConfig(prev => ({ ...prev, usc_no: e.target.value }))}
+                          placeholder="e.g. USC123456"
+                          className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">AC Rate (₹ / unit)</label>
+                        <input type="number" step="0.01" min="0" value={elecConfig.ac_rate_per_unit}
+                          onChange={e => setElecConfig(prev => ({ ...prev, ac_rate_per_unit: e.target.value }))}
+                          className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+                      </div>
+                      <button onClick={handleSaveElecConfig} disabled={elecConfigSaving}
+                        className="w-full soft-button py-2 border border-amber-500/30 bg-amber-500/5 text-amber-700 text-[9px] font-extrabold uppercase tracking-widest flex items-center justify-center gap-1.5 disabled:opacity-50">
+                        {elecConfigSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Save Config
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -286,7 +349,7 @@ function PropertyManagementContent() {
                             <button onClick={() => handleDeleteRoom(room.id)} className="soft-button w-7 h-7 border border-white text-primary/40 hover:text-primary"><Trash2 className="w-3 h-3" /></button>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 items-center">
                           {room.features.slice(0, 3).map(f => (
                             <span key={f} className="text-[8px] px-1.5 py-0.5 rounded-md bg-white/60 border border-white/50 text-foreground/60 font-bold">{f}</span>
                           ))}
@@ -296,6 +359,16 @@ function PropertyManagementContent() {
                             </span>
                           )}
                         </div>
+                        {/* AC toggle */}
+                        <button
+                          onClick={() => handleToggleRoomAC(room.id, room.has_ac || false)}
+                          className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[8px] font-extrabold uppercase tracking-widest border transition-all',
+                            room.has_ac
+                              ? 'bg-blue-500/10 text-blue-700 border-blue-500/20'
+                              : 'bg-foreground/5 text-foreground/30 border-foreground/10')}>
+                          <Wind className="w-3 h-3" />
+                          {room.has_ac ? 'AC Installed' : 'No AC'}
+                        </button>
                       </div>
                     </div>
                   ))}
