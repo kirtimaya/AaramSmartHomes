@@ -221,7 +221,25 @@ DROP POLICY IF EXISTS "tenants service write" ON tenants;
 CREATE POLICY "tenants own read" ON tenants FOR SELECT TO authenticated USING (true);
 CREATE POLICY "tenants service write" ON tenants FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- ── 15. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
+-- ── 15. tenant_invitations: token-based portal onboarding (no email required) ─
+CREATE TABLE IF NOT EXISTS tenant_invitations (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token        TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  room_id      UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  phone        TEXT,
+  email        TEXT,
+  move_in_date DATE,
+  status       TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'claimed'
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE tenant_invitations ENABLE ROW LEVEL SECURITY;
+-- Invitation details are public-readable so the /join page can show welcome info
+CREATE POLICY "tenant_invitations public read" ON tenant_invitations FOR SELECT USING (true);
+CREATE POLICY "tenant_invitations service write" ON tenant_invitations
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ── 16. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
 -- Requires pg_cron extension enabled in Supabase (Dashboard → Extensions → pg_cron)
 -- Runs at 2am UTC daily; deletes guests with no activity in 90 days
 DO $outer$

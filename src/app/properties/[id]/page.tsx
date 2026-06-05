@@ -32,8 +32,21 @@ export default function PropertyDetailView() {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'tenant' | 'guest' | null | undefined>(undefined);
   const { user } = useAuth();
-  const isAdmin = user?.email?.includes('admin@');
+  const isAdmin = userRole === 'admin';
+
+  // Determine role so the "Request Allocation" button routes correctly
+  useEffect(() => {
+    if (user === undefined) return; // still loading
+    if (!user) { setUserRole(null); return; }
+    const stored = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    const token = stored ? (() => { try { return JSON.parse(stored[1])?.access_token; } catch { return null; } })() : null;
+    if (!token) { setUserRole(null); return; }
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ role }) => setUserRole(role ?? null));
+  }, [user]);
 
   useEffect(() => {
     if (params.id) {
@@ -291,12 +304,26 @@ export default function PropertyDetailView() {
                      </div>
 
                      {(activeRoom as any).occupancy_status === 'Vacant' || !(activeRoom as any).occupancy_status ? (
-                       <Link
-                         href={`/guest?requestRoom=${activeRoom.id}`}
-                         className="block w-full py-5 btn-terracotta text-[11px] font-extrabold uppercase tracking-[0.3em] text-center shadow-xl"
-                       >
-                         Request Allocation
-                       </Link>
+                       isAdmin ? (
+                         // Admin browsing — show informational chip instead of action button
+                         <div className="w-full py-5 soft-button border border-secondary/20 text-secondary text-[11px] font-extrabold uppercase tracking-[0.3em] text-center opacity-70">
+                           Vacant — Admin View
+                         </div>
+                       ) : userRole === 'tenant' ? (
+                         <div className="w-full py-5 soft-button border border-secondary/20 text-secondary/70 text-[11px] font-extrabold uppercase tracking-[0.3em] text-center">
+                           Already a Tenant
+                         </div>
+                       ) : (
+                         <Link
+                           href={userRole === 'guest'
+                             ? `/guest?requestRoom=${activeRoom.id}`
+                             : `/signup?next=${encodeURIComponent(`/guest?requestRoom=${activeRoom.id}`)}`
+                           }
+                           className="block w-full py-5 btn-terracotta text-[11px] font-extrabold uppercase tracking-[0.3em] text-center shadow-xl"
+                         >
+                           {userRole === null ? 'Sign Up to Request' : 'Request Allocation'}
+                         </Link>
+                       )
                      ) : (
                        <div className="w-full py-5 soft-button border border-red-500/20 text-red-400 text-[11px] font-extrabold uppercase tracking-[0.3em] text-center opacity-50 cursor-not-allowed">
                          Currently Occupied

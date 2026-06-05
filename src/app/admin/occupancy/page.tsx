@@ -143,6 +143,8 @@ export default function OccupancyPage() {
   const [inviteModal, setInviteModal] = useState<{ roomId: string; roomName: string } | null>(null);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', phone: '', moveInDate: '' });
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -214,31 +216,36 @@ export default function OccupancyPage() {
   };
 
   const handleInviteTenant = async () => {
-    if (!inviteModal || !inviteForm.name || !inviteForm.email) return;
+    if (!inviteModal || !inviteForm.name) return;
     setInviteLoading(true);
     const res = await fetch('/api/admin/tenants/add', {
       method: 'POST',
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: inviteForm.name,
-        email: inviteForm.email,
-        phone: inviteForm.phone || null,
-        roomId: inviteModal.roomId,
+        name:       inviteForm.name,
+        email:      inviteForm.email || null,
+        phone:      inviteForm.phone || null,
+        roomId:     inviteModal.roomId,
         moveInDate: inviteForm.moveInDate || null,
       }),
     });
     const json = await res.json();
     setInviteLoading(false);
     if (json.success) {
-      // Refresh data to show new tenant + updated room
+      setJoinUrl(json.joinUrl);
       await fetchData();
-      setInviteModal(null);
-      setInviteForm({ name: '', email: '', phone: '', moveInDate: '' });
       setEditingRoom(null);
-      showToast('Tenant added and invite email sent!');
+      showToast(json.emailSent ? 'Tenant added — invite email sent!' : 'Tenant added — share the portal link below.');
     } else {
       showToast(json.error ?? 'Failed to add tenant', false);
     }
+  };
+
+  const copyJoinUrl = () => {
+    if (!joinUrl) return;
+    navigator.clipboard.writeText(joinUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDeleteRoom = async (id: string) => {
@@ -642,35 +649,55 @@ export default function OccupancyPage() {
         {inviteModal && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setInviteModal(null)} className="absolute inset-0 bg-background/60 backdrop-blur-md" />
+              onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+              className="absolute inset-0 bg-background/60 backdrop-blur-md" />
             <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative bg-background soft-card border border-white w-full max-w-md p-10 shadow-2xl">
               <div className="flex justify-between items-center mb-8">
                 <div>
-                  <h2 className="text-xl font-bold uppercase tracking-tight">Invite Tenant</h2>
+                  <h2 className="text-xl font-bold uppercase tracking-tight">Add Tenant</h2>
                   <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest mt-1">
-                    {inviteModal.roomName} — sends invite email
+                    {inviteModal.roomName} · generates a portal access link
                   </p>
                 </div>
-                <button onClick={() => setInviteModal(null)} className="soft-button w-9 h-9 border border-white text-foreground/30"><X className="w-4 h-4" /></button>
+                <button onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+                  className="soft-button w-9 h-9 border border-white text-foreground/30"><X className="w-4 h-4" /></button>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Full Name *</label>
-                  <input type="text" autoFocus value={inviteForm.name}
-                    onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-                    placeholder="e.g. Priya Sharma"
-                    className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+              {/* After success — show join URL */}
+              {joinUrl ? (
+                <div className="space-y-5">
+                  <div className="soft-well p-4 border border-secondary/20 bg-secondary/5 space-y-2">
+                    <p className="text-[9px] font-extrabold uppercase tracking-widest text-secondary">Portal Access Link</p>
+                    <p className="text-xs text-foreground/70 break-all font-mono">{joinUrl}</p>
+                  </div>
+                  <p className="text-[10px] text-foreground/40 leading-relaxed">
+                    Share this link with the tenant via WhatsApp, SMS, or any channel.
+                    When they open it, they'll create their account and get mapped to the room automatically.
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={copyJoinUrl}
+                      className={cn('flex-1 py-3 text-[11px] font-extrabold uppercase tracking-widest border transition-all flex items-center justify-center gap-2',
+                        copied ? 'bg-secondary text-white border-secondary' : 'soft-button border-secondary/30 text-secondary hover:bg-secondary hover:text-white'
+                      )}>
+                      <Check className={cn('w-4 h-4', !copied && 'hidden')} />
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    <button onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+                      className="flex-1 btn-terracotta py-3 text-[11px] font-extrabold uppercase tracking-widest flex items-center justify-center">
+                      Done
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Email *</label>
-                  <input type="email" value={inviteForm.email}
-                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    placeholder="tenant@example.com"
-                    className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Full Name *</label>
+                    <input type="text" autoFocus value={inviteForm.name}
+                      onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                      placeholder="e.g. Priya Sharma"
+                      className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Phone</label>
                     <input type="tel" value={inviteForm.phone}
@@ -679,28 +706,35 @@ export default function OccupancyPage() {
                       className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
                   </div>
                   <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Email <span className="text-foreground/20 normal-case font-normal">(optional — sends invite email if provided)</span></label>
+                    <input type="email" value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      placeholder="tenant@example.com"
+                      className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Move-in Date</label>
                     <input type="date" value={inviteForm.moveInDate}
                       onChange={(e) => setInviteForm({ ...inviteForm, moveInDate: e.target.value })}
                       className="soft-ui-in w-full py-4 px-4 text-xs bg-white/60 border border-white outline-none" />
                   </div>
+
+                  <p className="text-[9px] text-foreground/30 flex items-start gap-1.5">
+                    <Mail className="w-3 h-3 shrink-0 mt-0.5" />
+                    A unique portal link is generated. If email is provided, an invite is also sent.
+                    Share the link manually via WhatsApp or any channel.
+                  </p>
+
+                  <button
+                    onClick={handleInviteTenant}
+                    disabled={inviteLoading || !inviteForm.name}
+                    className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 disabled:opacity-40"
+                  >
+                    {inviteLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
+                    {inviteLoading ? 'Generating Link...' : 'Add Tenant & Get Link'}
+                  </button>
                 </div>
-
-                <p className="text-[9px] text-foreground/30 flex items-center gap-1.5">
-                  <Mail className="w-3 h-3" />
-                  An invite email will be sent to the tenant to set up their account.
-                  If they already have an account, they'll be directly mapped.
-                </p>
-
-                <button
-                  onClick={handleInviteTenant}
-                  disabled={inviteLoading || !inviteForm.name || !inviteForm.email}
-                  className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 disabled:opacity-40"
-                >
-                  {inviteLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
-                  {inviteLoading ? 'Adding...' : 'Add & Invite Tenant'}
-                </button>
-              </div>
+              )}
             </motion.div>
           </div>
         )}
