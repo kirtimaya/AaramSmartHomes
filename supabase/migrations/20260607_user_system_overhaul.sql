@@ -89,9 +89,16 @@ UPDATE admin_requests
   SET token_expires_at = NOW() + INTERVAL '48 hours'
   WHERE token_expires_at IS NULL;
 
--- ── 8a. electricity_bills: ensure common_units has a default (old 20260603
---       schema added it as NOT NULL with no default, breaking upload inserts)
+-- ── 8a. electricity_bills: fix NOT NULL columns that lack defaults, and
+--       ensure RLS allows authenticated writes (covers deployed envs without
+--       SUPABASE_SERVICE_ROLE_KEY set in Vercel env vars)
 ALTER TABLE electricity_bills ALTER COLUMN common_units SET DEFAULT 0;
+ALTER TABLE electricity_bills ALTER COLUMN common_amount SET DEFAULT 0;
+ALTER TABLE electricity_bills ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated write electricity_bills" ON electricity_bills;
+DROP POLICY IF EXISTS "electricity_bills admin full" ON electricity_bills;
+CREATE POLICY "electricity_bills rw authenticated" ON electricity_bills
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- ensure all columns exist (safety net for installs
 --       that skipped 20260605 or had a partial run)

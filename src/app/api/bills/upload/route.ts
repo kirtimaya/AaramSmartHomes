@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
-  const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // requireAdmin handles both root email and admins table check
+  const auth = await requireAdmin(request);
+  if (auth instanceof NextResponse) return auth;
 
-  const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+  const { data: { user } } = await supabaseAdmin.auth.getUser(
+    request.headers.get('Authorization')!.replace('Bearer ', '')
+  );
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Determine upload source
-  const { data: adminRow } = await supabaseAdmin
-    .from('admins').select('id').eq('email', user.email).single();
-  const uploadSource: 'admin' | 'tenant' = adminRow ? 'admin' : 'tenant';
+  const uploadSource = 'admin';
 
   const formData = await request.formData();
   const propertyId  = formData.get('property_id') as string;
@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
       previous_date:    previousDate || null,
       total_units:      totalUnits,
       total_amount:     totalAmount,
-      common_units:     0,   // calculated later during split; default 0 to satisfy NOT NULL
+      common_units:     0,   // recalculated during split; satisfy NOT NULL
+      common_amount:    0,   // recalculated during split; satisfy NOT NULL
       bill_image_url:   billImageUrl,
       uploaded_by:      user.id,
       uploaded_by_name: user.user_metadata?.full_name || user.email,
