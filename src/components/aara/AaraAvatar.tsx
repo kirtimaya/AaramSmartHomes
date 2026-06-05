@@ -1,272 +1,236 @@
 'use client';
 
 /**
- * AaraAvatar — The animated AI assistant avatar.
+ * AaraAvatar — Positions the AaraCharacter SVG on screen and drives
+ * all spring-physics movement between her home corner and target DOM elements.
  *
- * ── Behaviour by state ──────────────────────────────────────────────────────
- *  idle        : floats in bottom-right corner, "Need Help?" speech bubble visible
- *  open        : same position, bubble hidden (chat panel is visible)
- *  thinking    : spinning halo + three-dot pulse
- *  moving      : spring-physics flight across screen toward a registered DOM element
- *  interacting : arrived at element; body bobs & ElementHighlight glow ring is active
- *  confirming  : spring-return to home; confirmation UI rendered inside chat panel
- *  executing   : progress ring on avatar halo
+ * ── Startup ──────────────────────────────────────────────────────────────────
+ *  On mount, the character fades in from below and settles into the idle float.
+ *  Speech bubble "Need Help?" appears after 800 ms.
  *
- * ── Movement math ───────────────────────────────────────────────────────────
- *  Avatar home center (when x=0, y=0):
- *    cx = window.innerWidth  - HOME_MARGIN - AVATAR_R
- *    cy = window.innerHeight - HOME_MARGIN - AVATAR_R
+ * ── Movement ──────────────────────────────────────────────────────────────────
+ *  The avatar is fixed at bottom-right (right:HOME_M bottom:HOME_M).
+ *  framer-motion x/y values offset her from that home.
+ *  When context state → 'moving', we compute the spring deltas to the target
+ *  element's centre and call fmAnimate() imperatively.
+ *  Distance-adaptive stiffness: far targets feel snappier.
  *
- *  To fly to a target element's center (tx, ty):
- *    x = tx - cx   (positive → move right)
- *    y = ty - cy   (positive → move down; framer-motion y axis is inverted from CSS)
+ * ── Eye gaze ─────────────────────────────────────────────────────────────────
+ *  While moving, we compute a normalised gaze vector toward the target so
+ *  AaraCharacter's pupils track the destination.
  *
- *  We use framer-motion's imperative `animate(motionValue, target, options)` so
- *  the avatar can still be dragged freely during idle and the two systems never clash.
+ * ── Drag ─────────────────────────────────────────────────────────────────────
+ *  In idle/open states the user can drag her anywhere.
+ *  On drag-end she snaps to the nearest horizontal edge (left or right).
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   motion, AnimatePresence,
   useMotionValue, animate as fmAnimate,
 } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, MessageCircle } from 'lucide-react';
+import { AaraCharacter, CharacterMood } from './AaraCharacter';
 import { ElementHighlight } from './ElementHighlight';
 import { useAaraContext } from '@/context/AaraContext';
 import { cn } from '@/lib/utils';
 
-// ─── Inline Avatar Icon ───────────────────────────────────────────────────────
-// Wraps the /images/aara_icon.png asset with a mystical glow.
-// This mirrors AaraFABIcon but without the external import dependency.
-
-function AaraIcon({ size, isOpen }: { size: number; isOpen: boolean }) {
-  return (
-    <div className="relative flex items-center justify-center p-1" style={{ width: size, height: size }}>
-      {!isOpen && (
-        <motion.div
-          animate={{ opacity: [0.3, 0.65, 0.3], scale: [1, 1.18, 1] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute inset-0 rounded-full bg-emerald-500/10 blur-xl"
-        />
-      )}
-      <motion.img
-        src="/images/aara_icon.png"
-        alt="Aara"
-        className="w-full h-full object-contain relative z-10 drop-shadow-2xl"
-        animate={isOpen ? { scale: 0.9, opacity: 0.85 } : { scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      />
-    </div>
-  );
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const HOME_MARGIN = 24;  // px from right/bottom edge
-const AVATAR_SIZE = 88;  // px diameter
-const AVATAR_R    = AVATAR_SIZE / 2;
+const HOME_M      = 24;   // px from right/bottom edge
+const AVATAR_W    = 110;  // rendered SVG width
+const AVATAR_H    = Math.round((AVATAR_W * 200) / 120); // maintains 120:200 ratio
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Speech bubble ────────────────────────────────────────────────────────────
 
-function ThinkingHalo() {
+function Bubble({ text, side = 'left' }: { text: string; side?: 'left' | 'right' }) {
   return (
     <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ repeat: Infinity, duration: 1.8, ease: 'linear' }}
-      className="absolute inset-0 rounded-full border-2 border-transparent"
-      style={{
-        background: 'conic-gradient(from 0deg, transparent 60%, rgba(245,158,11,0.7) 100%)',
-        borderRadius: '50%',
-      }}
-    />
-  );
-}
-
-function ExecutingRing() {
-  return (
-    <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
-      className="absolute inset-[-4px] rounded-full"
-      style={{
-        background: 'conic-gradient(from 0deg, rgba(245,158,11,0.9) 30%, transparent 100%)',
-        borderRadius: '50%',
-        filter: 'blur(2px)',
-      }}
-    />
-  );
-}
-
-function MovingTrail() {
-  return (
-    <>
-      {[0.4, 0.25, 0.12].map((opacity, i) => (
-        <motion.div
-          key={i}
-          animate={{ scale: [1, 1.5 + i * 0.3, 0], opacity: [opacity, opacity * 0.5, 0] }}
-          transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15, ease: 'easeOut' }}
-          className="absolute rounded-full bg-amber-400"
-          style={{
-            width: AVATAR_SIZE - i * 14,
-            height: AVATAR_SIZE - i * 14,
-            top: (i * 7),
-            left: (i * 7),
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
-function SpeechBubble({ text, side = 'left' }: { text: string; side?: 'left' | 'right' }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8, y: 8 }}
+      initial={{ opacity: 0, scale: 0.82, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8, y: 8 }}
-      transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+      exit={{ opacity: 0, scale: 0.82, y: 10 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
       className={cn(
-        'absolute bottom-[calc(100%+12px)] pointer-events-none',
+        'absolute pointer-events-none',
+        'bottom-[calc(100%+10px)]',
         side === 'left' ? 'right-0' : 'left-0'
       )}
-      style={{ minWidth: 130 }}
+      style={{ minWidth: 140, maxWidth: 200 }}
     >
-      <div className="relative px-4 py-2.5 rounded-2xl bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.15)]">
-        <p className="text-[11px] font-extrabold text-stone-600 tracking-tight whitespace-nowrap flex items-center gap-1.5">
-          <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+      <div className="relative px-4 py-2.5 rounded-[18px] bg-white/96 backdrop-blur-xl border border-white/70 shadow-[0_8px_28px_-6px_rgba(0,0,0,0.16)]">
+        <p className="text-[11.5px] font-bold text-stone-600 leading-snug flex items-start gap-1.5">
+          <Sparkles className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
           {text}
         </p>
-        {/* Downward caret */}
         <div className="absolute -bottom-[6px] right-5 w-3 h-3 bg-white border-b border-r border-white/60 shadow-sm rotate-45" />
       </div>
     </motion.div>
   );
 }
 
-function ThinkingDots() {
-  return (
-    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-1 bg-white/80 rounded-full px-2 py-1 shadow-sm border border-white/60">
-      {[0, 0.2, 0.4].map((delay) => (
-        <motion.div
-          key={delay}
-          animate={{ y: [0, -4, 0] }}
-          transition={{ duration: 0.6, repeat: Infinity, delay, ease: 'easeInOut' }}
-          className="w-1.5 h-1.5 rounded-full bg-amber-500"
-        />
-      ))}
-    </div>
-  );
+// ─── Status ring overlay on avatar ───────────────────────────────────────────
+
+function StatusRing({ state }: { state: string }) {
+  if (state === 'thinking') {
+    return (
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
+        className="absolute -inset-2 rounded-full pointer-events-none"
+        style={{
+          background: 'conic-gradient(from 0deg, transparent 55%, rgba(245,158,11,0.8) 100%)',
+          borderRadius: '50%',
+        }}
+      />
+    );
+  }
+  if (state === 'executing') {
+    return (
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1.0, repeat: Infinity, ease: 'linear' }}
+        className="absolute -inset-2 rounded-full pointer-events-none"
+        style={{
+          background: 'conic-gradient(from 0deg, rgba(16,185,129,0.9) 30%, transparent 100%)',
+          borderRadius: '50%',
+          filter: 'blur(2px)',
+        }}
+      />
+    );
+  }
+  if (state === 'error') {
+    return (
+      <motion.div
+        animate={{ opacity: [1, 0.3, 1] }}
+        transition={{ duration: 0.5, repeat: 4 }}
+        className="absolute -inset-2 rounded-full border-2 border-red-400 pointer-events-none"
+      />
+    );
+  }
+  return null;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-interface AaraAvatarProps {
+interface Props {
   onToggleChat: () => void;
   isAdmin?: boolean;
 }
 
-export function AaraAvatar({ onToggleChat, isAdmin = false }: AaraAvatarProps) {
+export function AaraAvatar({ onToggleChat, isAdmin = false }: Props) {
   const {
     aaraState, setAaraState,
+    isTalking,
     isChatOpen,
     currentTargetId, actionTooltip,
     getElement,
   } = useAaraContext();
 
-  // Framer motion values for the avatar's offset from its home position
   const x = useMotionValue(0);
   const y = useMotionValue(0);
-
-  // Track drag-induced offset so we can restore home relative to the drag position
-  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
+  const animXRef = useRef<any>(null);
+  const animYRef = useRef<any>(null);
 
-  // ── Return avatar to home corner ──────────────────────────────────────────
+  const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  const [direction, setDirection] = useState<'left' | 'right' | null>(null);
+  const [hasEnteredOnce, setHasEnteredOnce] = useState(false);
+
+  // ── Return home ───────────────────────────────────────────────────────────
   const returnHome = useCallback(() => {
-    fmAnimate(x, 0, { type: 'spring', stiffness: 260, damping: 26 });
-    fmAnimate(y, 0, { type: 'spring', stiffness: 260, damping: 26 });
-    dragOffsetRef.current = { x: 0, y: 0 };
+    animXRef.current?.stop();
+    animYRef.current?.stop();
+    animXRef.current = fmAnimate(x, 0, { type: 'spring', stiffness: 280, damping: 28 });
+    animYRef.current = fmAnimate(y, 0, { type: 'spring', stiffness: 280, damping: 28 });
+    setGaze({ x: 0, y: 0 });
+    setDirection(null);
   }, [x, y]);
 
-  // ── React to context state changes ────────────────────────────────────────
+  // ── React to state changes ─────────────────────────────────────────────────
   useEffect(() => {
-    if (isDraggingRef.current) return; // never interrupt a live drag
+    if (isDraggingRef.current) return;
 
     if (aaraState === 'moving' && currentTargetId) {
       const reg = getElement(currentTargetId);
-      if (!reg?.ref.current) {
-        setAaraState('idle');
-        return;
-      }
+      if (!reg?.ref.current) { setAaraState('idle'); return; }
 
-      const rect = reg.ref.current.getBoundingClientRect();
-      const targetCX = rect.left + rect.width / 2;
-      const targetCY = rect.top + rect.height / 2;
+      const rect   = reg.ref.current.getBoundingClientRect();
+      const targetCX = rect.left + rect.width  / 2;
+      const targetCY = rect.top  + rect.height / 2;
 
-      // Home position of avatar center (CSS: right:24px bottom:24px)
-      const homeCX = window.innerWidth  - HOME_MARGIN - AVATAR_R;
-      const homeCY = window.innerHeight - HOME_MARGIN - AVATAR_R;
+      // Home centre of avatar
+      const homeCX = window.innerWidth  - HOME_M - AVATAR_W / 2;
+      const homeCY = window.innerHeight - HOME_M - AVATAR_H / 2;
 
-      const dx = targetCX - homeCX;
-      // Positive CSS y = element is lower on screen.
-      // framer-motion y positive = moves DOWN relative to position, so this is the same sign.
-      const dy = targetCY - homeCY;
+      const dx   = targetCX - homeCX;
+      const dy   = targetCY - homeCY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      const distPx = Math.sqrt(dx * dx + dy * dy);
-      // Longer distance → slightly higher stiffness for snappier travel
-      const stiffness = Math.min(90 + distPx * 0.04, 160);
+      // Adaptive stiffness: snappier for longer trips
+      const stiffness = Math.min(80 + dist * 0.05, 150);
 
-      const animX = fmAnimate(x, dx, { type: 'spring', stiffness, damping: 18, mass: 0.8 });
-      const animY = fmAnimate(y, dy, { type: 'spring', stiffness, damping: 18, mass: 0.8 });
+      // Gaze toward target
+      setGaze({ x: Math.sign(dx), y: Math.sign(dy) });
+      setDirection(dx > 0 ? 'right' : 'left');
 
-      // Transition to interacting once arrival spring settles
-      Promise.all([animX, animY]).then(() => {
-        // Only advance if we're still on the same target (not cancelled)
+      animXRef.current?.stop();
+      animYRef.current?.stop();
+
+      const aX = fmAnimate(x, dx, { type: 'spring', stiffness, damping: 17, mass: 0.9 });
+      const aY = fmAnimate(y, dy, { type: 'spring', stiffness, damping: 17, mass: 0.9 });
+      animXRef.current = aX;
+      animYRef.current = aY;
+
+      Promise.all([aX, aY]).then(() => {
         setAaraState('interacting');
       });
     }
 
-    if (aaraState === 'confirming' || aaraState === 'idle' || aaraState === 'open') {
+    if (aaraState === 'idle' || aaraState === 'open' || aaraState === 'confirming') {
       returnHome();
     }
-  }, [aaraState, currentTargetId, getElement, setAaraState, returnHome, x, y]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aaraState, currentTargetId]);
 
-  // ── Drag handlers ─────────────────────────────────────────────────────────
-  // During drag, framer-motion accumulates x/y automatically via `drag`.
-  // On drag-end, we record the offset so returnHome can reset it from
-  // the NEW drag position.
-
-  const handleDragStart = () => { isDraggingRef.current = true; };
-
-  const handleDragEnd = () => {
+  // ── Drag ──────────────────────────────────────────────────────────────────
+  const onDragStart = () => { isDraggingRef.current = true; };
+  const onDragEnd   = () => {
     isDraggingRef.current = false;
-    dragOffsetRef.current = { x: x.get(), y: y.get() };
-    // Snap to nearest edge (aesthetic polish)
-    const cx = window.innerWidth  - HOME_MARGIN - AVATAR_R + x.get();
-    const snapToRight = cx > window.innerWidth / 2;
-    if (!snapToRight) {
-      // Snap left
-      const leftCX = HOME_MARGIN + AVATAR_R;
-      fmAnimate(x, leftCX - (window.innerWidth - HOME_MARGIN - AVATAR_R), {
-        type: 'spring', stiffness: 300, damping: 28,
-      });
+    // Snap to nearest horizontal edge
+    const cx = window.innerWidth - HOME_M - AVATAR_W / 2 + x.get();
+    if (cx < window.innerWidth / 2) {
+      // Snap to left edge
+      const leftTargetX = -(window.innerWidth - HOME_M * 2 - AVATAR_W);
+      fmAnimate(x, leftTargetX, { type: 'spring', stiffness: 320, damping: 28 });
     } else {
-      fmAnimate(x, dragOffsetRef.current.x, { type: 'spring', stiffness: 300, damping: 28 });
+      fmAnimate(x, Math.round(x.get()), { type: 'spring', stiffness: 320, damping: 28 });
     }
   };
 
-  // ── Speech bubble copy ────────────────────────────────────────────────────
+  // ── Mood ──────────────────────────────────────────────────────────────────
+  const mood: CharacterMood = (() => {
+    if (isTalking)               return 'talking';
+    if (aaraState === 'thinking') return 'thinking';
+    if (aaraState === 'moving')   return 'moving';
+    if (aaraState === 'interacting' || aaraState === 'executing') return 'pointing';
+    if (aaraState === 'error')    return 'error';
+    if (isChatOpen)               return 'idle';
+    return 'idle';
+  })();
+
+  // ── Bubble text ───────────────────────────────────────────────────────────
   const bubbleText = (() => {
-    if (actionTooltip) return actionTooltip;
-    if (aaraState === 'thinking') return 'Thinking…';
-    if (aaraState === 'executing') return 'Updating…';
-    if (aaraState === 'interacting') return 'Here it is!';
-    if (aaraState === 'confirming') return 'Please confirm';
+    if (actionTooltip)                return actionTooltip;
+    if (aaraState === 'thinking')     return 'On it…';
+    if (aaraState === 'executing')    return 'Saving…';
+    if (aaraState === 'interacting')  return 'Found it!';
+    if (aaraState === 'confirming')   return 'Please confirm';
+    if (aaraState === 'error')        return 'Hmm, something broke';
     return 'Need Help?';
   })();
 
   const showBubble =
-    (aaraState === 'idle' && !isChatOpen) ||
+    (!isChatOpen && aaraState === 'idle') ||
     aaraState === 'moving'               ||
     aaraState === 'interacting'          ||
     aaraState === 'confirming'           ||
@@ -275,104 +239,186 @@ export function AaraAvatar({ onToggleChat, isAdmin = false }: AaraAvatarProps) {
 
   return (
     <>
-      {/* ── Glow ring portal on target element ── */}
       <ElementHighlight />
 
-      {/* ── Avatar container ─────────────────────────────────────────────── */}
-      {/*
-        Positioned fixed at bottom-right. framer-motion x/y offsets this
-        relative to that home position. During idle the user can drag it.
-      */}
+      {/* ── Outer fixed anchor + motion offset ── */}
       <motion.div
+        id="aara-avatar-root"
         drag={aaraState === 'idle' || aaraState === 'open'}
         dragMomentum={false}
-        dragElastic={0.08}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        dragElastic={0.06}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         style={{
           x, y,
           position: 'fixed',
-          right: HOME_MARGIN,
-          bottom: HOME_MARGIN,
-          width: AVATAR_SIZE,
-          height: AVATAR_SIZE,
+          right:  HOME_M,
+          bottom: HOME_M,
+          width:  AVATAR_W,
           zIndex: 1001,
           cursor: (aaraState === 'idle' || aaraState === 'open') ? 'grab' : 'default',
         }}
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        onAnimationComplete={() => setHasEnteredOnce(true)}
+        transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.4 }}
       >
-        {/* ── Idle floating bob (only when not in flight) ── */}
+        {/* ── Idle float wrapper ── */}
         <motion.div
           animate={
             aaraState === 'idle' || aaraState === 'open'
-              ? { y: [0, -10, 0] }
+              ? { y: [0, -12, 0] }
               : { y: 0 }
           }
           transition={{
-            duration: 3.5,
+            duration: 3.6,
             repeat: Infinity,
             ease: 'easeInOut',
             repeatType: 'loop',
           }}
-          className="relative w-full h-full flex items-center justify-center"
+          style={{ position: 'relative' }}
         >
-          {/* State overlays — behind the icon */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            {aaraState === 'moving'    && <MovingTrail />}
-            {aaraState === 'thinking'  && <ThinkingHalo />}
-            {aaraState === 'executing' && <ExecutingRing />}
-
-            {/* Ambient glow — always present, intensity varies */}
-            <motion.div
-              animate={{
-                opacity: aaraState === 'interacting' ? [0.5, 0.9, 0.5]
-                       : aaraState === 'moving'      ? [0.3, 0.5, 0.3]
-                       : [0.15, 0.3, 0.15],
-                scale:   aaraState === 'interacting' ? [1, 1.25, 1] : [1, 1.1, 1],
-              }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute inset-[-12px] rounded-full bg-amber-400/30 blur-xl"
-            />
+          {/* ── Status ring behind character ── */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: -6,
+              borderRadius: '50%',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          >
+            <StatusRing state={aaraState} />
           </div>
 
-          {/* ── Click target — the icon itself ── */}
-          <motion.button
-            onClick={() => {
-              if (!isDraggingRef.current) onToggleChat();
+          {/* ── Ambient glow ── */}
+          <motion.div
+            animate={{
+              opacity: aaraState === 'interacting' ? [0.4, 0.8, 0.4] : [0.1, 0.2, 0.1],
+              scale:   aaraState === 'interacting' ? [1, 1.3, 1] : [1, 1.12, 1],
             }}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            aria-label="Toggle Aara AI Assistant"
-            className="relative z-10 focus:outline-none"
-            style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, background: 'transparent', border: 'none' }}
-          >
-            {/* Interacting: add extra pop scale */}
-            <motion.div
-              animate={aaraState === 'interacting' ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-              transition={{ duration: 0.7, repeat: aaraState === 'interacting' ? Infinity : 0 }}
-            >
-              <AaraIcon size={AVATAR_SIZE} isOpen={isChatOpen} />
-            </motion.div>
-          </motion.button>
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              position: 'absolute',
+              inset: -16,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(245,158,11,0.35) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              zIndex: 0,
+              filter: 'blur(10px)',
+            }}
+          />
 
-          {/* ── Thinking / executing dots ── */}
-          {(aaraState === 'thinking' || aaraState === 'executing') && <ThinkingDots />}
-
-          {/* ── Speech bubble (above the avatar) ── */}
+          {/* ── Speech bubble ── */}
           <AnimatePresence mode="wait">
-            {showBubble && (
-              <SpeechBubble key={bubbleText} text={bubbleText} />
+            {showBubble && hasEnteredOnce && (
+              <Bubble key={bubbleText} text={bubbleText} />
             )}
           </AnimatePresence>
+
+          {/* ── The character herself ── */}
+          <motion.button
+            onClick={() => { if (!isDraggingRef.current) onToggleChat(); }}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.95 }}
+            aria-label="Toggle Aara"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              display: 'block',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <AaraCharacter
+              mood={mood}
+              direction={direction}
+              size={AVATAR_W}
+              gaze={gaze}
+            />
+          </motion.button>
 
           {/* ── Admin badge ── */}
           {isAdmin && (
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 border-2 border-white flex items-center justify-center shadow-md z-20"
+              transition={{ delay: 0.8, type: 'spring' }}
+              style={{
+                position: 'absolute',
+                top: 4,
+                right: -2,
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #F59E0B, #B45309)',
+                border: '2px solid white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 2,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+              }}
             >
-              <span className="text-[7px] font-black text-white">A</span>
+              <span style={{ fontSize: 8, fontWeight: 900, color: 'white', letterSpacing: 0 }}>A</span>
             </motion.div>
+          )}
+
+          {/* ── Talking: small waveform indicator ── */}
+          <AnimatePresence>
+            {isTalking && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                style={{
+                  position: 'absolute',
+                  bottom: -4,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  gap: 3,
+                  alignItems: 'flex-end',
+                  background: 'rgba(255,255,255,0.9)',
+                  backdropFilter: 'blur(8px)',
+                  padding: '3px 8px',
+                  borderRadius: 12,
+                  border: '1px solid rgba(245,158,11,0.3)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                }}
+              >
+                {[5, 8, 6, 10, 7].map((h, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ height: [h, h * 1.8, h * 0.6, h * 2, h] }}
+                    transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.1, ease: 'easeInOut' }}
+                    style={{ width: 3, background: '#F59E0B', borderRadius: 3, height: h }}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Open-chat indicator dot ── */}
+          {!isChatOpen && aaraState === 'idle' && (
+            <motion.div
+              animate={{ scale: [1, 1.4, 1], opacity: [0.8, 1, 0.8] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              style={{
+                position: 'absolute',
+                top: 6,
+                left: 8,
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: '#10B981',
+                border: '2px solid white',
+                boxShadow: '0 0 8px rgba(16,185,129,0.6)',
+                zIndex: 2,
+              }}
+            />
           )}
         </motion.div>
       </motion.div>
