@@ -64,7 +64,19 @@ BEGIN
 
   RAISE NOTICE 'Properties: v36=%, v32=%, v38=%', v36_id, v32_id, v38_id;
 
-  -- ── 2. Seed rooms 101-105 for each villa (upsert — safe to re-run) ────────
+  -- ── 2. Remove all existing rooms for these villas (and their FK dependents) ─
+  -- Old rooms may have different names/structure; we replace them entirely.
+  DELETE FROM income_records
+  WHERE room_id IN (SELECT id FROM rooms WHERE property_id IN (v36_id, v32_id, v38_id));
+
+  DELETE FROM expense_room_splits
+  WHERE room_id IN (SELECT id FROM rooms WHERE property_id IN (v36_id, v32_id, v38_id));
+
+  DELETE FROM rooms WHERE property_id IN (v36_id, v32_id, v38_id);
+
+  RAISE NOTICE 'Old rooms and dependent records removed for Villa 32, 36, 38';
+
+  -- ── 3. Seed rooms 101-105 for each villa ──────────────────────────────────
 
   -- Villa 32
   INSERT INTO rooms (property_id, name, type, sqft, features, image_urls, occupancy_status, tenant_name)
@@ -104,7 +116,7 @@ BEGIN
 
   RAISE NOTICE 'Rooms seeded for Villa 32, 36, 38';
 
-  -- ── 3. Resolve room IDs by number ─────────────────────────────────────────
+  -- ── 4. Resolve room IDs by number ─────────────────────────────────────────
   SELECT id INTO r32_101 FROM rooms WHERE property_id = v32_id AND name = 'Room 101';
   SELECT id INTO r32_102 FROM rooms WHERE property_id = v32_id AND name = 'Room 102';
   SELECT id INTO r32_103 FROM rooms WHERE property_id = v32_id AND name = 'Room 103';
@@ -126,20 +138,13 @@ BEGIN
   RAISE NOTICE 'Villa 36: 101=%, 102=%, 103=%, 104=%, 105=%', r36_101, r36_102, r36_103, r36_104, r36_105;
   RAISE NOTICE 'Villa 38: 101=%, 102=%, 103=%, 104=%',        r38_101, r38_102, r38_103, r38_104;
 
-  -- ── 4. Delete existing records for the covered period (overwrite mode) ─────
-  DELETE FROM income_records
-  WHERE room_id IN (
-    r32_101, r32_102, r32_103, r32_104, r32_105,
-    r36_101, r36_102, r36_103, r36_104, r36_105,
-    r38_101, r38_102, r38_103, r38_104
-  )
-  AND income_date BETWEEN '2025-12-01' AND '2026-07-31';
-
+  -- ── 5. Delete existing expenses for the covered period (overwrite mode) ─────
+  -- (income_records already cleared in step 2 via the rooms cascade delete)
   DELETE FROM expenses
   WHERE property_id IN (v36_id, v32_id, v38_id)
   AND expense_date BETWEEN '2025-12-01' AND '2026-07-31';
 
-  RAISE NOTICE 'Existing records cleared for Dec 2025 – Jul 2026';
+  RAISE NOTICE 'Existing expenses cleared for Dec 2025 – Jul 2026';
 
   -- ══════════════════════════════════════════════════════════════════════════
   -- VILLA 36 — INCOME RECORDS
