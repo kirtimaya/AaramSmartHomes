@@ -21,6 +21,15 @@ type RoomWithOccupancy = Room & {
   lease_end_date?: string;
 };
 
+type TenantInvitation = {
+  id: string;
+  room_id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  accepted_at?: string;
+};
+
 // ─── Status helpers ──────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<UnitStatus, string> = {
   Vacant:         'border-emerald-500/25 bg-emerald-500/5 text-emerald-600',
@@ -46,7 +55,7 @@ function StatPill({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function RoomCard({ room, tenant, onEdit }: { room: RoomWithOccupancy; tenant?: Tenant; onEdit: () => void }) {
+function RoomCard({ room, tenant, invitation, onEdit }: { room: RoomWithOccupancy; tenant?: Tenant; invitation?: TenantInvitation; onEdit: () => void }) {
   const [imgIdx, setImgIdx] = useState(0);
   const imgs = room.image_urls?.length ? room.image_urls : null;
 
@@ -99,12 +108,18 @@ function RoomCard({ room, tenant, onEdit }: { room: RoomWithOccupancy; tenant?: 
           <span className={cn('text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full border', STATUS_COLOR[room.occupancy_status])}>
             {room.occupancy_status}
           </span>
-          {tenant && (
+          {tenant ? (
             <div className="flex items-center gap-1.5 pt-1">
               <User className="w-3 h-3 shrink-0 opacity-50" />
               <p className="text-[10px] font-bold truncate">{tenant.name}</p>
             </div>
-          )}
+          ) : invitation ? (
+            <div className="flex items-center gap-1.5 pt-1">
+              <Clock className="w-3 h-3 shrink-0 opacity-40" />
+              <p className="text-[10px] font-bold truncate opacity-70">{invitation.name}</p>
+              <span className="text-[7px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-full border border-amber-400/40 text-amber-500 bg-amber-50 ml-auto shrink-0">Invited</span>
+            </div>
+          ) : null}
           {room.lease_end_date && (
             <p className="text-[8px] font-extrabold uppercase tracking-widest opacity-40">
               Lease ends: {new Date(room.lease_end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
@@ -136,6 +151,7 @@ export default function OccupancyPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [rooms, setRooms] = useState<RoomWithOccupancy[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingRoom, setEditingRoom] = useState<RoomWithOccupancy | null>(null);
@@ -180,10 +196,11 @@ export default function OccupancyPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [propsRes, roomsRes, tenantsRes] = await Promise.all([
+    const [propsRes, roomsRes, tenantsRes, invitesRes] = await Promise.all([
       supabase.from('properties').select('*').order('name'),
       supabase.from('rooms').select('*'),
       supabase.from('tenants').select('*'),
+      supabase.from('tenant_invitations').select('id, room_id, name, phone, email, accepted_at').is('accepted_at', null),
     ]);
 
     if (propsRes.data) {
@@ -201,6 +218,7 @@ export default function OccupancyPage() {
       })));
     }
     if (tenantsRes.data) setTenants(tenantsRes.data);
+    if (invitesRes.data) setInvitations(invitesRes.data as TenantInvitation[]);
     setLoading(false);
   };
 
@@ -296,11 +314,13 @@ export default function OccupancyPage() {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         const tenant = tenants.find(t => t.id === r.tenant_id);
+        const invitation = !r.tenant_id ? invitations.find(i => i.room_id === r.id) : undefined;
         return (
           r.name.toLowerCase().includes(q) ||
           r.type.toLowerCase().includes(q) ||
           r.occupancy_status.toLowerCase().includes(q) ||
-          tenant?.name.toLowerCase().includes(q)
+          tenant?.name.toLowerCase().includes(q) ||
+          invitation?.name.toLowerCase().includes(q)
         );
       });
   };
@@ -308,13 +328,15 @@ export default function OccupancyPage() {
   const visibleProperties = properties.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    const hasMatch = rooms.some(r =>
-      r.property_id === p.id && (
+    const hasMatch = rooms.some(r => {
+      const invitation = !r.tenant_id ? invitations.find(i => i.room_id === r.id) : undefined;
+      return r.property_id === p.id && (
         r.name.toLowerCase().includes(q) ||
         r.occupancy_status.toLowerCase().includes(q) ||
-        tenants.find(t => t.id === r.tenant_id)?.name.toLowerCase().includes(q)
-      )
-    );
+        tenants.find(t => t.id === r.tenant_id)?.name.toLowerCase().includes(q) ||
+        invitation?.name.toLowerCase().includes(q)
+      );
+    });
     return p.name.toLowerCase().includes(q) || p.location.toLowerCase().includes(q) || hasMatch;
   });
 
@@ -496,6 +518,7 @@ export default function OccupancyPage() {
                             key={room.id}
                             room={room}
                             tenant={tenants.find(t => t.id === room.tenant_id)}
+                            invitation={!room.tenant_id ? invitations.find(i => i.room_id === room.id) : undefined}
                             onEdit={() => setEditingRoom(room)}
                           />
                         ))}
