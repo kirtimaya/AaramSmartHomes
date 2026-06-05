@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS room_bookings (
 );
 
 -- ── 5. tickets (unified: maintenance + support + tenant_access_request) ───────
-CREATE TABLE IF NOT EXISTS tickets (
+-- Drop and recreate to ensure correct schema (old table had tenant_id, not requester_id)
+DROP TABLE IF EXISTS tickets CASCADE;
+CREATE TABLE tickets (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   requester_id   UUID NOT NULL,
   requester_type TEXT NOT NULL DEFAULT 'tenant',  -- 'guest' | 'tenant'
