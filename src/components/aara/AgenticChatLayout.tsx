@@ -9,24 +9,10 @@
  *                   avatar through moveToElement → highlight → confirm before
  *                   executing the real DB operation via /api/chat (confirmed=true).
  *
- * ── Agentic loop (admin write actions) ─────────────────────────────────────
- *  1. Parse AI response → detect action type (update_room_status, etc.)
- *  2. If action requires confirmation:
- *     a. Find the best-match registered element via label/ID heuristic
- *     b. Call context.moveToElement()   → avatar flies to element
- *     c. Wait for avatar to reach 'interacting' state (1.5 s grace)
- *     d. Call context.highlightElement()
- *     e. Short pause → context.requestConfirmation(message) → Promise<boolean>
- *     f. Confirmed: call /api/chat with execute=true → commit DB change
- *        Cancelled: context.resetToIdle(), add "Cancelled." message
- *  3. Non-write actions (navigate, read, ticket creation): execute immediately.
- *
- * ── AI SDK note ─────────────────────────────────────────────────────────────
- *  The existing /api/chat endpoint already uses Gemini 2.0 Flash Lite and returns
- *  a structured {reply, action, data} response. This layout wraps that contract.
- *  To migrate to the Vercel AI SDK (streamText + tools), replace `callChatAPI`
- *  with a streaming fetch and handle `tool_calls` instead of JSON-in-text.
- *  The orchestration code below is SDK-agnostic on purpose.
+ * ── Memory ──────────────────────────────────────────────────────────────────
+ *  Persistent per-user memory stored in localStorage via aaraMemory.ts.
+ *  Sent with every API call as a formatted string injected into the system prompt.
+ *  AI can return action="save_memory" or "clear_memory" to manage memory entries.
  */
 
 import React, {
@@ -35,12 +21,17 @@ import React, {
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Send, Mic, MicOff, Navigation, Sparkles,
-  CheckCircle2, AlertTriangle, Loader2, ShieldAlert,
+  CheckCircle2, AlertTriangle, Loader2, ShieldAlert, Brain, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { useAaraContext } from '@/context/AaraContext';
 import { useRouter } from 'next/navigation';
+import type { UserRole } from './AaraWidget';
+import {
+  addMemoryEntry, clearMemory, formatMemoryForPrompt, getMemoryEntries,
+  type MemoryCategory, type AaraMemoryEntry,
+} from '@/lib/aaraMemory';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +132,51 @@ function ConfirmationCard({ message, onConfirm, onCancel, loading }: Confirmatio
   );
 }
 
+// ─── Memory Pills ─────────────────────────────────────────────────────────────
+
+function MemoryPanel({
+  entries, userId, onClear,
+}: {
+  entries: AaraMemoryEntry[];
+  userId: string | null;
+  onClear: () => void;
+}) {
+  if (!entries.length) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      className="px-5 pt-3 pb-1 border-b border-black/5"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Brain className="w-3 h-3 text-violet-500" />
+          <span className="text-[9px] font-extrabold uppercase tracking-widest text-violet-500">Memory</span>
+        </div>
+        <button
+          onClick={onClear}
+          title="Clear memory"
+          className="flex items-center gap-1 text-[9px] font-bold text-stone-400 hover:text-red-400 transition-colors"
+        >
+          <Trash2 className="w-2.5 h-2.5" /> Clear
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 pb-2">
+        {entries.map(e => (
+          <span
+            key={e.id}
+            className="px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200/60 text-[10px] font-semibold text-violet-700 leading-none max-w-[200px] truncate"
+            title={e.text}
+          >
+            {e.text}
+          </span>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Action Badge ─────────────────────────────────────────────────────────────
 
 function ActionBadge({ action, data }: { action?: string | null; data?: Record<string, unknown> | null }) {
@@ -152,6 +188,7 @@ function ActionBadge({ action, data }: { action?: string | null; data?: Record<s
     navigate:          { icon: <Navigation  className="w-3 h-3 shrink-0" />, label: `→ ${data?.path ?? ''}`, color: 'text-violet-600 bg-violet-500/10 border-violet-500/20' },
     update_room_status:{ icon: <CheckCircle2 className="w-3 h-3 shrink-0" />, label: 'Room status updated', color: 'text-amber-600 bg-amber-500/10 border-amber-500/20' },
     resolve_ticket:    { icon: <CheckCircle2 className="w-3 h-3 shrink-0" />, label: 'Ticket resolved', color: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' },
+    save_memory:       { icon: <Brain        className="w-3 h-3 shrink-0" />, label: 'Remembered', color: 'text-violet-600 bg-violet-500/10 border-violet-500/20' },
   };
 
   const badge = badges[action];
@@ -172,6 +209,7 @@ async function callChatAPI(
   context: Record<string, unknown>,
   token?: string,
   agentMode?: boolean,
+  memory?: string,
 ): Promise<{ reply: string; action: string | null; data: Record<string, unknown> | null }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -179,7 +217,7 @@ async function callChatAPI(
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, history, context, agent_mode: agentMode }),
+    body: JSON.stringify({ message, history, context, agent_mode: agentMode, memory }),
   });
   if (!res.ok) throw new Error(`Chat API error ${res.status}`);
   return res.json();
@@ -188,12 +226,14 @@ async function callChatAPI(
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface AgenticChatLayoutProps {
-  isAdmin: boolean;
+  userRole: UserRole;
+  userId: string | null;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayoutProps) {
+export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: AgenticChatLayoutProps) {
+  const isAdmin = userRole === 'admin';
   const {
     aaraState, setAaraState,
     isTalking, setIsTalking,
@@ -204,12 +244,22 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
 
   const router = useRouter();
 
+  // Memory state — always sync from localStorage
+  const [memEntries, setMemEntries] = useState<AaraMemoryEntry[]>(() => getMemoryEntries(userId));
+  const refreshMemory = useCallback(() => setMemEntries(getMemoryEntries(userId)), [userId]);
+
+  const [showMemory, setShowMemory] = useState(false);
+
+  const getWelcome = () => {
+    if (isAdmin) return "Hello! I'm Aara — your property management agent. Tell me what you need done and I'll handle it for you.";
+    if (userRole === 'tenant') return "Hi! I'm Aara. I can help with your tenancy, raise tickets, or answer questions about your home.";
+    return "Hello! I'm Aara, your smart home assistant. Ask me anything about AaramSmartHomes!";
+  };
+
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: '0',
     role: 'assistant',
-    text: isAdmin
-      ? "Hello! I'm Aara — your property management agent. Tell me what you need done and I'll handle it for you."
-      : "Hello! I'm Aara. How can I help you today?",
+    text: getWelcome(),
     timestamp: new Date(),
   }]);
 
@@ -224,7 +274,6 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
   const inputRef   = useRef<HTMLInputElement>(null);
   const chatRef    = useRef<HTMLDivElement>(null);
 
-  // Pending agent action waiting for confirmation (separate from context's pendingConfirmation)
   const pendingAgentActionRef = useRef<{
     originalMessage: string;
     action: string;
@@ -267,10 +316,8 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
   const talkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const speak = useCallback((text: string) => {
-    // Drive avatar mouth animation regardless of voice setting
     if (talkTimerRef.current) clearTimeout(talkTimerRef.current);
     setIsTalking(true);
-    // ~70ms per character is a reasonable speech rate estimate
     talkTimerRef.current = setTimeout(() => setIsTalking(false), Math.min(text.length * 70, 8000));
 
     if (!voiceEnabled || !window.speechSynthesis) return;
@@ -289,10 +336,9 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
     const elements = getAllElements();
     if (!elements.length) return null;
 
-    const roomId = data?.room_id as string | undefined;
+    const roomId   = data?.room_id   as string | undefined;
     const ticketId = data?.ticket_id as string | undefined;
 
-    // Priority 1: direct id match
     if (roomId) {
       const exact = elements.find(e => e.id === `room-${roomId}` || e.id === `room-${roomId}-status`);
       if (exact) return exact.id;
@@ -302,7 +348,6 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
       if (exact) return exact.id;
     }
 
-    // Priority 2: action-type match
     const actionTargets: Record<string, string[]> = {
       update_room_status: ['fill', 'click'],
       record_financials:  ['fill', 'submit'],
@@ -332,14 +377,51 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
         .map(m => ({ role: m.role, text: m.text }));
 
       const context: Record<string, unknown> = isAdmin ? { admin_data: adminContext } : {};
-      const responseData = await callChatAPI(msg, history, context, session?.access_token, isAdmin);
+      const memory = formatMemoryForPrompt(userId);
+
+      const responseData = await callChatAPI(msg, history, context, session?.access_token, isAdmin, memory || undefined);
 
       const { reply, action, data } = responseData;
       const isWriteAction = action && WRITE_ACTIONS.has(action);
 
+      // ── Memory actions ────────────────────────────────────────────────────
+      if (action === 'save_memory' && data) {
+        const text   = (data as any).text     as string;
+        const cat    = (data as any).category as MemoryCategory | undefined;
+        if (text) {
+          addMemoryEntry(userId, text, cat ?? 'rule');
+          refreshMemory();
+        }
+        setAaraState('open');
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          text: reply,
+          action: 'save_memory',
+          timestamp: new Date(),
+        }]);
+        speak(reply);
+        setLoading(false);
+        return;
+      }
+
+      if (action === 'clear_memory') {
+        clearMemory(userId);
+        refreshMemory();
+        setAaraState('open');
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          text: reply,
+          timestamp: new Date(),
+        }]);
+        speak(reply);
+        setLoading(false);
+        return;
+      }
+
       // ── Admin + write action: trigger agentic flow ───────────────────────
       if (isAdmin && isWriteAction && data) {
-        // Show the AI's natural-language reply first
         setMessages(prev => [...prev, {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
@@ -349,10 +431,8 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
         speak(reply);
         setLoading(false);
 
-        // Store the action for post-confirmation execution
         pendingAgentActionRef.current = { originalMessage: msg, action, data: data as Record<string, unknown> };
 
-        // Find target element
         const targetId = findTargetElement(action, data as Record<string, unknown>);
 
         if (targetId) {
@@ -360,26 +440,20 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
           const tooltip = `Going to ${elementReg?.label ?? 'the element'}…`;
           moveToElement(targetId, tooltip);
 
-          // Wait ~1.8 s for the spring animation to settle before interacting
           await new Promise(r => setTimeout(r, 1800));
           highlightElement(targetId);
 
-          // ── Actually interact with the DOM element ────────────────────────
-          // For update_room_status: select the new status in the dropdown
           if (action === 'update_room_status' && (data as any).status) {
             await new Promise(r => setTimeout(r, 400));
             selectOption(targetId, (data as any).status);
           }
-          // For resolve_ticket: type the resolution text in a textarea
           if (action === 'resolve_ticket' && (data as any).resolution) {
             await typeInElement(targetId, (data as any).resolution, 45);
           }
-          // For record_financials: type the amount into the field
           if (action === 'record_financials' && (data as any).amount) {
             await typeInElement(targetId, String((data as any).amount), 60);
           }
 
-          // Brief pause to let glow render
           await new Promise(r => setTimeout(r, 600));
 
           const confirmMsg = (data as any).confirm_message
@@ -392,14 +466,7 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
             setConfirmLoading(true);
             setAaraState('executing');
             try {
-              // Re-submit to execute (the chat API will run the DB operation)
-              const execData = await callChatAPI(
-                msg,
-                history,
-                context,
-                session?.access_token,
-                false, // agent_mode=false → actually execute
-              );
+              const execData = await callChatAPI(msg, history, context, session?.access_token, false, memory || undefined);
               setMessages(prev => [...prev, {
                 id: (Date.now() + 2).toString(),
                 role: 'assistant',
@@ -430,7 +497,6 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
             resetToIdle();
           }
         } else {
-          // No registered element found → fall back to confirmation-only
           const confirmMsg = (data as any).confirm_message
             ?? `Confirm: ${action.replace(/_/g, ' ')}?`;
           const confirmed = await requestConfirmation(confirmMsg);
@@ -439,7 +505,7 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
             setConfirmLoading(true);
             setAaraState('executing');
             try {
-              const execData = await callChatAPI(msg, history, context, session?.access_token, false);
+              const execData = await callChatAPI(msg, history, context, session?.access_token, false, memory || undefined);
               setMessages(prev => [...prev, {
                 id: (Date.now() + 3).toString(),
                 role: 'assistant',
@@ -461,7 +527,7 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
         return;
       }
 
-      // ── Standard flow (non-write or non-admin) ───────────────────────────
+      // ── Standard flow ────────────────────────────────────────────────────
       setAaraState('open');
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
@@ -473,7 +539,6 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
       }]);
       speak(reply);
 
-      // Navigation actions
       if (action === 'navigate' || action === 'app_command') {
         const path = (data as any)?.path;
         const cmd  = (data as any)?.cmd;
@@ -491,7 +556,7 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, loading, messages, isAdmin, adminContext]);
+  }, [input, loading, messages, isAdmin, adminContext, userId]);
 
   const { listening, supported, start, stop } = useSpeechRecognition(
     useCallback((t: string) => { setInput(t); setVoiceEnabled(true); setTimeout(() => sendMessage(t), 400); }, [sendMessage])
@@ -523,15 +588,30 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
                 <motion.div
                   animate={{ opacity: [1, 0.3, 1] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
-                  className={cn('w-1.5 h-1.5 rounded-full', isAdmin ? 'bg-amber-500' : 'bg-emerald-500')}
+                  className={cn('w-1.5 h-1.5 rounded-full',
+                    isAdmin ? 'bg-amber-500' : userRole === 'tenant' ? 'bg-blue-500' : 'bg-emerald-500'
+                  )}
                 />
                 <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/40">
-                  {isAdmin ? 'Agent Mode' : 'Assistant Mode'}
+                  {isAdmin ? 'Agent Mode' : userRole === 'tenant' ? 'Resident Mode' : 'Guest Mode'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Memory toggle */}
+              {memEntries.length > 0 && (
+                <button
+                  onClick={() => setShowMemory(p => !p)}
+                  className={cn('w-9 h-9 rounded-2xl transition-all border flex items-center justify-center',
+                    showMemory ? 'bg-violet-500 text-white border-violet-400' : 'bg-black/5 text-foreground/30 border-transparent hover:bg-black/8'
+                  )}
+                  title="Memory"
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {/* Pin */}
               <button
                 onClick={() => setIsPinned(p => !p)}
@@ -562,6 +642,17 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
               </button>
             </div>
           </div>
+
+          {/* ── Memory panel ── */}
+          <AnimatePresence>
+            {showMemory && (
+              <MemoryPanel
+                entries={memEntries}
+                userId={userId}
+                onClear={() => { clearMemory(userId); refreshMemory(); }}
+              />
+            )}
+          </AnimatePresence>
 
           {/* ── Messages ── */}
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
@@ -613,19 +704,15 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
               </div>
             )}
 
-            {/* Confirmation card (rendered inline in the message stream) */}
+            {/* Confirmation card */}
             <AnimatePresence>
               {pendingConfirmation && (
                 <ConfirmationCard
                   key="confirm"
                   message={pendingConfirmation.message}
                   loading={confirmLoading}
-                  onConfirm={() => {
-                    pendingConfirmation.resolve(true);
-                  }}
-                  onCancel={() => {
-                    pendingConfirmation.resolve(false);
-                  }}
+                  onConfirm={() => pendingConfirmation.resolve(true)}
+                  onCancel={() => pendingConfirmation.resolve(false)}
                 />
               )}
             </AnimatePresence>

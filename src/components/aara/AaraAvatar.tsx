@@ -38,8 +38,8 @@ import { cn } from '@/lib/utils';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const HOME_M      = 24;   // px from right/bottom edge
-const AVATAR_W    = 110;  // rendered SVG width
-const AVATAR_H    = Math.round((AVATAR_W * 200) / 120); // maintains 120:200 ratio
+const AVATAR_W    = 75;   // rendered SVG width  (100:265 aspect ratio)
+const AVATAR_H    = Math.round((AVATAR_W * 265) / 100); // maintains 100:265 ratio
 
 // ─── Speech bubble ────────────────────────────────────────────────────────────
 
