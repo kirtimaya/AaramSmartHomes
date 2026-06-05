@@ -89,7 +89,22 @@ UPDATE admin_requests
   SET token_expires_at = NOW() + INTERVAL '48 hours'
   WHERE token_expires_at IS NULL;
 
--- ── 8. Alter tenants: remove shortlisted_property_ids, add phone + property_id ─
+-- ── 8a. electricity_bills: ensure all columns exist (safety net for installs
+--       that skipped 20260605 or had a partial run)
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS bill_image_url   TEXT;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS image_url        TEXT;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS usc_no           TEXT;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS present_reading  INTEGER;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS previous_reading INTEGER;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS present_date     DATE;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS previous_date    DATE;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS uploaded_by      UUID;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS uploaded_by_name TEXT;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS upload_source    TEXT DEFAULT 'admin';
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS updated_at       TIMESTAMPTZ DEFAULT NOW();
+
+-- ── 8b. Alter tenants: remove shortlisted_property_ids, add phone + property_id ─
 ALTER TABLE tenants DROP COLUMN IF EXISTS shortlisted_property_ids;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS property_id UUID REFERENCES properties(id) ON DELETE SET NULL;
