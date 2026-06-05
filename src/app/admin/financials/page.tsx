@@ -7,7 +7,7 @@ import {
   IndianRupee, ArrowUpRight, ArrowDownRight, Activity,
   Plus, Edit2, Trash2, X, Check, Loader2, Leaf, Zap, Sofa,
   Smartphone, Home, ChevronDown, ChevronUp, TrendingUp, Save,
-  Building2, LayoutGrid, Wifi, Sparkles, Flame, User
+  Building2, LayoutGrid, Wifi, Sparkles, Flame, User, Lock, Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
@@ -17,7 +17,7 @@ import { useAaraCommands } from '@/hooks/useAaraCommands';
 import { ElectricityTab } from './ElectricityTab';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-type ExpenseCategory = 'rent' | 'maintenance' | 'electricity' | 'gas' | 'wifi' | 'maid' | 'furniture' | 'smart_devices' | 'organic_nature' | 'utilities' | 'other' | 'custom';
+type ExpenseCategory = 'rent' | 'maintenance' | 'electricity' | 'gas' | 'wifi' | 'maid' | 'furniture' | 'smart_devices' | 'organic_nature' | 'utilities' | 'other' | 'custom' | 'security_deposit';
 type IncomeType = 'rent' | 'deposit' | 'setup_cost' | 'custom';
 
 type ExpenseItem = {
@@ -52,8 +52,9 @@ const CATEGORY_META: Record<ExpenseCategory, { label: string; color: string; ico
   smart_devices:  { label: 'Smart Devices',       color: 'text-cyan-500',    bg: 'bg-cyan-500/8 border-cyan-500/20',     dot: 'bg-cyan-500',    icon: Smartphone },
   organic_nature: { label: 'Organic & Nature',   color: 'text-emerald-700', bg: 'bg-emerald-700/8 border-emerald-700/20', dot: 'bg-emerald-700', icon: Leaf },
   utilities:      { label: 'General Utilities',   color: 'text-violet-500',  bg: 'bg-violet-500/8 border-violet-500/20', dot: 'bg-violet-400',  icon: Zap },
-  other:          { label: 'Other',               color: 'text-foreground/50', bg: 'bg-white/60 border-white/40',        dot: 'bg-foreground/20', icon: Home },
-  custom:         { label: 'Custom',              color: 'text-secondary',   bg: 'bg-secondary/10 border-secondary/20',  dot: 'bg-secondary',   icon: Plus },
+  other:             { label: 'Other',                   color: 'text-foreground/50', bg: 'bg-white/60 border-white/40',          dot: 'bg-foreground/20', icon: Home },
+  custom:            { label: 'Custom',                  color: 'text-secondary',   bg: 'bg-secondary/10 border-secondary/20',   dot: 'bg-secondary',   icon: Plus },
+  security_deposit:  { label: 'Security Deposit (Paid)', color: 'text-violet-600',  bg: 'bg-violet-500/8 border-violet-500/20',  dot: 'bg-violet-500',  icon: Lock },
 };
 
 const ALL_CATS = Object.keys(CATEGORY_META) as ExpenseCategory[];
@@ -594,6 +595,224 @@ function SummaryCard({ title, value, trend, isPositive, icon: Icon, sub, onClick
   );
 }
 
+// ─── Deposit income table (editable, received from tenants) ─────────────────
+function DepositTable({ title, accentColor, records, rooms, properties, onUpdate, onDelete }: {
+  title: string;
+  accentColor: 'violet' | 'rose';
+  records: IncomeRecord[];
+  rooms: (Room & { property_id: string })[];
+  properties: { id: string; name: string }[];
+  onUpdate: (r: IncomeRecord) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [editId, setEditId]   = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<IncomeRecord | null>(null);
+
+  const colorMap = { violet: { badge: 'bg-violet-100 text-violet-700', btn: 'bg-violet-600', row: 'hover:border-violet-200' }, rose: { badge: 'bg-rose-100 text-rose-700', btn: 'bg-rose-600', row: 'hover:border-rose-200' } };
+  const c = colorMap[accentColor];
+
+  const getRoom = (rid: string) => rooms.find(r => r.id === rid);
+  const getProp = (rid: string) => { const room = getRoom(rid); return room ? properties.find(p => p.id === room.property_id) : null; };
+
+  if (records.length === 0) return (
+    <div className="soft-card border border-white bg-white/20 p-6">
+      <h3 className="text-[11px] font-extrabold uppercase tracking-widest text-foreground/30 mb-2">{title}</h3>
+      <p className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest italic">No records found.</p>
+    </div>
+  );
+
+  return (
+    <div className="soft-card border border-white bg-white/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/40">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-widest text-foreground/50">{title}</h3>
+      </div>
+      <div className="divide-y divide-white/40">
+        {records.sort((a, b) => b.income_date.localeCompare(a.income_date)).map(rec => {
+          const room = getRoom(rec.room_id);
+          const prop = getProp(rec.room_id);
+          return (
+            <div key={rec.id} className={cn('group px-5 py-3 transition-all', c.row)}>
+              {editId === rec.id && editForm ? (
+                <div className="space-y-2 py-1">
+                  <div className="grid grid-cols-12 gap-2">
+                    <div className="col-span-3 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+                      <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+                      <input type="number" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: parseFloat(e.target.value)||0 })}
+                        className="w-full text-xs bg-transparent outline-none font-black text-secondary" />
+                    </div>
+                    <input type="date" value={editForm.income_date} onChange={e => setEditForm({ ...editForm, income_date: e.target.value })}
+                      className="col-span-3 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
+                    <input type="text" value={editForm.note || ''} onChange={e => setEditForm({ ...editForm, note: e.target.value })}
+                      placeholder="Note..." className="col-span-4 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none" />
+                    <div className="col-span-2 flex gap-1.5">
+                      <button onClick={async () => { await onUpdate(editForm); setEditId(null); }}
+                        className={cn('flex-1 py-2 rounded-xl text-white flex items-center justify-center text-[10px]', c.btn)}>
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="w-9 soft-button border border-white text-foreground/30">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center shrink-0">
+                      <Lock className="w-3 h-3 text-violet-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {room && <span className={cn('text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md', c.badge)}>{room.name}</span>}
+                        {prop && <span className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">{prop.name}</span>}
+                      </div>
+                      <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest mt-0.5">{rec.income_date}{rec.note && ` · ${rec.note}`}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-sm font-black text-violet-700">{fmt(rec.amount)}</span>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => { setEditId(rec.id); setEditForm(rec); }} className="p-1.5 soft-button border border-white text-secondary hover:bg-secondary hover:text-white transition-all"><Edit2 className="w-3 h-3" /></button>
+                      <button onClick={() => onDelete(rec.id)} className="p-1.5 soft-button border border-white text-primary hover:bg-primary hover:text-white transition-all"><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Deposit expense table (editable, paid to owners) ────────────────────────
+function DepositExpenseTable({ title, accentColor, records, properties, onUpdate, onDelete, onAdd }: {
+  title: string;
+  accentColor: 'violet' | 'rose';
+  records: ExpenseItem[];
+  properties: { id: string; name: string }[];
+  onUpdate: (e: ExpenseItem) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onAdd: (d: any) => Promise<void>;
+}) {
+  const [editId, setEditId]   = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ExpenseItem | null>(null);
+  const [adding, setAdding]   = useState(false);
+  const [newForm, setNewForm] = useState({ label: '', amount: '', date: new Date().toISOString().split('T')[0], note: '', property_id: '' });
+
+  const submitAdd = async () => {
+    const a = parseFloat(newForm.amount);
+    if (!newForm.label || isNaN(a) || a <= 0) return;
+    await onAdd({ label: newForm.label, amount: a, expense_date: newForm.date, note: newForm.note, property_id: newForm.property_id || null, room_ids: [] });
+    setAdding(false);
+    setNewForm({ label: '', amount: '', date: new Date().toISOString().split('T')[0], note: '', property_id: '' });
+  };
+
+  return (
+    <div className="soft-card border border-white bg-white/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/40 flex justify-between items-center">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-widest text-foreground/50">{title}</h3>
+        <button onClick={() => setAdding(a => !a)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[9px] font-extrabold uppercase tracking-widest hover:bg-rose-700 transition-all">
+          <Plus className="w-3 h-3" /> Add
+        </button>
+      </div>
+
+      {adding && (
+        <div className="px-5 py-3 border-b border-white/40 bg-rose-50/30 space-y-2">
+          <div className="grid grid-cols-12 gap-2">
+            <input type="text" value={newForm.label} onChange={e => setNewForm({ ...newForm, label: e.target.value })}
+              placeholder="e.g. Security deposit — Villa 36 owner"
+              className="col-span-4 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none" />
+            <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+              <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+              <input type="number" value={newForm.amount} onChange={e => setNewForm({ ...newForm, amount: e.target.value })}
+                placeholder="0" className="w-full text-xs bg-transparent outline-none font-bold" />
+            </div>
+            <input type="date" value={newForm.date} onChange={e => setNewForm({ ...newForm, date: e.target.value })}
+              className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
+            <select value={newForm.property_id} onChange={e => setNewForm({ ...newForm, property_id: e.target.value })}
+              className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none appearance-none">
+              <option value="">— Villa —</option>
+              {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <div className="col-span-2 flex gap-1.5">
+              <button onClick={submitAdd} className="flex-1 py-2 rounded-xl bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 transition-all">
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => setAdding(false)} className="w-9 soft-button border border-white text-foreground/30">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {records.length === 0 && !adding ? (
+        <div className="px-5 py-4">
+          <p className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest italic">No security deposits paid recorded yet. Use "+ Add" to log one.</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-white/40">
+          {records.sort((a, b) => (b.expense_date || '').localeCompare(a.expense_date || '')).map(exp => {
+            const prop = exp.property_id ? properties.find(p => p.id === exp.property_id) : null;
+            return (
+              <div key={exp.id} className="group px-5 py-3 hover:border-rose-200 transition-all">
+                {editId === exp.id && editForm ? (
+                  <div className="grid grid-cols-12 gap-2 py-1">
+                    <input type="text" value={editForm.label} onChange={e => setEditForm({ ...editForm, label: e.target.value })}
+                      className="col-span-3 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none font-bold" />
+                    <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+                      <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+                      <input type="number" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: parseFloat(e.target.value)||0 })}
+                        className="w-full text-xs bg-transparent outline-none font-black text-rose-700" />
+                    </div>
+                    <input type="date" value={editForm.expense_date||''} onChange={e => setEditForm({ ...editForm, expense_date: e.target.value })}
+                      className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
+                    <input type="text" value={editForm.note||''} onChange={e => setEditForm({ ...editForm, note: e.target.value })}
+                      placeholder="Note..." className="col-span-3 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none" />
+                    <div className="col-span-2 flex gap-1.5">
+                      <button onClick={async () => { await onUpdate(editForm); setEditId(null); }}
+                        className="flex-1 py-2 rounded-xl bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 transition-all">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="w-9 soft-button border border-white text-foreground/30">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                        <Lock className="w-3 h-3 text-rose-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-foreground uppercase tracking-tight truncate">{exp.label}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {prop && <span className="text-[9px] font-extrabold uppercase tracking-widest bg-rose-100 text-rose-700 px-2 py-0.5 rounded-md">{prop.name}</span>}
+                          <span className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">{exp.expense_date}{exp.note && ` · ${exp.note}`}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-black text-rose-700">{fmt(exp.amount)}</span>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => { setEditId(exp.id); setEditForm(exp); }} className="p-1.5 soft-button border border-white text-secondary hover:bg-secondary hover:text-white transition-all"><Edit2 className="w-3 h-3" /></button>
+                        <button onClick={() => onDelete(exp.id)} className="p-1.5 soft-button border border-white text-primary hover:bg-primary hover:text-white transition-all"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -729,27 +948,34 @@ export default function FinancialHub() {
     }
   };
 
-  // ── Rent Map Helper ──────────────────────────────────────────────────────
+  // ── Rent Map Helper (rent-type only — excludes deposits & setup costs) ───
   const rentMap = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const r of rentRecords) { 
-      m[r.room_id] = (m[r.room_id] || 0) + r.amount; 
+    for (const r of rentRecords.filter(r => r.income_type === 'rent')) {
+      m[r.room_id] = (m[r.room_id] || 0) + r.amount;
     }
     return m;
   }, [rentRecords]);
 
-  // ── Computed ──────────────────────────────────────────────────────────────
-  // ── Computed Current Month ──────────────────────────────────────────────────
-  const totalRent = useMemo(() => rentRecords.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
-  const otherInc  = useMemo(() => rentRecords.filter(r => r.income_type !== 'rent').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
-  const totalExp  = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
-  const netIncome = (totalRent + otherInc) - totalExp;
+  // ── Computed Current Month ─────────────────────────────────────────────────
+  // Operational income = rent only (deposits are liabilities, not profit)
+  const totalRent        = useMemo(() => rentRecords.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
+  const monthDepositsIn  = useMemo(() => rentRecords.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
+  const monthSetupCosts  = useMemo(() => rentRecords.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
+  // Operating expenses exclude security deposits paid to owner
+  const totalOpExp       = useMemo(() => expenses.filter(e => e.category !== 'security_deposit').reduce((s, e) => s + e.amount, 0), [expenses]);
+  const monthDepositsPaid = useMemo(() => expenses.filter(e => e.category === 'security_deposit').reduce((s, e) => s + e.amount, 0), [expenses]);
+  const totalExp         = totalOpExp + monthDepositsPaid;
+  const netIncome        = totalRent - totalOpExp;
 
-  // ── Computed Lifetime ────────────────────────────────────────────────────────
-  const lifeRent = useMemo(() => allTimeInc.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeOther = useMemo(() => allTimeInc.filter(r => r.income_type !== 'rent').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeExp = useMemo(() => allTimeExp.reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
-  const lifeNet = (lifeRent + lifeOther) - lifeExp;
+  // ── Computed Lifetime ──────────────────────────────────────────────────────
+  const lifeRent         = useMemo(() => allTimeInc.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
+  const lifeDepositsIn   = useMemo(() => allTimeInc.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
+  const lifeSetupCosts   = useMemo(() => allTimeInc.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
+  const lifeOpExp        = useMemo(() => allTimeExp.filter(e => e.category !== 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
+  const lifeDepositsPaid = useMemo(() => allTimeExp.filter(e => e.category === 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
+  const lifeExp          = useMemo(() => allTimeExp.reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
+  const lifeNet          = lifeRent - lifeOpExp;
 
   const roomsByProp   = useMemo(() => {
     const m: Record<string, typeof rooms> = {};
@@ -951,10 +1177,11 @@ export default function FinancialHub() {
             <div className="w-1.5 h-6 rounded-full bg-secondary rotate-12" />
             <h2 className="text-xl font-bold uppercase tracking-tight">Lifetime Performance</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <SummaryCard title="Lifetime Income" value={fmt(lifeRent + lifeOther)} icon={IndianRupee} isPositive trend="All Time" sub="Click for sources" onClick={() => setSourceDetail({ title: 'Lifetime Income', type: 'income', isLifetime: true })} />
-            <SummaryCard title="Lifetime Expenses" value={fmt(lifeExp)} icon={Activity} isPositive={false} trend="All Time" sub="Click for sources" onClick={() => setSourceDetail({ title: 'Lifetime Expenses', type: 'expense', isLifetime: true })} />
-            <SummaryCard title="Lifetime P&L" value={fmt(lifeNet)} icon={TrendingUp} isPositive={lifeNet >= 0} trend={lifeNet >= 0 ? 'Surplus' : 'Deficit'} sub="Total Business" onClick={() => setSourceDetail({ title: 'Lifetime P&L', type: 'income', isLifetime: true })} />
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <SummaryCard title="Rent Collected" value={fmt(lifeRent)} icon={IndianRupee} isPositive trend="All Time" sub="Operational income" onClick={() => setSourceDetail({ title: 'Lifetime Income', type: 'income', isLifetime: true })} />
+            <SummaryCard title="Operating Expenses" value={fmt(lifeOpExp)} icon={Activity} isPositive={false} trend="All Time" sub="Excl. security deposits" onClick={() => setSourceDetail({ title: 'Lifetime Expenses', type: 'expense', isLifetime: true })} />
+            <SummaryCard title="Lifetime P&L" value={fmt(lifeNet)} icon={TrendingUp} isPositive={lifeNet >= 0} trend={lifeNet >= 0 ? 'Surplus' : 'Deficit'} sub="Rent minus op. expenses" onClick={() => setSourceDetail({ title: 'Lifetime P&L', type: 'income', isLifetime: true })} />
+            <SummaryCard title="Setup Costs In" value={fmt(lifeSetupCosts)} icon={Banknote} isPositive trend="All Time" sub="One-time onboarding fees" />
           </div>
         </div>
 
@@ -965,31 +1192,31 @@ export default function FinancialHub() {
             <h2 className="text-xl font-bold uppercase tracking-tight">Operating Month: {formatMonthName(selectedMonth)}</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <SummaryCard 
-              title="Monthly Income" 
-              value={fmt(totalRent + otherInc)} 
-              icon={IndianRupee} 
-              isPositive={true} 
-              trend={`from ${rentRecords.length} records`} 
-              sub="Total revenue this month" 
+            <SummaryCard
+              title="Rent Collected"
+              value={fmt(totalRent)}
+              icon={IndianRupee}
+              isPositive={true}
+              trend={`${rentRecords.filter(r => r.income_type === 'rent').length} rooms`}
+              sub="Operational income this month"
               onClick={() => setSourceDetail({ title: 'Monthly Income', type: 'income', isLifetime: false })}
             />
-            <SummaryCard 
-              title="Monthly Expenses" 
-              value={fmt(totalExp)} 
-              icon={Activity} 
-              isPositive={false} 
-              trend={`${expenses.length} items`} 
-              sub="Total spend this month" 
+            <SummaryCard
+              title="Operating Expenses"
+              value={fmt(totalOpExp)}
+              icon={Activity}
+              isPositive={false}
+              trend={`${expenses.filter(e => e.category !== 'security_deposit').length} items`}
+              sub="Excl. security deposits paid"
               onClick={() => setSourceDetail({ title: 'Monthly Expenses', type: 'expense', isLifetime: false })}
             />
-            <SummaryCard 
-              title="Monthly Profit / Loss" 
-              value={fmt(netIncome)} 
-              icon={TrendingUp} 
-              isPositive={netIncome >= 0} 
-              trend={netIncome >= 0 ? 'Surplus' : 'Deficit'} 
-              sub="Performance this month" 
+            <SummaryCard
+              title="Monthly Profit / Loss"
+              value={fmt(netIncome)}
+              icon={TrendingUp}
+              isPositive={netIncome >= 0}
+              trend={netIncome >= 0 ? 'Surplus' : 'Deficit'}
+              sub="Rent minus operating expenses"
               onClick={() => setSourceDetail({ title: 'Monthly P&L', type: 'income', isLifetime: false })}
             />
           </div>
@@ -1085,6 +1312,58 @@ export default function FinancialHub() {
               </div>
             );
           })}
+        </section>
+
+        {/* ══ DEPOSITS ══ */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-1.5 h-6 rounded-full bg-violet-500" />
+            <div>
+              <h2 className="text-xl font-bold uppercase tracking-tight">Deposits</h2>
+              <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Amounts held from tenants · Security paid to owners</p>
+            </div>
+          </div>
+
+          {/* Deposit totals */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="soft-card border border-violet-200/60 bg-violet-50/40 p-5 space-y-1">
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-violet-400">Deposits Received (Held)</p>
+              <p className="text-2xl font-black tracking-tighter text-violet-700">{fmt(lifeDepositsIn)}</p>
+              <p className="text-[8px] font-bold text-violet-400/60 uppercase tracking-widest">From tenants · All time</p>
+            </div>
+            <div className="soft-card border border-rose-200/60 bg-rose-50/40 p-5 space-y-1">
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-rose-400">Security Deposits Paid</p>
+              <p className="text-2xl font-black tracking-tighter text-rose-700">{fmt(lifeDepositsPaid)}</p>
+              <p className="text-[8px] font-bold text-rose-400/60 uppercase tracking-widest">To villa owners · All time</p>
+            </div>
+            <div className={cn('soft-card border p-5 space-y-1', (lifeDepositsIn - lifeDepositsPaid) >= 0 ? 'border-emerald-200/60 bg-emerald-50/40' : 'border-primary/20 bg-primary/5')}>
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-foreground/40">Net Deposit Position</p>
+              <p className={cn('text-2xl font-black tracking-tighter', (lifeDepositsIn - lifeDepositsPaid) >= 0 ? 'text-emerald-700' : 'text-primary')}>{fmt(lifeDepositsIn - lifeDepositsPaid)}</p>
+              <p className="text-[8px] font-bold text-foreground/30 uppercase tracking-widest">Held minus paid</p>
+            </div>
+          </div>
+
+          {/* Deposits received from tenants */}
+          <DepositTable
+            title="Deposits Received from Tenants"
+            accentColor="violet"
+            records={allTimeInc.filter(r => r.income_type === 'deposit')}
+            rooms={rooms}
+            properties={properties}
+            onUpdate={async (rec) => { await updateIncomeRecord(rec); }}
+            onDelete={async (id) => { await deleteIncomeRecord(id); }}
+          />
+
+          {/* Security deposits paid to owner */}
+          <DepositExpenseTable
+            title="Security Deposits Paid to Owners"
+            accentColor="rose"
+            records={allTimeExp.filter(e => e.category === 'security_deposit')}
+            properties={properties}
+            onUpdate={async (exp) => { await updateExpenseItem(exp); }}
+            onDelete={async (id) => { await deleteExpenseItem(id); }}
+            onAdd={async (d) => { await addComplexExpense({ ...d, category: 'security_deposit' }); }}
+          />
         </section>
 
         {/* ══ OPERATING EXPENSES ══ */}
