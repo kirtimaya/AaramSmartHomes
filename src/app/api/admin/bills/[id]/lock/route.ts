@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export async function POST(
   request: NextRequest,
@@ -50,14 +51,34 @@ export async function POST(
   if (splits?.length) {
     const notifications = splits.map((s: any) => ({
       user_id:   s.tenant_id,
+      user_type: 'tenant',
       type:      'bill_locked',
-      message:   `Your electricity bill has been finalized. Total payable: ₹${s.total_payable}`,
+      title:     'Electricity Bill Finalised',
+      message:   `Your electricity bill has been finalised. Total payable: ₹${Number(s.total_payable).toLocaleString('en-IN')}`,
       read:      false,
       created_at: now,
     }));
 
-    // Attempt to insert notifications — ignore error if table doesn't exist
     await supabaseAdmin.from('notifications').insert(notifications).then(() => {});
+
+    // WhatsApp: send per tenant who has a phone number
+    const tenantIds = splits.map((s: any) => s.tenant_id);
+    const { data: tenants } = await supabaseAdmin
+      .from('tenants')
+      .select('id, name, phone')
+      .in('id', tenantIds);
+
+    if (tenants) {
+      await Promise.all(tenants.map((t: any) => {
+        if (!t.phone) return Promise.resolve();
+        const split = splits.find((s: any) => s.tenant_id === t.id);
+        if (!split) return Promise.resolve();
+        return sendWhatsAppMessage(
+          t.phone,
+          `Hi ${t.name}! Your electricity bill has been finalised. Total payable: ₹${Number(split.total_payable).toLocaleString('en-IN')}. Log in to your Aaram portal for details.`
+        );
+      }));
+    }
   }
 
   return NextResponse.json({ success: true });

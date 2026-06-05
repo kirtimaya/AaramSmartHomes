@@ -170,7 +170,7 @@ export default function AdminDashboard() {
                           {ticket.priority}
                         </span>
                       </td>
-                      <td className="px-6 py-5 text-foreground/50 font-medium">#TRS-{ticket.tenant_id}</td>
+                      <td className="px-6 py-5 text-foreground/50 font-medium">#TRS-{(ticket as any).requester_id ?? (ticket as any).tenant_id}</td>
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-2 font-bold text-foreground/60 uppercase text-[9px] tracking-widest">
                           <div className={cn(
