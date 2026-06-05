@@ -217,6 +217,47 @@ async function fetchMenu(date: string, block: MealBlock): Promise<MenuRow | null
   return data as unknown as MenuRow;
 }
 
+/**
+ * Returns the net meal count for a block on a given date:
+ * active tenants subscribed to this block minus same-day skips.
+ * Returns null if no preference data exists yet.
+ */
+async function fetchMealCount(date: string, block: MealBlock): Promise<number | null> {
+  const blockCol =
+    block === 'Breakfast' ? 'meal_breakfast' :
+    block === 'Lunch'     ? 'meal_lunch'     : 'meal_dinner';
+
+  // 1. All tenants who have opted into this block
+  const { data: prefs, error: prefsErr } = await db
+    .from('tenant_meal_preferences')
+    .select('tenant_id')
+    .eq(blockCol, true);
+
+  if (prefsErr || !prefs?.length) return null;
+
+  const subscribedIds = prefs.map((p: { tenant_id: string }) => p.tenant_id);
+
+  // 2. Filter to currently active tenants
+  const { data: activeTenants } = await db
+    .from('tenants')
+    .select('id')
+    .eq('status', 'active')
+    .in('id', subscribedIds);
+
+  if (!activeTenants?.length) return null;
+  const activeIds = activeTenants.map((t: { id: string }) => t.id);
+
+  // 3. Count same-day skips within the active-tenant set
+  const { count: skipCount } = await db
+    .from('meal_skip_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('skip_date', date)
+    .eq('meal_block', block)
+    .in('tenant_id', activeIds);
+
+  return Math.max(0, activeIds.length - (skipCount ?? 0));
+}
+
 // ── Gemini: Extract Ingredient Names from Natural Language ────────────────────
 
 async function extractIngredients(utterance: string): Promise<string[]> {
@@ -274,7 +315,10 @@ function resolveBlock(forceBlock: MealBlock | null, slotBlock?: string | null): 
 async function handleArrival(sessionAttrs: Record<string, unknown>, forceBlock: MealBlock | null): Promise<HandlerResult> {
   const { date } = getIST();
   const block = resolveBlock(forceBlock);
-  const menu = await fetchMenu(date, block);
+  const [menu, count] = await Promise.all([
+    fetchMenu(date, block),
+    fetchMealCount(date, block),
+  ]);
 
   if (!menu?.menu_items?.length) {
     const reply = `No ${block} menu set for today. Check with your supervisor.`;
@@ -294,7 +338,12 @@ async function handleArrival(sessionAttrs: Record<string, unknown>, forceBlock: 
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((i) => i.item_name);
 
-  const reply = `Today's ${block} menu: ${dishes.join(', ')}.`;
+  const countPhrase = count != null
+    ? ` <break time="300ms"/> for <emphasis level="moderate">${count} ${count === 1 ? 'person' : 'people'}</emphasis>`
+    : '';
+  const countText = count != null ? ` for ${count} ${count === 1 ? 'person' : 'people'}` : '';
+
+  const reply = `Today's ${block} menu: ${dishes.join(', ')}${countText}.`;
   return {
     reply, mealBlock: block,
     response: speak(
@@ -302,7 +351,7 @@ async function handleArrival(sessionAttrs: Record<string, unknown>, forceBlock: 
        <break time="400ms"/>
        Today's ${block} menu is:
        <break time="400ms"/>
-       ${dishes.join(', <break time="200ms"/> ')}.
+       ${dishes.join(', <break time="200ms"/> ')}${countPhrase}.
        <break time="600ms"/>
        Have a wonderful cooking session!
        Say <emphasis level="moderate">I am leaving</emphasis> when you finish.`,
@@ -321,7 +370,10 @@ async function handleQueryMenu(
 ): Promise<HandlerResult> {
   const { date } = getIST();
   const block = resolveBlock(forceBlock, slotBlock);
-  const menu = await fetchMenu(date, block);
+  const [menu, count] = await Promise.all([
+    fetchMenu(date, block),
+    fetchMealCount(date, block),
+  ]);
 
   if (!menu?.menu_items?.length) {
     const reply = `No ${block} menu has been set for today.`;
@@ -338,13 +390,18 @@ async function handleQueryMenu(
     .slice().sort((a, b) => a.sort_order - b.sort_order)
     .map((i) => i.item_name);
 
-  const reply = `Today's ${block}: ${dishes.join(', ')}.`;
+  const countPhrase = count != null
+    ? ` <break time="300ms"/> for <emphasis level="moderate">${count} ${count === 1 ? 'person' : 'people'}</emphasis>`
+    : '';
+  const countText = count != null ? ` for ${count} ${count === 1 ? 'person' : 'people'}` : '';
+
+  const reply = `Today's ${block}: ${dishes.join(', ')}${countText}.`;
   return {
     reply, mealBlock: block,
     response: speak(
       `Today's <emphasis level="moderate">${block}</emphasis> menu is:
        <break time="400ms"/>
-       ${dishes.join(', <break time="200ms"/> ')}.
+       ${dishes.join(', <break time="200ms"/> ')}${countPhrase}.
        Enjoy your meal!`,
       { endSession: true }
     ),

@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Wifi, 
-  Coffee, 
-  Dumbbell, 
-  Wind, 
-  ShieldCheck, 
-  UtensilsCrossed, 
-  MessageSquare, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Wifi,
+  Coffee,
+  Dumbbell,
+  Wind,
+  ShieldCheck,
+  UtensilsCrossed,
+  MessageSquare,
   CreditCard,
   ChevronRight,
   Plus,
@@ -27,7 +27,14 @@ import {
   Building2,
   Waves,
   MapPin,
-  Sparkles
+  Sparkles,
+  Utensils,
+  Coffee as CoffeeIcon,
+  Moon,
+  SkipForward,
+  RotateCcw,
+  Loader2,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -37,10 +44,323 @@ import { Tenant, Property, RoomElectricityBill, ElectricityBill } from '@/lib/ty
 
 import { supabase } from '@/lib/supabase';
 
+// ── Meal types ────────────────────────────────────────────────────────────────
+
+type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
+
+interface MealPrefs {
+  meal_breakfast: boolean;
+  meal_lunch: boolean;
+  meal_dinner: boolean;
+}
+
+interface TodayMenuItem {
+  item_name: string;
+  sort_order: number;
+}
+
+interface TodayMenu {
+  block: MealBlock;
+  items: TodayMenuItem[];
+}
+
+function getISTDate() {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+const BLOCK_META: Record<MealBlock, { label: string; time: string; icon: React.ElementType; color: string; bg: string }> = {
+  Breakfast: { label: 'Breakfast', time: '8:00 – 10:00 AM', icon: CoffeeIcon, color: 'text-amber-600', bg: 'bg-amber-500/10 border-amber-500/20' },
+  Lunch:     { label: 'Lunch',     time: '1:00 – 3:00 PM',  icon: Utensils,  color: 'text-emerald-600', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+  Dinner:    { label: 'Dinner',    time: '8:30 – 10:30 PM', icon: Moon,      color: 'text-blue-600',   bg: 'bg-blue-500/10 border-blue-500/20' },
+};
+
+// ── Meals Tab ─────────────────────────────────────────────────────────────────
+
+function MealsTab({ userId }: { userId: string }) {
+  const [prefs, setPrefs]             = useState<MealPrefs>({ meal_breakfast: true, meal_lunch: true, meal_dinner: true });
+  const [todayMenus, setTodayMenus]   = useState<TodayMenu[]>([]);
+  const [skips, setSkips]             = useState<Set<MealBlock>>(new Set());
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [saving, setSaving]           = useState(false);
+  const [skipSaving, setSkipSaving]   = useState<MealBlock | null>(null);
+  const [toast, setToast]             = useState<string | null>(null);
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  const today = getISTDate();
+
+  const loadData = useCallback(async () => {
+    setLoadingPrefs(true);
+
+    // Load preferences, today's menus, and today's skips in parallel
+    const [prefsRes, menusRes, skipsRes] = await Promise.all([
+      supabase.from('tenant_meal_preferences').select('*').eq('tenant_id', userId).single(),
+      supabase
+        .from('menus')
+        .select('meal_block, menu_items(item_name, sort_order)')
+        .eq('date', today),
+      supabase
+        .from('meal_skip_requests')
+        .select('meal_block')
+        .eq('tenant_id', userId)
+        .eq('skip_date', today),
+    ]);
+
+    if (prefsRes.data) {
+      setPrefs({
+        meal_breakfast: prefsRes.data.meal_breakfast,
+        meal_lunch:     prefsRes.data.meal_lunch,
+        meal_dinner:    prefsRes.data.meal_dinner,
+      });
+    }
+
+    if (menusRes.data) {
+      const menus: TodayMenu[] = (menusRes.data as any[]).map(m => ({
+        block: m.meal_block as MealBlock,
+        items: ((m.menu_items as any[]) ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order),
+      }));
+      setTodayMenus(menus);
+    }
+
+    if (skipsRes.data) {
+      setSkips(new Set(skipsRes.data.map((s: { meal_block: string }) => s.meal_block as MealBlock)));
+    }
+
+    setLoadingPrefs(false);
+  }, [userId, today]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const savePrefs = async (newPrefs: MealPrefs) => {
+    setSaving(true);
+    await supabase
+      .from('tenant_meal_preferences')
+      .upsert({ tenant_id: userId, ...newPrefs, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id' });
+    setSaving(false);
+    showToast('Meal preferences saved.');
+  };
+
+  const togglePref = async (block: MealBlock) => {
+    const key = `meal_${block.toLowerCase()}` as keyof MealPrefs;
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    await savePrefs(next);
+  };
+
+  const toggleSkip = async (block: MealBlock) => {
+    setSkipSaving(block);
+    const alreadySkipped = skips.has(block);
+
+    if (alreadySkipped) {
+      await supabase
+        .from('meal_skip_requests')
+        .delete()
+        .eq('tenant_id', userId)
+        .eq('skip_date', today)
+        .eq('meal_block', block);
+      setSkips(prev => { const s = new Set(prev); s.delete(block); return s; });
+      showToast(`${block} skip removed — you're back on the list.`);
+    } else {
+      await supabase
+        .from('meal_skip_requests')
+        .upsert({ tenant_id: userId, skip_date: today, meal_block: block }, { onConflict: 'tenant_id,skip_date,meal_block' });
+      setSkips(prev => new Set([...prev, block]));
+      showToast(`${block} skipped for today.`);
+    }
+    setSkipSaving(null);
+  };
+
+  const subscribedBlocks: MealBlock[] = (['Breakfast', 'Lunch', 'Dinner'] as MealBlock[]).filter(b => {
+    const key = `meal_${b.toLowerCase()}` as keyof MealPrefs;
+    return prefs[key];
+  });
+
+  if (loadingPrefs) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-10">
+      {/* Subscription panel */}
+      <section className="soft-card p-8 border border-white bg-white/40 space-y-6">
+        <div>
+          <h2 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <Utensils className="w-4 h-4" />
+            </span>
+            My Meal Plan
+          </h2>
+          <p className="text-[10px] text-foreground/40 uppercase font-bold tracking-widest mt-1 ml-11">
+            Toggle which meals are included in your subscription
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(['Breakfast', 'Lunch', 'Dinner'] as MealBlock[]).map(block => {
+            const meta = BLOCK_META[block];
+            const Icon = meta.icon;
+            const key  = `meal_${block.toLowerCase()}` as keyof MealPrefs;
+            const on   = prefs[key];
+
+            return (
+              <motion.button
+                key={block}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => togglePref(block)}
+                disabled={saving}
+                className={cn(
+                  'relative flex flex-col gap-3 p-6 rounded-2xl border text-left transition-all',
+                  on
+                    ? `${meta.bg} shadow-sm`
+                    : 'bg-foreground/5 border-foreground/10 opacity-60'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', on ? meta.bg : 'bg-foreground/10')}>
+                    <Icon className={cn('w-5 h-5', on ? meta.color : 'text-foreground/30')} />
+                  </div>
+                  <div className={cn(
+                    'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                    on ? 'bg-primary border-primary' : 'border-foreground/20 bg-white'
+                  )}>
+                    {on && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </div>
+                </div>
+                <div>
+                  <p className={cn('text-sm font-black uppercase tracking-tight', on ? 'text-foreground' : 'text-foreground/40')}>{meta.label}</p>
+                  <p className="text-[10px] text-foreground/40 font-bold mt-0.5">{meta.time}</p>
+                </div>
+                {!on && (
+                  <span className="absolute top-2 right-2 text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-foreground/10 text-foreground/30 tracking-widest">
+                    Off
+                  </span>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Today's meals + skip controls */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
+              <Calendar className="w-4 h-4" />
+            </span>
+            Today's Menu
+          </h2>
+          <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+          </span>
+        </div>
+
+        {subscribedBlocks.length === 0 ? (
+          <div className="soft-card p-10 border border-white text-center space-y-3">
+            <p className="text-foreground/30 font-bold text-sm">No meals subscribed.</p>
+            <p className="text-[11px] text-foreground/20">Toggle on at least one meal above to see today's menu.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {subscribedBlocks.map(block => {
+              const meta     = BLOCK_META[block];
+              const Icon     = meta.icon;
+              const menu     = todayMenus.find(m => m.block === block);
+              const skipped  = skips.has(block);
+              const isSaving = skipSaving === block;
+
+              return (
+                <motion.div
+                  key={block}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn(
+                    'soft-card p-6 border transition-all',
+                    skipped ? 'border-red-400/20 bg-red-500/5 opacity-70' : 'border-white bg-white/40'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner', meta.bg)}>
+                        <Icon className={cn('w-5 h-5', meta.color)} />
+                      </div>
+                      <div>
+                        <p className={cn('text-xs font-black uppercase tracking-widest', meta.color)}>{meta.label}</p>
+                        <p className="text-[10px] text-foreground/40 font-bold">{meta.time}</p>
+                      </div>
+                    </div>
+
+                    {/* Skip toggle */}
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => toggleSkip(block)}
+                      disabled={isSaving}
+                      className={cn(
+                        'flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all',
+                        skipped
+                          ? 'bg-white text-emerald-600 border-emerald-400/30 hover:bg-emerald-50'
+                          : 'bg-red-50 text-red-500 border-red-400/20 hover:bg-red-100'
+                      )}
+                    >
+                      {isSaving
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : skipped
+                          ? <RotateCcw className="w-3 h-3" />
+                          : <SkipForward className="w-3 h-3" />}
+                      {skipped ? 'Undo Skip' : 'Skip Today'}
+                    </motion.button>
+                  </div>
+
+                  {/* Menu items */}
+                  {skipped ? (
+                    <div className="mt-4 px-4 py-3 rounded-xl bg-red-500/5 border border-red-400/10">
+                      <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">
+                        You've opted out of {block.toLowerCase()} today
+                      </p>
+                    </div>
+                  ) : menu?.items.length ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {menu.items.map(item => (
+                        <span key={item.item_name} className="px-3 py-1.5 rounded-full bg-white/60 border border-white text-xs font-bold text-foreground shadow-sm">
+                          {item.item_name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-[11px] text-foreground/30 italic">Menu not set yet — check back soon.</p>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-2xl z-50"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
+
 export default function UnifiedUserDashboard() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab ] = useState<'explore' | 'home' | 'meals' | 'support'>('home');
+  const [activeTab, setActiveTab] = useState<'explore' | 'home' | 'meals' | 'support'>('home');
   const [tenantProfile, setTenantProfile] = useState<Tenant | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -69,7 +389,6 @@ export default function UnifiedUserDashboard() {
       let currentProfile: Tenant;
 
       if (profileError || !profile) {
-        // Fallback or Guest initialization
         currentProfile = {
           id: user?.id || 'guest',
           name: user?.user_metadata?.full_name || 'Guest Member',
@@ -84,7 +403,7 @@ export default function UnifiedUserDashboard() {
       setTenantProfile(currentProfile);
       if (currentProfile.status === 'guest') setActiveTab('explore');
 
-      // 2. Fetch All Properties (to filter shortlisted)
+      // 2. Fetch All Properties
       const { data: props, error: propsError } = await supabase
         .from('properties')
         .select('*');
@@ -162,13 +481,13 @@ export default function UnifiedUserDashboard() {
                 {isGuest ? 'Welcome,' : 'Namaste,'} <span className="text-primary italic">{userName}</span>
             </h1>
             <p className="text-foreground/40 text-base max-w-xl font-medium leading-relaxed">
-                {isGuest 
+                {isGuest
                   ? 'Your shortlisted properties are ready for a walkthrough. Connect with our team to finalize your stay.'
                   : 'Welcome back to your duplex. Everything is set to your preferences.'}
             </p>
           </div>
           <div className="flex items-center gap-4">
-             <button 
+             <button
                 onClick={handleSignOut}
                 className="soft-button w-14 h-14 border border-white text-red-300 group hover:text-red-500 shadow-xl"
               >
@@ -342,14 +661,14 @@ export default function UnifiedUserDashboard() {
                         </div>
                       </motion.div>
                     )}
-                    
+
                     <div className="soft-card p-10 border border-white bg-white/40 flex flex-col md:flex-row gap-10 items-center">
                         <div className="space-y-4 flex-1">
                             <h2 className="text-3xl font-black tracking-tighter uppercase">Living Area Status</h2>
                             <p className="text-foreground/45 max-w-sm text-sm">Light levels are optimized for mid-day focus. AC is set to 22°C Energy Saver mode.</p>
                             <div className="flex gap-4 pt-2">
                                 <button className="soft-button px-6 py-3 border border-white text-[10px] font-extrabold uppercase tracking-widest">Adjust Climate</button>
-                                <button className="terracotta-button px-6 py-3 text-[10px] font-extrabold uppercase tracking-widest shadow-lg">Scene: Relax</button>
+                                <button className="btn-terracotta px-6 py-3 text-[10px] font-extrabold uppercase tracking-widest shadow-lg">Scene: Relax</button>
                             </div>
                         </div>
                         <div className="w-full md:w-64 h-64 soft-ui-out bg-white/50 rounded-[48px] border border-white flex items-center justify-center relative overflow-hidden group">
@@ -360,6 +679,12 @@ export default function UnifiedUserDashboard() {
                            </div>
                         </div>
                     </div>
+                </motion.div>
+            )}
+
+            {activeTab === 'meals' && !isGuest && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                    <MealsTab userId={tenantProfile.id} />
                 </motion.div>
             )}
 

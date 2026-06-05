@@ -9,7 +9,8 @@ import {
   ChefHat, ShoppingCart, MessageSquare,
   Plus, Trash2, CheckCircle2, Loader2,
   Save, RefreshCw, UtensilsCrossed, Mic,
-  AlertCircle, Package, Clock, Lightbulb, Edit3
+  AlertCircle, Package, Clock, Lightbulb, Edit3,
+  Users
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -114,6 +115,40 @@ function EmptyState({ icon: Icon, text }: { icon: React.ElementType; text: strin
   );
 }
 
+// ── Meal Count Fetcher ────────────────────────────────────────────────────────
+
+async function getMealCount(date: string, block: MealBlock): Promise<number | null> {
+  const blockCol =
+    block === 'Breakfast' ? 'meal_breakfast' :
+    block === 'Lunch'     ? 'meal_lunch'     : 'meal_dinner';
+
+  const { data: prefs } = await supabase
+    .from('tenant_meal_preferences')
+    .select('tenant_id')
+    .eq(blockCol, true);
+
+  if (!prefs?.length) return null;
+  const subscribedIds = prefs.map((p: { tenant_id: string }) => p.tenant_id);
+
+  const { data: active } = await supabase
+    .from('tenants')
+    .select('id')
+    .eq('status', 'active')
+    .in('id', subscribedIds);
+
+  if (!active?.length) return null;
+  const activeIds = active.map((t: { id: string }) => t.id);
+
+  const { count: skips } = await supabase
+    .from('meal_skip_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('skip_date', date)
+    .eq('meal_block', block)
+    .in('tenant_id', activeIds);
+
+  return Math.max(0, activeIds.length - (skips ?? 0));
+}
+
 // ── Tab 1: Menu Builder ───────────────────────────────────────────────────────
 
 function MenuBuilderTab() {
@@ -126,18 +161,25 @@ function MenuBuilderTab() {
   const [loading, setLoading]       = useState(false);
   const [saving, setSaving]         = useState(false);
   const [toast, setToast]           = useState<string | null>(null);
+  const [mealCount, setMealCount]   = useState<number | null>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   const loadMenu = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('menus')
-      .select('id, notes, menu_items(id, item_name, sort_order), menu_ingredients(id, ingredient_name, quantity, unit)')
-      .eq('date', date)
-      .eq('meal_block', block)
-      .single();
+    const [menuRes, count] = await Promise.all([
+      supabase
+        .from('menus')
+        .select('id, notes, menu_items(id, item_name, sort_order), menu_ingredients(id, ingredient_name, quantity, unit)')
+        .eq('date', date)
+        .eq('meal_block', block)
+        .single(),
+      getMealCount(date, block),
+    ]);
 
+    setMealCount(count);
+
+    const data = menuRes.data;
     if (data) {
       setMenuId(data.id);
       setNotes(data.notes ?? '');
@@ -252,6 +294,13 @@ function MenuBuilderTab() {
             </div>
           </div>
           <div className="ml-auto flex items-end gap-2">
+            {/* Meal count badge */}
+            {mealCount !== null && (
+              <div className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-primary/10 text-primary border-primary/20 flex items-center gap-1.5">
+                <Users className="w-3 h-3" />
+                {mealCount} {mealCount === 1 ? 'person' : 'people'}
+              </div>
+            )}
             {menuId && (
               <button onClick={deleteMenu} className="soft-button px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-500 border border-white">
                 <Trash2 className="w-3.5 h-3.5" />
