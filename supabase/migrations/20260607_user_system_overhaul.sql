@@ -154,7 +154,7 @@ CREATE POLICY "Notifications own" ON notifications FOR ALL TO authenticated
 -- ── 11. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
 -- Requires pg_cron extension enabled in Supabase (Dashboard → Extensions → pg_cron)
 -- Runs at 2am UTC daily; deletes guests with no activity in 90 days
-DO $$
+DO $outer$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     PERFORM cron.schedule(
@@ -164,4 +164,4 @@ BEGIN
     );
   END IF;
 END
-$$;
+$outer$;
