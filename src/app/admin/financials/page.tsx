@@ -948,28 +948,64 @@ export default function FinancialHub() {
     return m;
   }, [rentRecords]);
 
-  // ── Computed Current Month ─────────────────────────────────────────────────
-  // Operational income = rent only (deposits are liabilities, not profit)
-  const totalRent        = useMemo(() => rentRecords.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
+  // ── Room / expense structure maps ─────────────────────────────────────────
+  const roomsByProp = useMemo(() => {
+    const m: Record<string, typeof rooms> = {};
+    for (const r of rooms) { if (!m[r.property_id]) m[r.property_id] = []; m[r.property_id].push(r); }
+    return m;
+  }, [rooms]);
+
+  const expByProp = useMemo(() => {
+    const m: Record<string, (ExpenseItem & { splitAmt?: number })[]> = { __shared: [] };
+    const roomToProp: Record<string, string> = {};
+    rooms.forEach(r => roomToProp[r.id] = r.property_id);
+
+    for (const e of expenses) {
+      if (e.property_id) {
+        if (!m[e.property_id]) m[e.property_id] = [];
+        m[e.property_id].push(e);
+      } else {
+        m.__shared.push(e);
+        if (e.room_ids && e.room_ids.length > 0) {
+          const involvedProps = Array.from(new Set(e.room_ids.map(rid => roomToProp[rid]).filter(Boolean)));
+          if (involvedProps.length > 0) {
+            const splitShare = e.amount / involvedProps.length;
+            involvedProps.forEach(pid => {
+              if (!m[pid]) m[pid] = [];
+              m[pid].push({ ...e, splitAmt: splitShare });
+            });
+          }
+        }
+      }
+    }
+    return m;
+  }, [expenses, rooms]);
+
+  // ── Rent helpers ──────────────────────────────────────────────────────────
+  const propRentTotal = (propId: string) => (roomsByProp[propId] || []).reduce((s, r) => s + (rentMap[r.id]||0), 0);
+  const propExpTotal  = (propId: string) => (expByProp[propId] || []).reduce((s, e) => s + e.amount, 0);
+
+  // ── Monthly breakdown by property ─────────────────────────────────────────
+  const monthPropBreakdown = useMemo(() => properties.map(p => {
+    const rent = propRentTotal(p.id);
+    const exp  = (expByProp[p.id] || [])
+      .filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense')
+      .reduce((s, e) => s + (e.splitAmt ?? e.amount), 0);
+    return { name: p.name, rent, exp, net: rent - exp };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [properties, rentMap, expByProp, roomsByProp]);
+
+  // ── Current Month totals — derived from property breakdown ───────────────
+  const totalRent        = useMemo(() => monthPropBreakdown.reduce((s, p) => s + p.rent, 0), [monthPropBreakdown]);
+  const totalOpExp       = useMemo(() => monthPropBreakdown.reduce((s, p) => s + p.exp,  0), [monthPropBreakdown]);
+  const netIncome        = totalRent - totalOpExp;
+  // Deposit / setup metrics for Deposits tab (from raw records)
   const monthDepositsIn  = useMemo(() => rentRecords.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
   const monthSetupCosts  = useMemo(() => rentRecords.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
-  // Operating expenses exclude security deposits and setup expenses (both live in Deposits & Setup tab)
-  const totalOpExp       = useMemo(() => expenses.filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense').reduce((s, e) => s + e.amount, 0), [expenses]);
   const monthDepositsPaid = useMemo(() => expenses.filter(e => e.category === 'security_deposit').reduce((s, e) => s + e.amount, 0), [expenses]);
   const totalExp         = totalOpExp + monthDepositsPaid;
-  const netIncome        = totalRent - totalOpExp;
 
-  // ── Computed Lifetime ──────────────────────────────────────────────────────
-  const lifeRent         = useMemo(() => allTimeInc.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeDepositsIn   = useMemo(() => allTimeInc.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeSetupCosts   = useMemo(() => allTimeInc.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeOpExp        = useMemo(() => allTimeExp.filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
-  const lifeDepositsPaid  = useMemo(() => allTimeExp.filter(e => e.category === 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
-  const lifeSetupExpenses = useMemo(() => allTimeExp.filter(e => e.category === 'setup_expense').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
-  const lifeExp           = useMemo(() => allTimeExp.reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
-  const lifeNet           = lifeRent - lifeOpExp;
-
-  // ── Lifetime breakdown by month (for click-through on lifetime cards) ──────
+  // ── Lifetime breakdown by month ───────────────────────────────────────────
   const lifeMonthBreakdown = useMemo(() => {
     const m: Record<string, { rent: number; exp: number }> = {};
     for (const r of allTimeInc) {
@@ -990,41 +1026,15 @@ export default function FinancialHub() {
       .map(([month, v]) => ({ month, ...v, net: v.rent - v.exp }));
   }, [allTimeInc, allTimeExp]);
 
-  const roomsByProp   = useMemo(() => {
-    const m: Record<string, typeof rooms> = {};
-    for (const r of rooms) { if (!m[r.property_id]) m[r.property_id] = []; m[r.property_id].push(r); }
-    return m;
-  }, [rooms]);
-
-  const expByProp = useMemo(() => {
-    const m: Record<string, (ExpenseItem & { splitAmt?: number })[]> = { __shared: [] };
-    const roomToProp: Record<string, string> = {};
-    rooms.forEach(r => roomToProp[r.id] = r.property_id);
-
-    for (const e of expenses) { 
-      // 1. Direct property link
-      if (e.property_id) {
-        if (!m[e.property_id]) m[e.property_id] = [];
-        m[e.property_id].push(e);
-      } 
-      // 2. Shared / Distributable
-      else {
-        m.__shared.push(e);
-        
-        if (e.room_ids && e.room_ids.length > 0) {
-          const involvedProps = Array.from(new Set(e.room_ids.map(rid => roomToProp[rid]).filter(Boolean)));
-          if (involvedProps.length > 0) {
-            const splitShare = e.amount / involvedProps.length;
-            involvedProps.forEach(pid => {
-              if (!m[pid]) m[pid] = [];
-              m[pid].push({ ...e, splitAmt: splitShare });
-            });
-          }
-        }
-      }
-    }
-    return m;
-  }, [expenses, rooms]);
+  // ── Lifetime totals — derived from month breakdown ────────────────────────
+  const lifeRent  = useMemo(() => lifeMonthBreakdown.reduce((s, m) => s + m.rent, 0), [lifeMonthBreakdown]);
+  const lifeOpExp = useMemo(() => lifeMonthBreakdown.reduce((s, m) => s + m.exp,  0), [lifeMonthBreakdown]);
+  const lifeNet   = lifeRent - lifeOpExp;
+  // Deposit / setup metrics for Deposits tab (from raw records)
+  const lifeDepositsIn   = useMemo(() => allTimeInc.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
+  const lifeSetupCosts   = useMemo(() => allTimeInc.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
+  const lifeDepositsPaid  = useMemo(() => allTimeExp.filter(e => e.category === 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
+  const lifeSetupExpenses = useMemo(() => allTimeExp.filter(e => e.category === 'setup_expense').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
 
   const addIncomeRecord = async (d: any) => {
     const { error } = await supabase.from('income_records').insert(d);
@@ -1097,20 +1107,6 @@ export default function FinancialHub() {
   }, [rentRecords]);
 
   const COLORS = ['#D67D61', '#10b981', '#0ea5e9', '#f59e0b', '#8b5cf6', '#6366f1', '#ec4899', '#f43f5e', '#14b8a6'];
-
-  // ── Rent helpers ──────────────────────────────────────────────────────────
-  const propRentTotal = (propId: string) => (roomsByProp[propId] || []).reduce((s, r) => s + (rentMap[r.id]||0), 0);
-  const propExpTotal  = (propId: string) => (expByProp[propId] || []).reduce((s, e) => s + e.amount, 0);
-
-  // ── Monthly breakdown by property (for click-through on monthly cards) ────
-  const monthPropBreakdown = useMemo(() => properties.map(p => {
-    const rent = propRentTotal(p.id);
-    const exp  = (expByProp[p.id] || [])
-      .filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense')
-      .reduce((s, e) => s + (e.splitAmt ?? e.amount), 0);
-    return { name: p.name, rent, exp, net: rent - exp };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [properties, rentMap, expByProp, roomsByProp]);
 
   const toggleProp = (id: string) => { setCollapsedProps(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleCat  = (id: string) => { setCollapsedCats(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
