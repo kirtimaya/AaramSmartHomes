@@ -203,7 +203,25 @@ DROP POLICY IF EXISTS "ac_submissions full" ON tenant_ac_submissions;
 CREATE POLICY "ac_submissions full" ON tenant_ac_submissions
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- ── 12. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
+-- ── 12. rooms — public read, authenticated write (used by admin occupancy page) ──
+ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "rooms public read" ON rooms;
+DROP POLICY IF EXISTS "rooms auth write" ON rooms;
+CREATE POLICY "rooms public read" ON rooms FOR SELECT USING (true);
+CREATE POLICY "rooms auth write" ON rooms FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ── 13. tickets — add room_id + preferred_move_in for direct room requests ────
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS room_id UUID REFERENCES rooms(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS preferred_move_in DATE;
+
+-- ── 14. tenants RLS (needed for admin to upsert tenant rows) ─────────────────
+ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "tenants own read" ON tenants;
+DROP POLICY IF EXISTS "tenants service write" ON tenants;
+CREATE POLICY "tenants own read" ON tenants FOR SELECT TO authenticated USING (true);
+CREATE POLICY "tenants service write" ON tenants FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ── 15. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
 -- Requires pg_cron extension enabled in Supabase (Dashboard → Extensions → pg_cron)
 -- Runs at 2am UTC daily; deletes guests with no activity in 90 days
 DO $outer$
@@ -217,3 +235,4 @@ BEGIN
   END IF;
 END
 $outer$;
+

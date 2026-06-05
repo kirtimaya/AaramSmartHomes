@@ -39,8 +39,8 @@ export async function POST(
 
   if (!guest) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
 
-  // Get room_id from booking if present
-  let roomId: string | null = null;
+  // Get room_id: prefer direct room_id on ticket, fall back to booking
+  let roomId: string | null = ticket.room_id ?? null;
   let propertyId: string | null = null;
   if (ticket.booking_id) {
     const { data: booking } = await supabaseAdmin
@@ -48,8 +48,13 @@ export async function POST(
       .select('room_id, property_id')
       .eq('id', ticket.booking_id)
       .single();
-    roomId = booking?.room_id ?? null;
+    if (!roomId) roomId = booking?.room_id ?? null;
     propertyId = booking?.property_id ?? null;
+  }
+  // Get property_id from room if not from booking
+  if (roomId && !propertyId) {
+    const { data: roomRow } = await supabaseAdmin.from('rooms').select('property_id').eq('id', roomId).single();
+    propertyId = roomRow?.property_id ?? null;
   }
 
   const now = new Date().toISOString();
@@ -70,6 +75,14 @@ export async function POST(
 
   if (tenantErr) return NextResponse.json({ error: tenantErr.message }, { status: 500 });
 
+  // Update room occupancy to Occupied
+  if (roomId) {
+    await supabaseAdmin
+      .from('rooms')
+      .update({ occupancy_status: 'Occupied', tenant_id: guest.id })
+      .eq('id', roomId);
+  }
+
   // Mark booking as confirmed
   if (ticket.booking_id) {
     await supabaseAdmin
@@ -77,6 +90,9 @@ export async function POST(
       .update({ status: 'confirmed' })
       .eq('id', ticket.booking_id);
   }
+
+  // Remove guest record now that they're a tenant
+  await supabaseAdmin.from('guests').delete().eq('id', guest.id);
 
   // Resolve ticket
   await supabaseAdmin
