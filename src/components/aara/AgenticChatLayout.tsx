@@ -196,8 +196,10 @@ interface AgenticChatLayoutProps {
 export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayoutProps) {
   const {
     aaraState, setAaraState,
+    isTalking, setIsTalking,
     moveToElement, highlightElement, clearHighlight, requestConfirmation, resetToIdle,
-    getAllElements, pendingConfirmation,
+    typeInElement, selectOption,
+    getAllElements, getElement, pendingConfirmation,
   } = useAaraContext();
 
   const router = useRouter();
@@ -262,7 +264,15 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
     return () => document.removeEventListener('mousedown', handle);
   }, [isOpen, isPinned, onClose]);
 
+  const talkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const speak = useCallback((text: string) => {
+    // Drive avatar mouth animation regardless of voice setting
+    if (talkTimerRef.current) clearTimeout(talkTimerRef.current);
+    setIsTalking(true);
+    // ~70ms per character is a reasonable speech rate estimate
+    talkTimerRef.current = setTimeout(() => setIsTalking(false), Math.min(text.length * 70, 8000));
+
     if (!voiceEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.replace(/\{.*?\}/g, '').trim());
@@ -270,8 +280,9 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
     const v = window.speechSynthesis.getVoices();
     const fem = v.find(vv => vv.name.includes('Samantha') || vv.name.includes('Female')) ?? v[0];
     if (fem) u.voice = fem;
+    u.onend = () => setIsTalking(false);
     window.speechSynthesis.speak(u);
-  }, [voiceEnabled]);
+  }, [voiceEnabled, setIsTalking]);
 
   // ── Find the best registered element for an agent action ─────────────────
   const findTargetElement = useCallback((action: string, data: Record<string, unknown>): string | null => {
@@ -345,25 +356,28 @@ export function AgenticChatLayout({ isAdmin, isOpen, onClose }: AgenticChatLayou
         const targetId = findTargetElement(action, data as Record<string, unknown>);
 
         if (targetId) {
-          const elementReg = getAllElements().find(e => e.id === targetId);
+          const elementReg = getElement(targetId);
           const tooltip = `Going to ${elementReg?.label ?? 'the element'}…`;
           moveToElement(targetId, tooltip);
 
-          // Wait for interacting state, then highlight, then confirm
-          // We poll with a short interval (max 3s) for state to become 'interacting'
-          const waitForInteracting = () => new Promise<void>((resolve) => {
-            const deadline = Date.now() + 3000;
-            const check = setInterval(() => {
-              if (Date.now() > deadline) { clearInterval(check); resolve(); return; }
-              // Check via context — aaraState ref trick
-            }, 100);
-            // Simpler: just wait 1.8 s (spring settles by then for most distances)
-            clearTimeout(check as any);
-            setTimeout(resolve, 1800);
-          });
-
-          await waitForInteracting();
+          // Wait ~1.8 s for the spring animation to settle before interacting
+          await new Promise(r => setTimeout(r, 1800));
           highlightElement(targetId);
+
+          // ── Actually interact with the DOM element ────────────────────────
+          // For update_room_status: select the new status in the dropdown
+          if (action === 'update_room_status' && (data as any).status) {
+            await new Promise(r => setTimeout(r, 400));
+            selectOption(targetId, (data as any).status);
+          }
+          // For resolve_ticket: type the resolution text in a textarea
+          if (action === 'resolve_ticket' && (data as any).resolution) {
+            await typeInElement(targetId, (data as any).resolution, 45);
+          }
+          // For record_financials: type the amount into the field
+          if (action === 'record_financials' && (data as any).amount) {
+            await typeInElement(targetId, String((data as any).amount), 60);
+          }
 
           // Brief pause to let glow render
           await new Promise(r => setTimeout(r, 600));
