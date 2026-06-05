@@ -1006,10 +1006,15 @@ export default function FinancialHub() {
   const totalExp         = totalOpExp + monthDepositsPaid;
 
   // ── Lifetime breakdown by month ───────────────────────────────────────────
+  // Uses the same attribution rules as monthly: rent only for known rooms,
+  // expenses skip pure-shared entries (no property_id and no room_ids).
   const lifeMonthBreakdown = useMemo(() => {
     const m: Record<string, { rent: number; exp: number }> = {};
+    const knownRoomIds = new Set(rooms.map(r => r.id));
+
     for (const r of allTimeInc) {
       if (r.income_type !== 'rent') continue;
+      if (!knownRoomIds.has(r.room_id)) continue;
       const mo = r.income_date.slice(0, 7);
       if (!m[mo]) m[mo] = { rent: 0, exp: 0 };
       m[mo].rent += r.amount;
@@ -1018,13 +1023,15 @@ export default function FinancialHub() {
       if (e.category === 'security_deposit' || e.category === 'setup_expense') continue;
       const mo = (e.expense_date || '').slice(0, 7);
       if (!mo) continue;
+      // Skip pure portfolio-wide expenses (matches monthly property-view behavior)
+      if (!e.property_id && (!e.room_ids || e.room_ids.length === 0)) continue;
       if (!m[mo]) m[mo] = { rent: 0, exp: 0 };
       m[mo].exp += e.amount;
     }
     return Object.entries(m)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([month, v]) => ({ month, ...v, net: v.rent - v.exp }));
-  }, [allTimeInc, allTimeExp]);
+  }, [allTimeInc, allTimeExp, rooms]);
 
   // ── Lifetime totals — derived from month breakdown ────────────────────────
   const lifeRent  = useMemo(() => lifeMonthBreakdown.reduce((s, m) => s + m.rent, 0), [lifeMonthBreakdown]);
