@@ -6,6 +6,8 @@ import { ROOT_EMAIL } from '@/lib/constants';
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  // Optional ?next param — honors custom post-auth redirects (e.g. /join?token=...)
+  const next = requestUrl.searchParams.get('next');
 
   if (!code) {
     return NextResponse.redirect(new URL('/login', requestUrl.origin));
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // 1. Root or admin table
+  // 1. Root or admin table — ?next is ignored for admins (security)
   if (email === ROOT_EMAIL.toLowerCase()) {
     return NextResponse.redirect(new URL('/admin', requestUrl.origin));
   }
@@ -57,7 +59,9 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (tenantById) {
-    return NextResponse.redirect(new URL('/tenant', requestUrl.origin));
+    // If ?next is set (e.g. /join?token=...) still honour it — the join page will skip-claim
+    const dest = next ? new URL(next, requestUrl.origin) : new URL('/tenant', requestUrl.origin);
+    return NextResponse.redirect(dest);
   }
 
   // Email-based lookup for tenants added by admin before user created their account
@@ -95,7 +99,8 @@ export async function GET(request: NextRequest) {
       .from('guests')
       .update({ last_login_at: new Date().toISOString() })
       .eq('id', user.id);
-    return NextResponse.redirect(new URL('/guest', requestUrl.origin));
+    const dest = next ? new URL(next, requestUrl.origin) : new URL('/guest', requestUrl.origin);
+    return NextResponse.redirect(dest);
   }
 
   // 4. New user — create guest record
@@ -111,5 +116,6 @@ export async function GET(request: NextRequest) {
     phone: user.phone ?? null,
   });
 
-  return NextResponse.redirect(new URL('/guest', requestUrl.origin));
+  const dest = next ? new URL(next, requestUrl.origin) : new URL('/guest', requestUrl.origin);
+  return NextResponse.redirect(dest);
 }
