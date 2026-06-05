@@ -834,7 +834,7 @@ export default function FinancialHub() {
   // Modal States
   const [roomModal, setRoomModal] = useState<{ roomId: string; propertyId: string } | null>(null);
   const [sharedExpModal, setSharedExpModal] = useState<{ propertyId: string | null } | null>(null);
-  const [sourceDetail, setSourceDetail] = useState<{ title: string; type: 'income' | 'expense'; isLifetime?: boolean } | null>(null);
+  const [sourceDetail, setSourceDetail] = useState<'monthly-rent' | 'monthly-expense' | 'monthly-pl' | 'lifetime-rent' | 'lifetime-expense' | 'lifetime-pl' | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -969,6 +969,27 @@ export default function FinancialHub() {
   const lifeExp           = useMemo(() => allTimeExp.reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
   const lifeNet           = lifeRent - lifeOpExp;
 
+  // ── Lifetime breakdown by month (for click-through on lifetime cards) ──────
+  const lifeMonthBreakdown = useMemo(() => {
+    const m: Record<string, { rent: number; exp: number }> = {};
+    for (const r of allTimeInc) {
+      if (r.income_type !== 'rent') continue;
+      const mo = r.income_date.slice(0, 7);
+      if (!m[mo]) m[mo] = { rent: 0, exp: 0 };
+      m[mo].rent += r.amount;
+    }
+    for (const e of allTimeExp) {
+      if (e.category === 'security_deposit' || e.category === 'setup_expense') continue;
+      const mo = (e.expense_date || '').slice(0, 7);
+      if (!mo) continue;
+      if (!m[mo]) m[mo] = { rent: 0, exp: 0 };
+      m[mo].exp += e.amount;
+    }
+    return Object.entries(m)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([month, v]) => ({ month, ...v, net: v.rent - v.exp }));
+  }, [allTimeInc, allTimeExp]);
+
   const roomsByProp   = useMemo(() => {
     const m: Record<string, typeof rooms> = {};
     for (const r of rooms) { if (!m[r.property_id]) m[r.property_id] = []; m[r.property_id].push(r); }
@@ -1080,6 +1101,16 @@ export default function FinancialHub() {
   // ── Rent helpers ──────────────────────────────────────────────────────────
   const propRentTotal = (propId: string) => (roomsByProp[propId] || []).reduce((s, r) => s + (rentMap[r.id]||0), 0);
   const propExpTotal  = (propId: string) => (expByProp[propId] || []).reduce((s, e) => s + e.amount, 0);
+
+  // ── Monthly breakdown by property (for click-through on monthly cards) ────
+  const monthPropBreakdown = useMemo(() => properties.map(p => {
+    const rent = propRentTotal(p.id);
+    const exp  = (expByProp[p.id] || [])
+      .filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense')
+      .reduce((s, e) => s + (e.splitAmt ?? e.amount), 0);
+    return { name: p.name, rent, exp, net: rent - exp };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [properties, rentMap, expByProp, roomsByProp]);
 
   const toggleProp = (id: string) => { setCollapsedProps(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleCat  = (id: string) => { setCollapsedCats(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
@@ -1283,9 +1314,9 @@ export default function FinancialHub() {
             <h2 className="text-xl font-bold uppercase tracking-tight">Lifetime Performance</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <SummaryCard title="Rent Collected" value={fmt(lifeRent)} icon={IndianRupee} isPositive trend="All Time" sub="Operational income" onClick={() => setSourceDetail({ title: 'Lifetime Income', type: 'income', isLifetime: true })} />
-            <SummaryCard title="Operating Expenses" value={fmt(lifeOpExp)} icon={Activity} isPositive={false} trend="All Time" sub="Excl. deposits & setup" onClick={() => setSourceDetail({ title: 'Lifetime Expenses', type: 'expense', isLifetime: true })} />
-            <SummaryCard title="Lifetime P&L" value={fmt(lifeNet)} icon={TrendingUp} isPositive={lifeNet >= 0} trend={lifeNet >= 0 ? 'Surplus' : 'Deficit'} sub="Rent minus op. expenses" onClick={() => setSourceDetail({ title: 'Lifetime P&L', type: 'income', isLifetime: true })} />
+            <SummaryCard title="Rent Collected" value={fmt(lifeRent)} icon={IndianRupee} isPositive trend="All Time" sub="Click for monthly breakdown" onClick={() => setSourceDetail('lifetime-rent')} />
+            <SummaryCard title="Total Expenses" value={fmt(lifeOpExp)} icon={Activity} isPositive={false} trend="All Time" sub="Click for monthly breakdown" onClick={() => setSourceDetail('lifetime-expense')} />
+            <SummaryCard title="Lifetime P&L" value={fmt(lifeNet)} icon={TrendingUp} isPositive={lifeNet >= 0} trend={lifeNet >= 0 ? 'Surplus' : 'Deficit'} sub="Click for monthly breakdown" onClick={() => setSourceDetail('lifetime-pl')} />
           </div>
         </div>
 
@@ -1302,17 +1333,17 @@ export default function FinancialHub() {
               icon={IndianRupee}
               isPositive={true}
               trend={`${rentRecords.filter(r => r.income_type === 'rent').length} rooms`}
-              sub="Operational income this month"
-              onClick={() => setSourceDetail({ title: 'Monthly Income', type: 'income', isLifetime: false })}
+              sub="Click for property breakdown"
+              onClick={() => setSourceDetail('monthly-rent')}
             />
             <SummaryCard
-              title="Operating Expenses"
+              title="Total Expenses"
               value={fmt(totalOpExp)}
               icon={Activity}
               isPositive={false}
-              trend={`${expenses.filter(e => e.category !== 'security_deposit').length} items`}
-              sub="Excl. security deposits paid"
-              onClick={() => setSourceDetail({ title: 'Monthly Expenses', type: 'expense', isLifetime: false })}
+              trend={`${expenses.filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense').length} items`}
+              sub="Click for property breakdown"
+              onClick={() => setSourceDetail('monthly-expense')}
             />
             <SummaryCard
               title="Monthly Profit / Loss"
@@ -1320,8 +1351,8 @@ export default function FinancialHub() {
               icon={TrendingUp}
               isPositive={netIncome >= 0}
               trend={netIncome >= 0 ? 'Surplus' : 'Deficit'}
-              sub="Rent minus operating expenses"
-              onClick={() => setSourceDetail({ title: 'Monthly P&L', type: 'income', isLifetime: false })}
+              sub="Click for property breakdown"
+              onClick={() => setSourceDetail('monthly-pl')}
             />
           </div>
         </div>
@@ -1688,71 +1719,81 @@ export default function FinancialHub() {
           </ModalOverlay>
         )}
 
-        {sourceDetail && (
-          <ModalOverlay onClose={() => setSourceDetail(null)}>
-            <div className="p-8 space-y-8 bg-white/95 backdrop-blur-xl">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tighter uppercase text-primary">{sourceDetail.title}</h2>
-                  <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">Source Breakdown</p>
-                </div>
-                <button onClick={() => setSourceDetail(null)} className="p-2 soft-button border border-white text-foreground/30 hover:text-foreground">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        {sourceDetail && (() => {
+          const isMonthly = sourceDetail.startsWith('monthly');
+          const title =
+            sourceDetail === 'monthly-rent'     ? `Rent — ${formatMonthName(selectedMonth)}` :
+            sourceDetail === 'monthly-expense'  ? `Expenses — ${formatMonthName(selectedMonth)}` :
+            sourceDetail === 'monthly-pl'       ? `P&L — ${formatMonthName(selectedMonth)}` :
+            sourceDetail === 'lifetime-rent'    ? 'Lifetime Rent' :
+            sourceDetail === 'lifetime-expense' ? 'Lifetime Expenses' :
+                                                  'Lifetime P&L';
+          const totalValue =
+            sourceDetail === 'monthly-rent'     ? totalRent :
+            sourceDetail === 'monthly-expense'  ? totalOpExp :
+            sourceDetail === 'monthly-pl'       ? netIncome :
+            sourceDetail === 'lifetime-rent'    ? lifeRent :
+            sourceDetail === 'lifetime-expense' ? lifeOpExp :
+                                                  lifeNet;
+          const isPos = (v: number) => sourceDetail.endsWith('rent') ? true : sourceDetail.endsWith('expense') ? false : v >= 0;
+          const amtColor = (v: number) =>
+            sourceDetail.endsWith('rent')    ? 'text-secondary' :
+            sourceDetail.endsWith('expense') ? 'text-primary' :
+            v >= 0 ? 'text-emerald-600' : 'text-primary';
 
-              <div className="space-y-4">
-                {(sourceDetail.type === 'income' ? 
-                  (sourceDetail.isLifetime ? allTimeInc : rentRecords) : 
-                  (sourceDetail.isLifetime ? allTimeExp : expenses)
-                ).length === 0 ? (
-                  <p className="text-sm font-bold text-foreground/20 italic uppercase tracking-widest text-center py-10">No records found for this period.</p>
-                ) : (
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(() => {
-                      const data = sourceDetail.type === 'income' ? 
-                        (sourceDetail.isLifetime ? allTimeInc : rentRecords) : 
-                        (sourceDetail.isLifetime ? allTimeExp : expenses);
-                      
-                      const grouped: Record<string, number> = {};
-                      data.forEach(item => {
-                        const key = sourceDetail.type === 'income' ? (item as any).income_type : (item as any).category;
-                        const label = sourceDetail.type === 'income' ? key : (CATEGORY_META[key as ExpenseCategory]?.label || key);
-                        grouped[label] = (grouped[label] || 0) + item.amount;
-                      });
-
-                      return Object.entries(grouped).sort((a,b) => b[1] - a[1]).map(([label, amount]) => (
-                        <div key={label} className="flex items-center justify-between p-4 soft-well border border-white hover:border-secondary/20 transition-all">
-                          <div>
-                            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-foreground/30">{sourceDetail.type}</p>
-                            <p className="text-sm font-bold text-foreground uppercase tracking-tight">{label}</p>
-                          </div>
-                          <p className={cn('text-lg font-black tracking-tighter', sourceDetail.type === 'income' ? 'text-secondary' : 'text-primary')}>
-                            {sourceDetail.type === 'income' ? '' : '-'}{fmt(amount)}
-                          </p>
-                        </div>
-                      ));
-                    })()}
+          return (
+            <ModalOverlay onClose={() => setSourceDetail(null)}>
+              <div className="flex flex-col max-h-[80vh]">
+                <div className="p-6 border-b border-white/40 flex justify-between items-center bg-white/60 shrink-0">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tighter uppercase text-foreground">{title}</h2>
+                    <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">
+                      {isMonthly ? 'Per-property breakdown' : 'Per-month breakdown'}
+                    </p>
                   </div>
-                )}
-              </div>
+                  <button onClick={() => setSourceDetail(null)} className="p-2 soft-button border border-white text-foreground/30 hover:text-foreground">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
 
-              <div className="pt-4 border-t border-white/40">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black uppercase text-foreground/30 tracking-widest">Total Position</p>
-                  <h3 className="text-3xl font-black tracking-tighter text-foreground">
-                    {(() => {
-                      const data = (sourceDetail.type === 'income' ? 
-                        (sourceDetail.isLifetime ? allTimeInc : rentRecords) : 
-                        (sourceDetail.isLifetime ? allTimeExp : expenses));
-                      return fmt(data.reduce((s,v) => s + v.amount, 0));
-                    })()}
+                <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-white/60">
+                  {isMonthly ? (
+                    monthPropBreakdown.length === 0
+                      ? <p className="text-[10px] italic font-bold text-foreground/20 uppercase tracking-widest text-center py-8">No data for this month.</p>
+                      : monthPropBreakdown.map(row => {
+                          const v = sourceDetail === 'monthly-rent' ? row.rent : sourceDetail === 'monthly-expense' ? row.exp : row.net;
+                          return (
+                            <div key={row.name} className="flex items-center justify-between p-4 soft-well border border-white hover:border-secondary/20 transition-all">
+                              <p className="text-[11px] font-bold uppercase tracking-tight text-foreground">{row.name}</p>
+                              <p className={cn('text-lg font-black tracking-tighter', amtColor(v))}>{fmt(v)}</p>
+                            </div>
+                          );
+                        })
+                  ) : (
+                    lifeMonthBreakdown.length === 0
+                      ? <p className="text-[10px] italic font-bold text-foreground/20 uppercase tracking-widest text-center py-8">No lifetime data found.</p>
+                      : lifeMonthBreakdown.map(row => {
+                          const v = sourceDetail === 'lifetime-rent' ? row.rent : sourceDetail === 'lifetime-expense' ? row.exp : row.net;
+                          return (
+                            <div key={row.month} className="flex items-center justify-between p-4 soft-well border border-white hover:border-secondary/20 transition-all">
+                              <p className="text-[11px] font-bold uppercase tracking-tight text-foreground">{formatMonthName(row.month + '-01')}</p>
+                              <p className={cn('text-lg font-black tracking-tighter', amtColor(v))}>{fmt(v)}</p>
+                            </div>
+                          );
+                        })
+                  )}
+                </div>
+
+                <div className="p-6 border-t border-white/40 bg-white/80 shrink-0 flex justify-between items-center">
+                  <p className="text-[10px] font-black uppercase text-foreground/30 tracking-widest">Total</p>
+                  <h3 className={cn('text-3xl font-black tracking-tighter', isPos(totalValue) ? (sourceDetail.endsWith('expense') ? 'text-primary' : 'text-foreground') : 'text-primary')}>
+                    {fmt(totalValue)}
                   </h3>
                 </div>
               </div>
-            </div>
-          </ModalOverlay>
-        )}
+            </ModalOverlay>
+          );
+        })()}
       </AnimatePresence>
     </AdminLayout>
   );
