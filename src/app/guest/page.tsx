@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -37,6 +37,7 @@ type Tab = 'explore' | 'visits' | 'support';
 
 export default function GuestPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [guest, setGuest] = useState<Guest | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('explore');
@@ -58,11 +59,15 @@ export default function GuestPage() {
   const [bookModal, setBookModal] = useState<{ propertyId: string; propertyName: string; roomId?: string } | null>(null);
   const [supportModal, setSupportModal] = useState(false);
   const [tenantRequestModal, setTenantRequestModal] = useState<{ bookingId: string } | null>(null);
+  const [roomRequestModal, setRoomRequestModal] = useState<{ roomId: string; roomName: string; propertyName: string } | null>(null);
+  const [expandedProperty, setExpandedProperty] = useState<string | null>(null);
 
   // Form state
   const [visitDate, setVisitDate] = useState('');
   const [visitMessage, setVisitMessage] = useState('');
   const [supportDesc, setSupportDesc] = useState('');
+  const [roomRequestMoveIn, setRoomRequestMoveIn] = useState('');
+  const [roomRequestMessage, setRoomRequestMessage] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -119,6 +124,21 @@ export default function GuestPage() {
   }, [router]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Auto-open room request modal when navigated from /properties/[id]?requestRoom=<id>
+  useEffect(() => {
+    const requestRoomId = searchParams.get('requestRoom');
+    if (!requestRoomId || loading) return;
+    // Find the room across all loaded properties
+    for (const prop of properties) {
+      const rooms = (prop as any).rooms as any[] | undefined;
+      const room = rooms?.find((r: any) => r.id === requestRoomId);
+      if (room) {
+        setRoomRequestModal({ roomId: room.id, roomName: room.name, propertyName: prop.name });
+        break;
+      }
+    }
+  }, [searchParams, properties, loading]);
 
   // Poll notifications every 30s
   useEffect(() => {
@@ -243,6 +263,27 @@ export default function GuestPage() {
     if (result.ticket) {
       setTenantRequestModal(null);
       showToast('Tenant access request sent to admin!');
+    } else {
+      showToast(result.error ?? 'Failed to send request', false);
+    }
+  };
+
+  const submitRoomRequest = async () => {
+    if (!roomRequestModal) return;
+    setFormLoading(true);
+    const result = await apiCall('/api/tickets', 'POST', {
+      category:         'TenantAccessRequest',
+      priority:         'High',
+      description:      `Room access request for "${roomRequestModal.roomName}" at ${roomRequestModal.propertyName}. ${roomRequestMessage || ''}`.trim(),
+      roomId:           roomRequestModal.roomId,
+      preferredMoveIn:  roomRequestMoveIn || null,
+    });
+    setFormLoading(false);
+    if (result.ticket) {
+      setRoomRequestModal(null);
+      setRoomRequestMoveIn('');
+      setRoomRequestMessage('');
+      showToast('Room request sent! Admin will review and get back to you.');
     } else {
       showToast(result.error ?? 'Failed to send request', false);
     }
@@ -439,6 +480,52 @@ export default function GuestPage() {
                         <CreditCard className="w-3.5 h-3.5" /> Book ₹5,000
                       </button>
                     </div>
+
+                    {/* Rooms availability toggle */}
+                    {(property as any).rooms?.length > 0 && (
+                      <button
+                        onClick={() => setExpandedProperty(expandedProperty === property.id ? null : property.id)}
+                        className="w-full soft-button py-2 text-[10px] font-bold text-foreground/50 border border-white/60 flex items-center justify-center gap-1.5 hover:text-secondary transition-colors"
+                      >
+                        <Home className="w-3 h-3" />
+                        {expandedProperty === property.id ? 'Hide Rooms' : `View ${(property as any).rooms.length} Room${(property as any).rooms.length > 1 ? 's' : ''}`}
+                        <ChevronDown className={cn('w-3 h-3 transition-transform', expandedProperty === property.id && 'rotate-180')} />
+                      </button>
+                    )}
+
+                    <AnimatePresence>
+                      {expandedProperty === property.id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                          className="space-y-2 overflow-hidden"
+                        >
+                          {((property as any).rooms as any[]).map((room: any) => {
+                            const isVacant = !room.occupancy_status || room.occupancy_status === 'Vacant';
+                            return (
+                              <div key={room.id} className="flex items-center justify-between soft-well px-3 py-2.5 border border-white/60">
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-bold text-foreground truncate">{room.name}</p>
+                                  <p className="text-[9px] text-foreground/40 font-bold uppercase tracking-widest">{room.type}{room.sqft ? ` · ${room.sqft} sqft` : ''}</p>
+                                </div>
+                                {isVacant ? (
+                                  <button
+                                    onClick={() => setRoomRequestModal({ roomId: room.id, roomName: room.name, propertyName: property.name })}
+                                    className="shrink-0 ml-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest bg-secondary/10 text-secondary border border-secondary/20 rounded-lg hover:bg-secondary hover:text-white transition-all"
+                                  >
+                                    Request
+                                  </button>
+                                ) : (
+                                  <span className="shrink-0 ml-2 px-2 py-1 text-[9px] font-bold uppercase tracking-widest bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg">
+                                    {room.occupancy_status ?? 'Occupied'}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     <Link href={`/properties/${property.id}`}
                       className="text-[10px] text-primary/60 hover:text-primary flex items-center gap-1 justify-center transition-colors">
                       View full details <ArrowRight className="w-3 h-3" />
@@ -654,6 +741,46 @@ export default function GuestPage() {
                   {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Request'}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Room Request Modal ── */}
+      <AnimatePresence>
+        {roomRequestModal && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="soft-card border border-white bg-background w-full max-w-md p-6 space-y-5"
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-foreground">Request This Room</h3>
+                  <p className="text-xs text-foreground/50 mt-0.5">{roomRequestModal.roomName} · {roomRequestModal.propertyName}</p>
+                </div>
+                <button onClick={() => setRoomRequestModal(null)} className="soft-button w-8 h-8 flex items-center justify-center"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-1">Preferred Move-in Date</label>
+                  <input type="date" value={roomRequestMoveIn} onChange={e => setRoomRequestMoveIn(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="soft-ui-in w-full px-4 py-3 text-xs text-foreground mt-1" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-1">Message (optional)</label>
+                  <textarea rows={3} value={roomRequestMessage} onChange={e => setRoomRequestMessage(e.target.value)}
+                    placeholder="Any details about yourself or questions for the admin..."
+                    className="soft-ui-in w-full px-4 py-3 text-xs text-foreground mt-1 resize-none" />
+                </div>
+              </div>
+              <p className="text-[9px] text-foreground/30 leading-relaxed">
+                Your request will be reviewed by the admin. Once approved, you'll get full tenant portal access.
+              </p>
+              <button onClick={submitRoomRequest} disabled={formLoading}
+                className="btn-terracotta w-full py-3 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Home className="w-4 h-4" /> Send Room Request</>}
+              </button>
             </motion.div>
           </motion.div>
         )}

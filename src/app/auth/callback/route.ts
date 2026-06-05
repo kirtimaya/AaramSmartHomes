@@ -48,15 +48,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/admin', requestUrl.origin));
   }
 
-  // 2. Active/notice tenant
-  const { data: tenantRow } = await adminClient
+  // 2. Active/notice tenant — check by auth id first, then by email (for admin-invited tenants)
+  const { data: tenantById } = await adminClient
     .from('tenants')
     .select('id, status')
     .eq('id', user.id)
     .in('status', ['active', 'notice'])
     .single();
 
-  if (tenantRow) {
+  if (tenantById) {
+    return NextResponse.redirect(new URL('/tenant', requestUrl.origin));
+  }
+
+  // Email-based lookup for tenants added by admin before user created their account
+  const { data: tenantByEmail } = await adminClient
+    .from('tenants')
+    .select('id, status')
+    .eq('email', email)
+    .in('status', ['active', 'notice'])
+    .single();
+
+  if (tenantByEmail && tenantByEmail.id !== user.id) {
+    // Update tenants row to use the real auth UID
+    // Reassign any bill_splits / notifications referencing old id
+    await adminClient.from('bill_splits').update({ tenant_id: user.id }).eq('tenant_id', tenantByEmail.id);
+    await adminClient.from('notifications').update({ user_id: user.id }).eq('user_id', tenantByEmail.id);
+    await adminClient.from('rooms').update({ tenant_id: user.id }).eq('tenant_id', tenantByEmail.id);
+    // Delete old row and insert with correct id (can't update PK in Supabase directly)
+    const { data: oldTenant } = await adminClient.from('tenants').select('*').eq('id', tenantByEmail.id).single();
+    if (oldTenant) {
+      await adminClient.from('tenants').delete().eq('id', tenantByEmail.id);
+      await adminClient.from('tenants').insert({ ...oldTenant, id: user.id });
+    }
     return NextResponse.redirect(new URL('/tenant', requestUrl.origin));
   }
 
