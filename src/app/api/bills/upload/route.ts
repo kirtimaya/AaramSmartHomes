@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
       previous_date:    previousDate || null,
       total_units:      totalUnits,
       total_amount:     totalAmount,
+      common_units:     0,   // calculated later during split; default 0 to satisfy NOT NULL
       bill_image_url:   billImageUrl,
       uploaded_by:      user.id,
       uploaded_by_name: user.user_metadata?.full_name || user.email,

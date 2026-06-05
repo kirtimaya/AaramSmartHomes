@@ -89,7 +89,11 @@ UPDATE admin_requests
   SET token_expires_at = NOW() + INTERVAL '48 hours'
   WHERE token_expires_at IS NULL;
 
--- ── 8a. electricity_bills: ensure all columns exist (safety net for installs
+-- ── 8a. electricity_bills: ensure common_units has a default (old 20260603
+--       schema added it as NOT NULL with no default, breaking upload inserts)
+ALTER TABLE electricity_bills ALTER COLUMN common_units SET DEFAULT 0;
+
+-- ensure all columns exist (safety net for installs
 --       that skipped 20260605 or had a partial run)
 ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS bill_image_url   TEXT;
 ALTER TABLE electricity_bills ADD COLUMN IF NOT EXISTS image_url        TEXT;
