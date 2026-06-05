@@ -59,6 +59,7 @@ const CATEGORY_META: Record<ExpenseCategory, { label: string; color: string; ico
 };
 
 const ALL_CATS = Object.keys(CATEGORY_META) as ExpenseCategory[];
+const OP_CATS  = ALL_CATS.filter(c => c !== 'security_deposit' && c !== 'setup_expense');
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
 // Month-Year helpers
@@ -952,8 +953,8 @@ export default function FinancialHub() {
   const totalRent        = useMemo(() => rentRecords.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
   const monthDepositsIn  = useMemo(() => rentRecords.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
   const monthSetupCosts  = useMemo(() => rentRecords.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [rentRecords]);
-  // Operating expenses exclude security deposits paid to owner
-  const totalOpExp       = useMemo(() => expenses.filter(e => e.category !== 'security_deposit').reduce((s, e) => s + e.amount, 0), [expenses]);
+  // Operating expenses exclude security deposits and setup expenses (both live in Deposits & Setup tab)
+  const totalOpExp       = useMemo(() => expenses.filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense').reduce((s, e) => s + e.amount, 0), [expenses]);
   const monthDepositsPaid = useMemo(() => expenses.filter(e => e.category === 'security_deposit').reduce((s, e) => s + e.amount, 0), [expenses]);
   const totalExp         = totalOpExp + monthDepositsPaid;
   const netIncome        = totalRent - totalOpExp;
@@ -962,7 +963,7 @@ export default function FinancialHub() {
   const lifeRent         = useMemo(() => allTimeInc.filter(r => r.income_type === 'rent').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
   const lifeDepositsIn   = useMemo(() => allTimeInc.filter(r => r.income_type === 'deposit').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
   const lifeSetupCosts   = useMemo(() => allTimeInc.filter(r => r.income_type === 'setup_cost').reduce((s, v) => s + (v.amount||0), 0), [allTimeInc]);
-  const lifeOpExp        = useMemo(() => allTimeExp.filter(e => e.category !== 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
+  const lifeOpExp        = useMemo(() => allTimeExp.filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
   const lifeDepositsPaid  = useMemo(() => allTimeExp.filter(e => e.category === 'security_deposit').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
   const lifeSetupExpenses = useMemo(() => allTimeExp.filter(e => e.category === 'setup_expense').reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
   const lifeExp           = useMemo(() => allTimeExp.reduce((s, e) => s + (e.amount||0), 0), [allTimeExp]);
@@ -1061,13 +1062,13 @@ export default function FinancialHub() {
     return m;
   }, [expenses]);
 
-  const expChartData = useMemo(() => ALL_CATS.map(c => ({
+  const expChartData = useMemo(() => OP_CATS.map(c => ({
     name: CATEGORY_META[c].label,
     amount: (expByCat[c] || []).reduce((s, i) => s + i.amount, 0),
   })).filter(d => d.amount > 0), [expByCat]);
 
   const incChartData = useMemo(() => {
-    const types: IncomeType[] = ['rent', 'deposit', 'setup_cost', 'custom'];
+    const types: IncomeType[] = ['rent', 'custom']; // deposit & setup_cost shown in Deposits & Setup tab
     return types.map(t => ({
       name: t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' '),
       amount: rentRecords.filter(r => r.income_type === t).reduce((s, v) => s + (v.amount||0), 0)
@@ -1446,7 +1447,7 @@ export default function FinancialHub() {
             {expView === 'property' && (
               <motion.div key="property" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-4">
                 {properties.map(property => {
-                  const items = expByProp[property.id] || [];
+                  const items = (expByProp[property.id] || []).filter(e => e.category !== 'security_deposit' && e.category !== 'setup_expense');
                   // Total = Sum(Direct Expenses) + Sum(Split shares of Shared Expenses)
                   const total = items.reduce((s, e) => s + (e.splitAmt ?? e.amount), 0);
                   const rent  = propRentTotal(property.id);
@@ -1518,7 +1519,7 @@ export default function FinancialHub() {
                               </AnimatePresence>
                               {/* Category quick-adds inside the property */}
                               <div className="pt-2 flex flex-wrap gap-2">
-                                {ALL_CATS.map(cat => {
+                                {OP_CATS.map(cat => {
                                   const meta = CATEGORY_META[cat];
                                   const Icon = meta.icon;
                                   return (
@@ -1576,7 +1577,7 @@ export default function FinancialHub() {
                             )}
                           </AnimatePresence>
                           <div className="pt-2 flex flex-wrap gap-2">
-                            {ALL_CATS.map(cat => {
+                            {OP_CATS.map(cat => {
                               const meta = CATEGORY_META[cat]; const Icon = meta.icon;
                               return (
                                 <button key={cat} onClick={() => setAddingInCat({ cat, scope: 'overall' })}
@@ -1597,7 +1598,7 @@ export default function FinancialHub() {
             {/* ── CATEGORY VIEW (secondary) ── */}
             {expView === 'overall' && (
               <motion.div key="overall" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-3">
-                {ALL_CATS.map(cat => {
+                {OP_CATS.map(cat => {
                   const meta  = CATEGORY_META[cat];
                   const Icon  = meta.icon;
                   const items = expByCat[cat] || [];
