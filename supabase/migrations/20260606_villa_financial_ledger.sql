@@ -14,8 +14,9 @@
 
 -- ── Schema additions (idempotent) ─────────────────────────────────────────────
 
--- Unique constraint so we can upsert rooms by (property_id, name)
-ALTER TABLE rooms ADD CONSTRAINT IF NOT EXISTS uq_rooms_property_name UNIQUE (property_id, name);
+-- Unique index so we can upsert rooms by (property_id, name)
+-- (CREATE INDEX supports IF NOT EXISTS; ALTER TABLE ADD CONSTRAINT does not)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_rooms_property_name ON rooms (property_id, name);
 
 -- Temporary name column: holds occupant name until a proper tenant profile is linked
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS tenant_name TEXT;
