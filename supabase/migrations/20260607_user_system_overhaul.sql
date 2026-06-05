@@ -94,6 +94,11 @@ UPDATE admin_requests
 --       SUPABASE_SERVICE_ROLE_KEY set in Vercel env vars)
 ALTER TABLE electricity_bills ALTER COLUMN common_units SET DEFAULT 0;
 ALTER TABLE electricity_bills ALTER COLUMN common_amount SET DEFAULT 0;
+-- Drop old status check constraint ('draft'|'published') and replace with
+-- the full set used by the new bill-splitting workflow
+ALTER TABLE electricity_bills DROP CONSTRAINT IF EXISTS electricity_bills_status_check;
+ALTER TABLE electricity_bills ADD CONSTRAINT electricity_bills_status_check
+  CHECK (status IN ('pending','validated','split_calculated','locked','rejected','draft','published'));
 ALTER TABLE electricity_bills ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated write electricity_bills" ON electricity_bills;
 DROP POLICY IF EXISTS "electricity_bills admin full" ON electricity_bills;
