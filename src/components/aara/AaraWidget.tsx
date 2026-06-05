@@ -3,15 +3,12 @@
 /**
  * AaraWidget — Top-level entry point that replaces <AaraChatbot /> in layout.tsx.
  *
- * Reads auth state to determine isAdmin, then renders:
- *   <AaraProvider>
- *     <AaraAvatar />           ← the animated flying avatar
- *     <AgenticChatLayout />    ← the chat panel
- *   </AaraProvider>
+ * Auth state determines userRole:
+ *   no session           → 'guest'
+ *   session, not admin   → 'tenant'
+ *   session + admin API  → 'admin'
  *
- * The AaraProvider must live HERE (inside the client boundary) so the
- * context is available to both the avatar and the chat panel without
- * needing to touch the server root layout.
+ * Default is always 'guest'. Only elevates after confirmed server response.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -20,9 +17,11 @@ import { AaraProvider, useAaraContext } from '@/context/AaraContext';
 import { AaraAvatar } from './AaraAvatar';
 import { AgenticChatLayout } from './AgenticChatLayout';
 
+export type UserRole = 'guest' | 'tenant' | 'admin';
+
 // ─── Inner widget (needs AaraContext) ─────────────────────────────────────────
 
-function WidgetInner({ isAdmin }: { isAdmin: boolean }) {
+function WidgetInner({ userRole, userId }: { userRole: UserRole; userId: string | null }) {
   const { isChatOpen, setIsChatOpen, setAaraState } = useAaraContext();
 
   const handleToggle = useCallback(() => {
@@ -39,10 +38,11 @@ function WidgetInner({ isAdmin }: { isAdmin: boolean }) {
   return (
     <>
       <div id="aara-avatar-root">
-        <AaraAvatar onToggleChat={handleToggle} isAdmin={isAdmin} />
+        <AaraAvatar onToggleChat={handleToggle} isAdmin={userRole === 'admin'} />
       </div>
       <AgenticChatLayout
-        isAdmin={isAdmin}
+        userRole={userRole}
+        userId={userId}
         isOpen={isChatOpen}
         onClose={handleClose}
       />
@@ -53,23 +53,35 @@ function WidgetInner({ isAdmin }: { isAdmin: boolean }) {
 // ─── Outer widget (handles auth) ──────────────────────────────────────────────
 
 export function AaraWidget() {
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>('guest');
+  const [userId, setUserId]     = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     const check = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { setAuthReady(true); return; }
+
+      if (!session) {
+        setUserRole('guest');
+        setUserId(null);
+        setAuthReady(true);
+        return;
+      }
+
+      // Authenticated — at minimum tenant
+      setUserId(session.user.id);
+      setUserRole('tenant');
 
       try {
         const res = await fetch('/api/admin/status', {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
+          headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (res.ok) {
-          const { isAdmin: admin } = await res.json();
-          setIsAdmin(!!admin);
+          const { isAdmin } = await res.json();
+          if (isAdmin) setUserRole('admin');
         }
-      } catch { /* ignore */ }
+      } catch { /* remain tenant */ }
+
       setAuthReady(true);
     };
 
@@ -77,7 +89,8 @@ export function AaraWidget() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       setAuthReady(false);
-      setIsAdmin(false);
+      setUserRole('guest');
+      setUserId(null);
       check();
     });
 
@@ -88,7 +101,7 @@ export function AaraWidget() {
 
   return (
     <AaraProvider>
-      <WidgetInner isAdmin={isAdmin} />
+      <WidgetInner userRole={userRole} userId={userId} />
     </AaraProvider>
   );
 }
