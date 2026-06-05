@@ -34,13 +34,17 @@ import {
   SkipForward,
   RotateCcw,
   Loader2,
-  Info
+  Info,
+  Upload,
+  Lock,
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Tenant, Property, RoomElectricityBill, ElectricityBill } from '@/lib/types';
+import { Tenant, Property, RoomElectricityBill, ElectricityBill, BillSplit } from '@/lib/types';
 
 import { supabase } from '@/lib/supabase';
 
@@ -366,6 +370,16 @@ export default function UnifiedUserDashboard() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [electricityBill, setElectricityBill] = useState<(RoomElectricityBill & { electricity_bills: ElectricityBill }) | null>(null);
 
+  // New bill splitting state
+  const [billStatus, setBillStatus] = useState<{ id?: string; status: string | null; uploaded_by_name?: string; uploaded_at?: string; rejection_reason?: string } | null>(null);
+  const [billSplit, setBillSplit] = useState<{ bill: ElectricityBill; my_split: BillSplit; summary: { tenant_name: string; total_payable: number; room_id: string }[] } | null>(null);
+  const [acSubmission, setAcSubmission] = useState<{ ac_units_submitted: number } | null>(null);
+  const [tenantRoom, setTenantRoom] = useState<{ has_ac: boolean; property_id: string; name: string } | null>(null);
+  const [acInput, setAcInput] = useState('');
+  const [acSubmitting, setAcSubmitting] = useState(false);
+  const [billUploading, setBillUploading] = useState(false);
+  const [splitExpanded, setSplitExpanded] = useState(false);
+
   useEffect(() => {
     if (!loading) {
       if (!user) {
@@ -412,17 +426,78 @@ export default function UnifiedUserDashboard() {
         setProperties(props as Property[]);
       }
 
-      // 3. Fetch current month electricity sub-bill for this tenant's unit
+      // 3. Fetch current month electricity sub-bill for this tenant's unit (legacy)
+      //    Uses room_id column — if this table doesn't exist or column name differs,
+      //    the query returns null and is silently skipped.
       if (currentProfile.room_id) {
         const currentMonth = new Date().toISOString().slice(0, 7);
-        const { data: elecBill } = await supabase
+        const { data: elecBill, error: elecBillErr } = await supabase
           .from('room_electricity_bills')
           .select('*, electricity_bills!inner(*)')
-          .eq('unit_id', currentProfile.room_id)
+          .eq('room_id', currentProfile.room_id)
           .eq('electricity_bills.status', 'published')
           .eq('electricity_bills.bill_month', currentMonth)
+          .maybeSingle();
+        if (!elecBillErr && elecBill) setElectricityBill(elecBill as any);
+
+        // 4. Fetch tenant's room info (has_ac, property_id)
+        const { data: roomData } = await supabase
+          .from('rooms')
+          .select('id, has_ac, property_id, name')
+          .eq('id', currentProfile.room_id)
           .single();
-        if (elecBill) setElectricityBill(elecBill as any);
+        if (roomData) setTenantRoom(roomData as any);
+
+        // 5. Fetch bill status for this property/month
+        if (roomData?.property_id) {
+          const { data: billStatusData } = await supabase
+            .from('electricity_bills')
+            .select('id, status, rejection_reason, uploaded_by_name, created_at')
+            .eq('property_id', roomData.property_id)
+            .eq('bill_month', `${currentMonth}-01`)
+            .not('status', 'eq', 'rejected')
+            .maybeSingle();
+          setBillStatus(billStatusData
+            ? { id: billStatusData.id, status: billStatusData.status, uploaded_by_name: billStatusData.uploaded_by_name, uploaded_at: billStatusData.created_at, rejection_reason: billStatusData.rejection_reason }
+            : { status: null }
+          );
+
+          // 6. If bill exists and validated/split/locked, get AC submission
+          if (billStatusData?.id) {
+            const { data: submissionData } = await supabase
+              .from('tenant_ac_submissions')
+              .select('ac_units_submitted')
+              .eq('bill_id', billStatusData.id)
+              .eq('room_id', currentProfile.room_id)
+              .maybeSingle();
+            if (submissionData) {
+              setAcSubmission(submissionData);
+              setAcInput(String(submissionData.ac_units_submitted));
+            }
+          }
+
+          // 7. If bill is locked, fetch bill split
+          if (billStatusData?.status === 'locked') {
+            const { data: splitData } = await supabase
+              .from('bill_splits')
+              .select('*')
+              .eq('bill_id', billStatusData.id)
+              .eq('room_id', currentProfile.room_id)
+              .single();
+            const { data: allSplitsData } = await supabase
+              .from('bill_splits')
+              .select('tenant_name, total_payable, room_id')
+              .eq('bill_id', billStatusData.id)
+              .order('tenant_name');
+            if (splitData) {
+              setBillSplit({
+                bill: { ...billStatusData, bill_month: billStatusData.id } as any,
+                my_split: splitData,
+                summary: allSplitsData || [],
+              });
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Dashboard initialization error:', err);
@@ -453,6 +528,59 @@ export default function UnifiedUserDashboard() {
   const handleSignOut = async () => {
     await signOut();
     router.push('/login');
+  };
+
+  const getAuthHeader = () => {
+    const key = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth'));
+    if (!key) return {};
+    try {
+      const session = JSON.parse(localStorage.getItem(key) || '{}');
+      const token = session?.access_token || session?.currentSession?.access_token;
+      if (token) return { Authorization: `Bearer ${token}` };
+    } catch { /* ignore */ }
+    return {};
+  };
+
+  const handleSubmitACUnits = async () => {
+    if (!billStatus?.id || !acInput) return;
+    setAcSubmitting(true);
+    try {
+      const res = await fetch(`/api/bills/${billStatus.id}/ac-units`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() as Record<string, string> },
+        body: JSON.stringify({ ac_units_submitted: Number(acInput) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAcSubmission({ ac_units_submitted: data.ac_units_submitted });
+      }
+    } finally {
+      setAcSubmitting(false);
+    }
+  };
+
+  const handleUploadBill = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !tenantRoom?.property_id) return;
+    setBillUploading(true);
+    const fd = new FormData();
+    fd.append('property_id', tenantRoom.property_id);
+    fd.append('bill_month', new Date().toISOString().slice(0, 7));
+    fd.append('image', file);
+    fd.append('total_amount', '0');
+    try {
+      const res = await fetch('/api/bills/upload', {
+        method: 'POST',
+        headers: getAuthHeader() as Record<string, string>,
+        body: fd,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBillStatus({ id: data.id, status: data.status, uploaded_by_name: data.uploaded_by_name, uploaded_at: data.created_at });
+      }
+    } finally {
+      setBillUploading(false);
+    }
   };
 
   const universalBenefits = [
@@ -659,6 +787,154 @@ export default function UnifiedUserDashboard() {
                           {electricityBill.status === 'paid' ? <CheckCircle2 className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
                           {electricityBill.status === 'paid' ? 'Paid' : 'Payment Due'}
                         </div>
+                      </motion.div>
+                    )}
+
+                    {/* ── Upload Electricity Bill Card ── */}
+                    {tenantRoom && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="soft-card border border-amber-500/20 bg-amber-500/5 p-6 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 shadow-inner">
+                            <Upload className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Electricity Bill</p>
+                            <p className="text-sm font-black text-foreground uppercase">
+                              {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        {billStatus?.status === null || !billStatus ? (
+                          <label className={cn('w-full py-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-extrabold uppercase tracking-widest cursor-pointer transition-all',
+                            billUploading ? 'bg-foreground/10 text-foreground/40' : 'bg-amber-500 text-white shadow-lg')}>
+                            {billUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            {billUploading ? 'Uploading...' : `Upload Bill for ${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`}
+                            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleUploadBill} disabled={billUploading} />
+                          </label>
+                        ) : billStatus.status === 'rejected' ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-red-600 font-bold">Bill was rejected: {billStatus.rejection_reason}</p>
+                            <label className="w-full py-3 rounded-xl bg-amber-500 text-white flex items-center justify-center gap-2 text-[10px] font-extrabold uppercase tracking-widest cursor-pointer">
+                              <Upload className="w-4 h-4" /> Re-upload Bill
+                              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleUploadBill} />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <button disabled className="w-full py-3 rounded-xl bg-foreground/10 text-foreground/40 text-[10px] font-extrabold uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                              Bill already uploaded for {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                            </button>
+                            <p className="text-[9px] text-foreground/40 font-bold text-center">
+                              Uploaded by {billStatus.uploaded_by_name || 'someone'} · {billStatus.uploaded_at ? new Date(billStatus.uploaded_at).toLocaleDateString('en-IN') : ''}
+                            </p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* ── AC Units Submission Card ── */}
+                    {tenantRoom?.has_ac && billStatus?.id && billStatus.status !== 'locked' && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="soft-card border border-blue-500/20 bg-blue-500/5 p-6 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-600 shadow-inner">
+                            <Wind className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">AC Units</p>
+                            <p className="text-sm font-black text-foreground uppercase">
+                              {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        {billStatus.status === 'validated' || billStatus.status === 'split_calculated' ? (
+                          <div className="flex gap-2 items-center">
+                            <input type="number" min="0" value={acInput} onChange={e => setAcInput(e.target.value)}
+                              placeholder="Units used this month"
+                              className="soft-ui-in flex-1 bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+                            <button onClick={handleSubmitACUnits} disabled={acSubmitting || !acInput}
+                              className="px-4 py-2 rounded-xl bg-blue-500 text-white text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-50 flex items-center gap-1.5">
+                              {acSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              {acSubmission ? 'Update' : 'Submit'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-foreground/40 font-bold">AC submission available once bill is validated.</p>
+                        )}
+                        {acSubmission && (
+                          <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">
+                            Submitted: {acSubmission.ac_units_submitted} units
+                          </p>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* ── My Bill Share Card ── */}
+                    {billSplit ? (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="soft-card border border-emerald-500/20 bg-emerald-500/5 p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shadow-inner">
+                              <Lock className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">My Electricity Share</p>
+                              <p className="text-sm font-black text-foreground uppercase">
+                                {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-3xl font-black text-emerald-700 tracking-tighter">
+                            ₹{Number(billSplit.my_split.total_payable).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 border-t border-emerald-500/10 pt-3">
+                          <div className="soft-well border border-white p-3">
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-0.5 flex items-center gap-1">
+                              <Wind className="w-3 h-3 text-blue-500" /> AC Charge
+                            </p>
+                            <p className="text-lg font-black text-blue-600">₹{Number(billSplit.my_split.ac_charge).toLocaleString('en-IN')}</p>
+                          </div>
+                          <div className="soft-well border border-white p-3">
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-0.5 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-amber-500" /> Common Share
+                            </p>
+                            <p className="text-lg font-black text-amber-600">₹{Number(billSplit.my_split.common_share).toLocaleString('en-IN')}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => setSplitExpanded(!splitExpanded)}
+                          className="w-full text-[9px] font-extrabold uppercase tracking-widest text-foreground/40 flex items-center justify-center gap-1.5">
+                          All Tenants <ChevronDown className={cn('w-3 h-3 transition-transform', splitExpanded && 'rotate-180')} />
+                        </button>
+                        {splitExpanded && (
+                          <div className="space-y-1.5">
+                            {billSplit.summary.map((s, i) => (
+                              <div key={i} className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-foreground/60">{s.tenant_name}</span>
+                                <span className="font-black text-foreground">₹{Number(s.total_payable).toLocaleString('en-IN')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </motion.div>
+                    ) : billStatus?.status && billStatus.status !== 'locked' && tenantRoom && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="soft-card border border-foreground/10 bg-white/30 p-6 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-foreground/5 flex items-center justify-center text-foreground/30 shadow-inner">
+                            <Lock className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">My Electricity Share</p>
+                            <p className="text-sm font-bold text-foreground/40 uppercase">
+                              {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs font-bold text-foreground/40">Pending — bill is being processed</p>
                       </motion.div>
                     )}
 
