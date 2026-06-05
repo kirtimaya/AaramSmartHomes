@@ -130,7 +130,6 @@ export type ElectricityBill = {
   status: ElectricityBillStatus;
   rejection_reason?: string;
   created_at: string;
-  image_url?: string;
   updated_at?: string;
 };
 
