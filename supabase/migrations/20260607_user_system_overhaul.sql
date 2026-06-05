@@ -168,7 +168,26 @@ DROP POLICY IF EXISTS "Notifications own" ON notifications;
 CREATE POLICY "Notifications own" ON notifications FOR ALL TO authenticated
   USING (user_id = auth.uid());
 
--- ── 11. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
+-- ── 11. electricity_bills / bill_splits / tenant_ac_submissions RLS ──────────
+-- These tables are written by server-side API routes that use the service role
+-- key (which bypasses RLS). The policies below are a safety net for installs
+-- where the service role key is missing and the client falls back to anon key.
+ALTER TABLE electricity_bills ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "electricity_bills admin full" ON electricity_bills;
+CREATE POLICY "electricity_bills admin full" ON electricity_bills
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE bill_splits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "bill_splits admin full" ON bill_splits;
+CREATE POLICY "bill_splits admin full" ON bill_splits
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+ALTER TABLE tenant_ac_submissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "ac_submissions full" ON tenant_ac_submissions;
+CREATE POLICY "ac_submissions full" ON tenant_ac_submissions
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ── 12. pg_cron: 90-day inactive guest cleanup ────────────────────────────────
 -- Requires pg_cron extension enabled in Supabase (Dashboard → Extensions → pg_cron)
 -- Runs at 2am UTC daily; deletes guests with no activity in 90 days
 DO $outer$
