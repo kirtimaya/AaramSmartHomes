@@ -39,17 +39,12 @@ export default function TenantPortal() {
         .eq('id', user.id)
         .single();
 
-      setTenantProfile(
-        error || !data
-          ? {
-              id:     user.id,
-              name:   user.user_metadata?.full_name ?? 'Member',
-              email:  user.email ?? '',
-              status: 'guest',
-              shortlisted_property_ids: [],
-            }
-          : (data as Tenant)
-      );
+      if (error || !data) {
+        // Not a registered tenant — redirect to guest portal
+        router.push('/guest');
+        return;
+      }
+      setTenantProfile(data as Tenant);
       setDashboardLoading(false);
     })();
   }, [user, loading, router]);

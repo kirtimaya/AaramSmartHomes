@@ -3,17 +3,38 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Shield, ArrowRight, Star, MapPin, Zap, Leaf, Coffee, Wifi, Dumbbell, Grid, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Shield, ArrowRight, Zap, Leaf, Loader2, Home } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Property } from "@/lib/types";
 
 export default function LandingPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
+  const [portalRole, setPortalRole] = useState<'admin' | 'tenant' | 'guest' | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetchProperties();
+    checkSession();
   }, []);
+
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const { role } = await res.json();
+    setPortalRole(role);
+  };
+
+  const handlePortalClick = () => {
+    if (portalRole === 'admin') { router.push('/admin'); return; }
+    if (portalRole === 'tenant') { router.push('/tenant'); return; }
+    if (portalRole === 'guest') { router.push('/guest'); return; }
+    router.push('/login');
+  };
 
   const fetchProperties = async () => {
     const { data, error } = await supabase
@@ -46,9 +67,18 @@ export default function LandingPage() {
           <Link href="#spaces" className="font-medium text-foreground/50 hover:text-primary transition-colors">Spaces</Link>
           <Link href="#amenities" className="font-medium text-foreground/50 hover:text-primary transition-colors">Amenities</Link>
         </div>
-        <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all">
-          Sign In
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePortalClick}
+            className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 border border-white hover:text-primary transition-all"
+          >
+            <Home className="w-3.5 h-3.5" />
+            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'admin' ? 'Admin' : portalRole === 'guest' ? 'My Space' : 'Tenant Portal'}
+          </button>
+          <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all">
+            Sign In
+          </Link>
+        </div>
       </nav>
 
       {/* Hero Section - Tighter Padding */}
@@ -62,7 +92,7 @@ export default function LandingPage() {
             <span className="text-primary italic">HARMONY.</span>
           </h1>
           <p className="text-foreground/50 text-lg max-w-md leading-relaxed mx-auto lg:mx-0">
-            Thoughtfully managed homes combining minimalist design with smart technology in North Goa.
+            Thoughtfully managed homes combining minimalist design with smart technology in India.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-2">
             <Link href="/properties" className="btn-terracotta px-8 py-4 flex items-center justify-center gap-2 group">

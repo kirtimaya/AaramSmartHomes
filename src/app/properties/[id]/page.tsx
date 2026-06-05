@@ -32,8 +32,21 @@ export default function PropertyDetailView() {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'tenant' | 'guest' | null | undefined>(undefined);
   const { user } = useAuth();
-  const isAdmin = user?.email?.includes('admin@');
+  const isAdmin = userRole === 'admin';
+
+  // Determine role so the "Request Allocation" button routes correctly
+  useEffect(() => {
+    if (user === undefined) return; // still loading
+    if (!user) { setUserRole(null); return; }
+    const stored = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    const token = stored ? (() => { try { return JSON.parse(stored[1])?.access_token; } catch { return null; } })() : null;
+    if (!token) { setUserRole(null); return; }
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ role }) => setUserRole(role ?? null));
+  }, [user]);
 
   useEffect(() => {
     if (params.id) {
@@ -192,13 +205,20 @@ export default function PropertyDetailView() {
                     key={room.id}
                     onClick={() => setActiveRoom(room)}
                     className={cn(
-                      "px-6 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all whitespace-nowrap",
-                      activeRoom?.id === room.id 
-                        ? "btn-terracotta shadow-lg" 
+                      "px-6 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-2",
+                      activeRoom?.id === room.id
+                        ? "btn-terracotta shadow-lg"
                         : "text-foreground/40 hover:bg-white/60"
                     )}
                   >
                     {room.name}
+                    {(room as any).occupancy_status && (
+                      <span className={cn(
+                        'w-2 h-2 rounded-full shrink-0',
+                        (room as any).occupancy_status === 'Vacant' ? 'bg-emerald-500' :
+                        (room as any).occupancy_status === 'Occupied' ? 'bg-red-500' : 'bg-amber-500'
+                      )} />
+                    )}
                   </button>
                 ))}
               </div>
@@ -237,11 +257,24 @@ export default function PropertyDetailView() {
                   </div>
                   <div className="lg:col-span-5 space-y-10 py-6">
                      <div className="space-y-6">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                            <div className="w-2 h-8 rounded-full bg-primary" />
                            <h3 className="text-2xl font-bold text-foreground uppercase tracking-tight">{activeRoom.name}</h3>
+                           {/* Occupancy badge */}
+                           {(activeRoom as any).occupancy_status && (
+                             <span className={cn(
+                               'text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border',
+                               (activeRoom as any).occupancy_status === 'Vacant'
+                                 ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600'
+                                 : (activeRoom as any).occupancy_status === 'Occupied'
+                                 ? 'border-red-500/25 bg-red-500/10 text-red-500'
+                                 : 'border-amber-500/25 bg-amber-500/10 text-amber-500'
+                             )}>
+                               {(activeRoom as any).occupancy_status}
+                             </span>
+                           )}
                            {isAdmin && (
-                             <button 
+                             <button
                                onClick={() => router.push(`/admin/properties/manage?id=${property.id}&room=${activeRoom.id}`)}
                                className="soft-button w-8 h-8 flex items-center justify-center border border-white text-secondary hover:bg-secondary hover:text-white transition-all"
                              >
@@ -270,9 +303,32 @@ export default function PropertyDetailView() {
                         </div>
                      </div>
 
-                     <button className="w-full py-5 soft-button border border-white text-primary text-[11px] font-extrabold uppercase tracking-[0.3em] hover:bg-white/80 transition-all shadow-xl">
-                        Request Allocation
-                     </button>
+                     {(activeRoom as any).occupancy_status === 'Vacant' || !(activeRoom as any).occupancy_status ? (
+                       isAdmin ? (
+                         // Admin browsing — show informational chip instead of action button
+                         <div className="w-full py-5 soft-button border border-secondary/20 text-secondary text-[11px] font-extrabold uppercase tracking-[0.3em] text-center opacity-70">
+                           Vacant — Admin View
+                         </div>
+                       ) : userRole === 'tenant' ? (
+                         <div className="w-full py-5 soft-button border border-secondary/20 text-secondary/70 text-[11px] font-extrabold uppercase tracking-[0.3em] text-center">
+                           Already a Tenant
+                         </div>
+                       ) : (
+                         <Link
+                           href={userRole === 'guest'
+                             ? `/guest?requestRoom=${activeRoom.id}`
+                             : `/signup?next=${encodeURIComponent(`/guest?requestRoom=${activeRoom.id}`)}`
+                           }
+                           className="block w-full py-5 btn-terracotta text-[11px] font-extrabold uppercase tracking-[0.3em] text-center shadow-xl"
+                         >
+                           {userRole === null ? 'Sign Up to Request' : 'Request Allocation'}
+                         </Link>
+                       )
+                     ) : (
+                       <div className="w-full py-5 soft-button border border-red-500/20 text-red-400 text-[11px] font-extrabold uppercase tracking-[0.3em] text-center opacity-50 cursor-not-allowed">
+                         Currently Occupied
+                       </div>
+                     )}
                   </div>
                 </motion.div>
              )}

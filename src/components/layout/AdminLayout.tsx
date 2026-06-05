@@ -3,54 +3,40 @@ import { Sidebar } from './Sidebar';
 import { Shield, Bell, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, session, loading, signOut } = useAuth();
   const router = useRouter();
 
-  const [adminList, setAdminList] = React.useState<string[]>([]);
-  const ROOT_EMAIL = 'kirtimayaswain@gmail.com';
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [statusChecked, setStatusChecked] = React.useState(false);
 
   useEffect(() => {
-    async function fetchAdmins() {
-      const { data } = await supabase.from('admins').select('email');
-      if (data) {
-        setAdminList(data.map((a: { email: string }) => a.email.toLowerCase()));
+    if (!user || !session) return;
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/admin/status', {
+          headers: { 'Authorization': `Bearer ${session!.access_token}` }
+        });
+        if (res.ok) {
+          const { isAdmin: adminStatus } = await res.json();
+          setIsAdmin(adminStatus);
+        }
+      } finally {
+        setStatusChecked(true);
       }
     }
-    fetchAdmins();
-  }, []);
-
-  const isAdmin = React.useMemo(() => {
-    if (!user?.email) return false;
-    const normalizedEmail = user.email.toLowerCase().trim();
-    const result = 
-      normalizedEmail === ROOT_EMAIL || 
-      normalizedEmail.includes('admin') || 
-      adminList.includes(normalizedEmail);
-    console.log('[Auth Debug] Email:', normalizedEmail, 'isAdmin:', result);
-    return result;
-  }, [user, adminList]);
+    checkStatus();
+  }, [user, session]);
 
   useEffect(() => {
     if (!loading && !user) {
-      console.log('[Auth Debug] No user, redirecting to admin login');
       router.push('/adminLogin');
       return;
     }
+  }, [user, loading, router]);
 
-    // Root bypass logic inside useEffect to ensure redirect if not admin
-    if (!loading && user && !isAdmin) {
-      const normalized = user.email?.toLowerCase().trim();
-      if (normalized === ROOT_EMAIL) {
-        console.log('[Auth Debug] Root detected in guard, allowing access');
-        return; 
-      }
-    }
-  }, [user, loading, router, isAdmin]);
-
-  if (loading) {
+  if (loading || (user && !statusChecked)) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
@@ -70,14 +56,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-foreground/40 font-medium leading-relaxed">
             Your account (<span className="text-foreground font-bold">{user.email}</span>) does not have administrative privileges for Aaram Smart Homes.
           </p>
-        </div>
-        <div className="p-4 rounded-2xl bg-white/40 border border-white soft-well space-y-2 text-left">
-          <p className="text-[10px] font-extrabold text-foreground/30 uppercase tracking-widest">Diagnostic Info</p>
-          <code className="block text-[10px] font-mono text-primary/70 break-all leading-tight">
-            Auth ID: {user.id}<br/>
-            Email: {user.email}<br/>
-            Admin List: {adminList.join(', ') || 'Fetching...'}
-          </code>
         </div>
         <div className="flex flex-col w-full gap-3 pt-4">
           <button 

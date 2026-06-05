@@ -132,6 +132,10 @@ export default function PropertiesCatalog() {
                   alt={property.name}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-1000"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = 'https://placehold.co/800x600/fecaca/991b1b?text=Sanctuary+Exterior';
+                  }}
                 />
               ) : (
                 <div className="w-full h-full bg-accent animate-pulse flex items-center justify-center">

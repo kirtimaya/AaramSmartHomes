@@ -67,12 +67,12 @@ export const mockTenants: Tenant[] = [
   { id: 't1', name: 'Aaryan Sharma', email: 'aaryan@example.com', room_id: 'u1', move_in_date: '2023-10-01', status: 'active' },
   { id: 't2', name: 'Ishita Kapoor', email: 'ishita@example.com', room_id: 'u2', move_in_date: '2023-11-15', status: 'active' },
   { id: 't3', name: 'Rohan Mehra', email: 'rohan@example.com', room_id: 'u3', move_in_date: '2023-01-20', notice_date: '2026-03-01', move_out_date: '2026-03-31', status: 'notice' },
-  { id: 't_guest', name: 'Guest User', email: 'guest@aaram.space', status: 'guest', shortlisted_property_ids: ['p1', 'p2'] }
+  { id: 't_moved', name: 'Guest User', email: 'guest@aaram.space', status: 'moved_out' }
 ];
 
 export const mockTickets: Ticket[] = [
-  { id: 'tk1', tenant_id: 't1', category: 'Plumbing', priority: 'High', status: 'Pending', description: 'Leaking faucet in the bathroom.', created_at: '2026-03-14T10:00:00Z' },
-  { id: 'tk2', tenant_id: 't2', category: 'Electrical', priority: 'Medium', status: 'In-Progress', description: 'AC remote not working.', created_at: '2026-03-13T14:30:00Z' },
+  { id: 'tk1', requester_id: 't1', requester_type: 'tenant', category: 'Plumbing', priority: 'High', status: 'Pending', description: 'Leaking faucet in the bathroom.', created_at: '2026-03-14T10:00:00Z' },
+  { id: 'tk2', requester_id: 't2', requester_type: 'tenant', category: 'Electrical', priority: 'Medium', status: 'In-Progress', description: 'AC remote not working.', created_at: '2026-03-13T14:30:00Z' },
 ];
 
 export const mockWaterLogs: WaterLog[] = [

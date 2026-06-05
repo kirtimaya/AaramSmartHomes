@@ -1,0 +1,3 @@
+[submodule ".claude/worktrees/electricity-bill-splitting"]
+	path = .claude/worktrees/electricity-bill-splitting
+	url = https://github.com/kirtimaya/AaramSmartHomes/tree/claude/firstFindings

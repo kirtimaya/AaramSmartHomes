@@ -1,0 +1,231 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "aaram kitchen",
+      "intents": [
+        {
+          "name": "ArrivalIntent",
+          "slots": [],
+          "samples": [
+            "I have arrived",
+            "I am here",
+            "I have come",
+            "good morning I am here",
+            "I am ready to cook",
+            "start my shift",
+            "open the kitchen",
+            "I arrived",
+            "morning I am here",
+            "chef has arrived",
+            "main aa gaya",
+            "main aa gayi",
+            "main aa gaya hoon",
+            "main yahan hoon",
+            "shift shuru kar rahe hain",
+            "kaam shuru karte hain",
+            "main ready hoon",
+            "cook aa gaya hai",
+            "bhaiya aa gaye",
+            "didi aa gayi"
+          ]
+        },
+        {
+          "name": "DepartureIntent",
+          "slots": [],
+          "samples": [
+            "I am leaving",
+            "I am done",
+            "leaving now",
+            "my shift is over",
+            "I am finished",
+            "I have completed cooking",
+            "I am going",
+            "I am going home",
+            "cooking is done",
+            "I finished my work",
+            "shift complete",
+            "I am done cooking",
+            "main ja raha hoon",
+            "main ja rahi hoon",
+            "mera kaam ho gaya",
+            "shift khatam",
+            "shift khatam ho gayi",
+            "khana ban gaya",
+            "main nikal raha hoon",
+            "main nikal rahi hoon",
+            "bye kar raha hoon",
+            "ghar ja raha hoon"
+          ]
+        },
+        {
+          "name": "QueryMenuIntent",
+          "slots": [
+            {
+              "name": "RequestedBlock",
+              "type": "MealBlockType"
+            }
+          ],
+          "samples": [
+            "what's on the menu",
+            "what is on the menu",
+            "what's on the menu today",
+            "what are we having today",
+            "what are we eating today",
+            "what's for {RequestedBlock}",
+            "what is for {RequestedBlock}",
+            "what's for {RequestedBlock} today",
+            "tell me today's menu",
+            "tell me the menu",
+            "show me the menu",
+            "what's being cooked today",
+            "what is cooking today",
+            "today's menu please",
+            "what food is there",
+            "what's the food today",
+            "aaj ka menu kya hai",
+            "menu batao",
+            "aaj kya bana hai",
+            "kya bana hai aaj",
+            "aaj khane mein kya hai",
+            "kya hai aaj",
+            "today ka menu kya hai",
+            "{RequestedBlock} mein kya hai",
+            "{RequestedBlock} ka menu batao",
+            "aaj ka {RequestedBlock} kya hai",
+            "kya hai {RequestedBlock} mein"
+          ]
+        },
+        {
+          "name": "FoodSuggestionIntent",
+          "slots": [
+            {
+              "name": "SuggestionText",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "I suggest {SuggestionText}",
+            "I would like {SuggestionText}",
+            "can we have {SuggestionText}",
+            "my suggestion is {SuggestionText}",
+            "I recommend {SuggestionText}",
+            "please add {SuggestionText} to the menu",
+            "I want to suggest {SuggestionText}",
+            "how about {SuggestionText}",
+            "I have a suggestion {SuggestionText}",
+            "feedback {SuggestionText}",
+            "I want to give feedback {SuggestionText}",
+            "mera suggestion hai {SuggestionText}",
+            "mujhe chahiye {SuggestionText}",
+            "suggest karna chahta hoon {SuggestionText}",
+            "suggest karna chahti hoon {SuggestionText}",
+            "kya hum {SuggestionText} bana sakte hain",
+            "please {SuggestionText} banana",
+            "meri request hai {SuggestionText}",
+            "ek suggestion dena chahta hoon {SuggestionText}",
+            "feedback dena chahta hoon {SuggestionText}",
+            "mujhe pasand hai {SuggestionText}",
+            "hum {SuggestionText} kyun nahi bante"
+          ]
+        },
+        {
+          "name": "MissingItemsIntent",
+          "slots": [
+            {
+              "name": "MissingItems",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "we are missing {MissingItems}",
+            "we don't have {MissingItems}",
+            "we do not have {MissingItems}",
+            "I need {MissingItems}",
+            "{MissingItems} are missing",
+            "{MissingItems} is missing",
+            "no we are missing {MissingItems}",
+            "we need {MissingItems}",
+            "missing items are {MissingItems}",
+            "the missing items are {MissingItems}",
+            "we are short of {MissingItems}",
+            "there is no {MissingItems}",
+            "there are no {MissingItems}",
+            "{MissingItems} nahi hai",
+            "{MissingItems} nahi hain",
+            "hamara paas nahi hai {MissingItems}",
+            "hamara paas {MissingItems} nahi hai",
+            "{MissingItems} khatam ho gaya",
+            "{MissingItems} khatam ho gayi",
+            "hume chahiye {MissingItems}",
+            "{MissingItems} lana hoga",
+            "{MissingItems} mangana hoga",
+            "store mein {MissingItems} nahi hai",
+            "{MissingItems} available nahi hai"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "MealBlockType",
+          "values": [
+            {
+              "name": {
+                "value": "Breakfast",
+                "synonyms": [
+                  "morning", "breakfast meal", "morning food", "morning meal",
+                  "nashta", "naashta", "subah ka khana", "subah ka nashta",
+                  "morning nashta", "early meal", "first meal"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Lunch",
+                "synonyms": [
+                  "afternoon", "lunch meal", "midday food", "afternoon food",
+                  "dopahar ka khana", "dophar khana", "afternoon meal",
+                  "midday meal", "noon food", "afternoon nashta"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Dinner",
+                "synonyms": [
+                  "evening", "dinner meal", "night food", "supper",
+                  "raat ka khana", "raat ka bhojan", "evening meal",
+                  "night meal", "sham ka khana", "shyam ka khana"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [],
+      "delegationStrategy": "ALWAYS"
+    },
+    "prompts": []
+  }
+}

@@ -7,9 +7,11 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User, AlertCircle, Clock, Leaf, Plus, Edit2, Trash2, X, Check,
-  Loader2, Search, MapPin, Home, TrendingUp, BarChart2, ChevronRight
+  Loader2, Search, MapPin, Home, TrendingUp, BarChart2, ChevronRight,
+  UserPlus, Mail
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAaraCommands } from '@/hooks/useAaraCommands';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type RoomWithOccupancy = Room & {
@@ -52,6 +54,7 @@ function RoomCard({ room, tenant, onEdit }: { room: RoomWithOccupancy; tenant?: 
     <motion.div
       whileHover={{ y: -3, scale: 1.02 }}
       onClick={onEdit}
+      id={`room-${room.id}`}
       className={cn(
         'relative rounded-3xl border overflow-hidden cursor-pointer group transition-all duration-300 soft-card',
         STATUS_COLOR[room.occupancy_status]
@@ -116,6 +119,18 @@ function RoomCard({ room, tenant, onEdit }: { room: RoomWithOccupancy; tenant?: 
   );
 }
 
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const sbEntry = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  if (sbEntry) {
+    try {
+      const token = JSON.parse(sbEntry[1])?.access_token;
+      if (token) return { Authorization: `Bearer ${token}` };
+    } catch { /* ignore */ }
+  }
+  return {};
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function OccupancyPage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -127,8 +142,41 @@ export default function OccupancyPage() {
   const [addingToPropertyId, setAddingToPropertyId] = useState<string | null>(null);
   const [newRoomData, setNewRoomData] = useState({ name: '', type: 'Suite', sqft: 250, occupancy_status: 'Vacant' as UnitStatus });
   const [expandedProperties, setExpandedProperties] = useState<Set<string>>(new Set());
+  const [inviteModal, setInviteModal] = useState<{ roomId: string; roomName: string } | null>(null);
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', phone: '', moveInDate: '' });
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   useEffect(() => { fetchData(); }, []);
+
+  // ─── AARA Command Integration ───
+  useAaraCommands({
+    SELECT_PROPERTY: (data) => {
+      const el = document.getElementById(`property-${data.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setExpandedProperties(prev => new Set(prev).add(data.id));
+      }
+    },
+    SELECT_ROOM: (data) => {
+      const room = rooms.find(r => r.id === data.id);
+      if (room) {
+        setExpandedProperties(prev => new Set(prev).add(room.property_id));
+        setTimeout(() => {
+          setEditingRoom(room);
+          const el = document.getElementById(`room-${room.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    }
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -189,6 +237,39 @@ export default function OccupancyPage() {
       setAddingToPropertyId(null);
       setNewRoomData({ name: '', type: 'Suite', sqft: 250, occupancy_status: 'Vacant' });
     }
+  };
+
+  const handleInviteTenant = async () => {
+    if (!inviteModal || !inviteForm.name) return;
+    setInviteLoading(true);
+    const res = await fetch('/api/admin/tenants/add', {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:       inviteForm.name,
+        email:      inviteForm.email || null,
+        phone:      inviteForm.phone || null,
+        roomId:     inviteModal.roomId,
+        moveInDate: inviteForm.moveInDate || null,
+      }),
+    });
+    const json = await res.json();
+    setInviteLoading(false);
+    if (json.success) {
+      setJoinUrl(json.joinUrl);
+      await fetchData();
+      setEditingRoom(null);
+      showToast(json.emailSent ? 'Tenant added — invite email sent!' : 'Tenant added — share the portal link below.');
+    } else {
+      showToast(json.error ?? 'Failed to add tenant', false);
+    }
+  };
+
+  const copyJoinUrl = () => {
+    if (!joinUrl) return;
+    navigator.clipboard.writeText(joinUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDeleteRoom = async (id: string) => {
@@ -258,6 +339,21 @@ export default function OccupancyPage() {
 
   return (
     <AdminLayout>
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            className={cn(
+              'fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl text-xs font-bold shadow-xl border',
+              toast.ok ? 'bg-secondary/10 border-secondary/20 text-secondary' : 'bg-primary/10 border-primary/20 text-primary'
+            )}
+          >
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-10 pb-20 max-w-7xl mx-auto">
 
         {/* ── Header ── */}
@@ -351,7 +447,7 @@ export default function OccupancyPage() {
               const isExpanded = expandedProperties.has(property.id);
 
               return (
-                <div key={property.id} className="space-y-5">
+                <div key={property.id} id={`property-${property.id}`} className="space-y-5">
                   {/* Property Header */}
                   <div
                     onClick={() => toggleProperty(property.id)}
@@ -488,6 +584,13 @@ export default function OccupancyPage() {
                   </select>
                 </div>
 
+                <button
+                  onClick={() => setInviteModal({ roomId: editingRoom.id, roomName: editingRoom.name })}
+                  className="w-full soft-button py-3 border border-secondary/30 text-secondary hover:bg-secondary hover:text-white transition-all text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                >
+                  <UserPlus className="w-4 h-4" /> Invite New Tenant
+                </button>
+
                 <div className="pt-2 flex gap-4">
                   <button onClick={() => handleDeleteRoom(editingRoom.id)}
                     className="soft-button px-4 border border-primary/20 text-primary hover:bg-primary hover:text-white transition-all" title="Remove Room">
@@ -561,6 +664,101 @@ export default function OccupancyPage() {
                   <Plus className="w-5 h-5" /> Add Room
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* ════ INVITE TENANT MODAL ════ */}
+      <AnimatePresence>
+        {inviteModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+              className="absolute inset-0 bg-background/60 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-background soft-card border border-white w-full max-w-md p-10 shadow-2xl">
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-xl font-bold uppercase tracking-tight">Add Tenant</h2>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest mt-1">
+                    {inviteModal.roomName} · generates a portal access link
+                  </p>
+                </div>
+                <button onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+                  className="soft-button w-9 h-9 border border-white text-foreground/30"><X className="w-4 h-4" /></button>
+              </div>
+
+              {/* After success — show join URL */}
+              {joinUrl ? (
+                <div className="space-y-5">
+                  <div className="soft-well p-4 border border-secondary/20 bg-secondary/5 space-y-2">
+                    <p className="text-[9px] font-extrabold uppercase tracking-widest text-secondary">Portal Access Link</p>
+                    <p className="text-xs text-foreground/70 break-all font-mono">{joinUrl}</p>
+                  </div>
+                  <p className="text-[10px] text-foreground/40 leading-relaxed">
+                    Share this link with the tenant via WhatsApp, SMS, or any channel.
+                    When they open it, they'll create their account and get mapped to the room automatically.
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={copyJoinUrl}
+                      className={cn('flex-1 py-3 text-[11px] font-extrabold uppercase tracking-widest border transition-all flex items-center justify-center gap-2',
+                        copied ? 'bg-secondary text-white border-secondary' : 'soft-button border-secondary/30 text-secondary hover:bg-secondary hover:text-white'
+                      )}>
+                      <Check className={cn('w-4 h-4', !copied && 'hidden')} />
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    <button onClick={() => { setInviteModal(null); setJoinUrl(null); setInviteForm({ name: '', email: '', phone: '', moveInDate: '' }); }}
+                      className="flex-1 btn-terracotta py-3 text-[11px] font-extrabold uppercase tracking-widest flex items-center justify-center">
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Full Name *</label>
+                    <input type="text" autoFocus value={inviteForm.name}
+                      onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                      placeholder="e.g. Priya Sharma"
+                      className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Phone</label>
+                    <input type="tel" value={inviteForm.phone}
+                      onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                      placeholder="+91 98765 43210"
+                      className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Email <span className="text-foreground/20 normal-case font-normal">(optional — sends invite email if provided)</span></label>
+                    <input type="email" value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      placeholder="tenant@example.com"
+                      className="soft-ui-in w-full py-4 px-5 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Move-in Date</label>
+                    <input type="date" value={inviteForm.moveInDate}
+                      onChange={(e) => setInviteForm({ ...inviteForm, moveInDate: e.target.value })}
+                      className="soft-ui-in w-full py-4 px-4 text-xs bg-white/60 border border-white outline-none" />
+                  </div>
+
+                  <p className="text-[9px] text-foreground/30 flex items-start gap-1.5">
+                    <Mail className="w-3 h-3 shrink-0 mt-0.5" />
+                    A unique portal link is generated. If email is provided, an invite is also sent.
+                    Share the link manually via WhatsApp or any channel.
+                  </p>
+
+                  <button
+                    onClick={handleInviteTenant}
+                    disabled={inviteLoading || !inviteForm.name}
+                    className="w-full btn-terracotta py-4 text-[11px] font-extrabold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 disabled:opacity-40"
+                  >
+                    {inviteLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
+                    {inviteLoading ? 'Generating Link...' : 'Add Tenant & Get Link'}
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
         )}
