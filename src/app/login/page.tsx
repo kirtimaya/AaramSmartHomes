@@ -31,15 +31,23 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: { session }, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      // Standard users go to tenant dashboard
-      router.push('/tenant');
+      return;
     }
+
+    // Route by role
+    const token = session?.access_token;
+    if (token) {
+      const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+      const { role } = await res.json();
+      if (role === 'admin') { router.push('/admin'); return; }
+      if (role === 'tenant') { router.push('/tenant'); return; }
+    }
+    router.push('/guest');
   };
 
   const handleGoogleLogin = async () => {

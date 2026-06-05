@@ -20,6 +20,16 @@ function monthLabel(s: string) {
 }
 
 function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  // Try sb-<ref>-auth-token format (Supabase JS v2+)
+  const sbEntry = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  if (sbEntry) {
+    try {
+      const token = JSON.parse(sbEntry[1])?.access_token;
+      if (token) return { Authorization: `Bearer ${token}` };
+    } catch { /* ignore */ }
+  }
+  // Fallback: legacy key format
   const key = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth'));
   if (!key) return {};
   try {
