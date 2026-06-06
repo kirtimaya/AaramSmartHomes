@@ -6,7 +6,7 @@ import {
   Ticket, LogOut, MessageSquare, MessageCircle, FileText, Download,
   CheckCircle2, Clock, AlertCircle, Loader2, Send, ChevronRight,
   Shield, FileCheck, Receipt, Phone, Plus, Wrench, Zap, Droplets,
-  Wind, HelpCircle, X, BatteryCharging,
+  Wind, HelpCircle, X, BatteryCharging, CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -580,11 +580,22 @@ function VaultSection({ tenantId }: { tenantId: string }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Electricity section — tenant AC unit submission
+// Electricity section — bill share status + AC unit submission
 // ────────────────────────────────────────────────────────────────────────────
 
+import type { BillShareResponse } from '@/app/api/tenant/bills/my-share/route';
+
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const e = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  if (e) { try { const t = JSON.parse(e[1])?.access_token; if (t) return { Authorization: `Bearer ${t}` }; } catch {} }
+  return {};
+}
+
 function ElectricitySection({ tenantId }: { tenantId: string }) {
-  const [bill,       setBill]       = useState<{ id: string; bill_month: string; status: string } | null>(null);
+  const [share,      setShare]      = useState<BillShareResponse | null>(null);
+  const [hasAC,      setHasAC]      = useState(false);
+  const [activeBill, setActiveBill] = useState<{ id: string; bill_month: string } | null>(null);
   const [existing,   setExisting]   = useState<number | null>(null);
   const [acUnits,    setAcUnits]    = useState('');
   const [loading,    setLoading]    = useState(true);
@@ -592,57 +603,51 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
   const [saved,      setSaved]      = useState(false);
   const [error,      setError]      = useState('');
 
-  function getAuthHeader(): Record<string, string> {
-    if (typeof window === 'undefined') return {};
-    const e = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
-    if (e) { try { const t = JSON.parse(e[1])?.access_token; if (t) return { Authorization: `Bearer ${t}` }; } catch {} }
-    return {};
-  }
+  const load = async () => {
+    setLoading(true);
+    // Fetch bill share status
+    const res = await fetch('/api/tenant/bills/my-share', { headers: getAuthHeader() });
+    if (res.ok) setShare(await res.json());
 
-  useEffect(() => {
-    (async () => {
-      // Find the latest validated bill for the tenant's property
-      const { data: tenant } = await supabase.from('tenants').select('room_id').eq('id', tenantId).single();
-      if (!tenant?.room_id) { setLoading(false); return; }
+    // Fetch room's AC flag + current validated bill for submission
+    const { data: tenant } = await supabase.from('tenants').select('room_id').eq('id', tenantId).single();
+    if (!tenant?.room_id) { setLoading(false); return; }
 
-      const { data: room } = await supabase.from('rooms').select('property_id').eq('id', tenant.room_id).single();
-      if (!room?.property_id) { setLoading(false); return; }
+    const { data: room } = await supabase.from('rooms').select('property_id, has_ac').eq('id', tenant.room_id).single();
+    setHasAC(!!room?.has_ac);
 
+    if (room?.property_id) {
       const { data: bills } = await supabase
         .from('electricity_bills')
-        .select('id, bill_month, status')
+        .select('id, bill_month')
         .eq('property_id', room.property_id)
         .eq('status', 'validated')
         .order('bill_month', { ascending: false })
         .limit(1);
 
-      if (!bills?.length) { setLoading(false); return; }
-      const activeBill = bills[0];
-      setBill(activeBill);
-
-      // Check existing submission
-      const { data: sub } = await supabase
-        .from('tenant_ac_submissions')
-        .select('ac_units_submitted')
-        .eq('bill_id', activeBill.id)
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (sub) {
-        setExisting(sub.ac_units_submitted);
-        setAcUnits(String(sub.ac_units_submitted));
+      if (bills?.length) {
+        setActiveBill(bills[0]);
+        const { data: sub } = await supabase
+          .from('tenant_ac_submissions')
+          .select('ac_units_submitted')
+          .eq('bill_id', bills[0].id)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+        if (sub) { setExisting(sub.ac_units_submitted); setAcUnits(String(sub.ac_units_submitted)); }
       }
-      setLoading(false);
-    })();
-  }, [tenantId]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [tenantId]);
 
   const handleSubmit = async () => {
-    if (!bill || !acUnits.trim()) return;
+    if (!activeBill || !acUnits.trim()) return;
     const val = parseFloat(acUnits);
-    if (isNaN(val) || val < 0) { setError('Enter a valid number of AC units (≥ 0)'); return; }
+    if (isNaN(val) || val < 0) { setError('Enter a valid number ≥ 0'); return; }
     setError('');
     setSubmitting(true);
-    const res = await fetch(`/api/bills/${bill.id}/ac-units`, {
+    const res = await fetch(`/api/bills/${activeBill.id}/ac-units`, {
       method: 'POST',
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ ac_units_submitted: val }),
@@ -652,74 +657,147 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
     if (!res.ok) { setError(json.error || 'Submission failed'); return; }
     setExisting(val);
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setTimeout(async () => { setSaved(false); await load(); }, 2000);
   };
 
   if (loading) return <Spinner />;
 
-  if (!bill) {
-    return (
-      <EmptyState
-        icon={BatteryCharging}
-        title="No active bill"
-        sub="Your admin hasn't published an electricity bill for submission yet."
-      />
-    );
-  }
+  const STATUS_CONFIG = {
+    no_bill:          { icon: BatteryCharging, color: 'text-foreground/30', bg: 'bg-foreground/5',   border: 'border-foreground/10' },
+    pending:          { icon: Clock,           color: 'text-amber-600',     bg: 'bg-amber-50',        border: 'border-amber-200/60'  },
+    rejected:         { icon: AlertCircle,     color: 'text-red-600',       bg: 'bg-red-50',          border: 'border-red-200/60'    },
+    waiting_readings: { icon: Clock,           color: 'text-blue-600',      bg: 'bg-blue-50',         border: 'border-blue-200/60'   },
+    calculated:       { icon: CheckCircle2,    color: 'text-purple-600',    bg: 'bg-purple-50',       border: 'border-purple-200/60' },
+    locked:           { icon: CheckCircle2,    color: 'text-emerald-600',   bg: 'bg-emerald-50',      border: 'border-emerald-200/60'},
+  } as const;
 
-  const monthLabel = new Date(bill.bill_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const cfg = share ? STATUS_CONFIG[share.status] : STATUS_CONFIG.no_bill;
+  const StatusIcon = cfg.icon;
 
   return (
-    <div className="space-y-5">
-      <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Bill Period</p>
-            <p className="text-lg font-bold tracking-tight text-foreground">{monthLabel}</p>
+    <div className="space-y-4">
+      {/* ── Bill share status card ── */}
+      <div className={cn('soft-card border p-5 space-y-3', cfg.bg, cfg.border)}>
+        <div className="flex items-start gap-3">
+          <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', cfg.bg)}>
+            <StatusIcon className={cn('w-5 h-5', cfg.color)} />
           </div>
-          <span className="text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border border-blue-400/30 bg-blue-50 text-blue-600">
-            Open for submission
-          </span>
+          <div className="flex-1 min-w-0">
+            {share?.bill_month && (
+              <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-0.5">{share.bill_month}</p>
+            )}
+            <p className={cn('text-sm font-bold leading-snug', cfg.color)}>{share?.message ?? 'Loading billing status…'}</p>
+          </div>
         </div>
 
-        {existing !== null && (
-          <div className="soft-well border border-emerald-300/30 bg-emerald-50/60 px-4 py-3 rounded-xl">
-            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Current submission</p>
-            <p className="text-2xl font-black text-emerald-700 tracking-tighter">{existing} <span className="text-sm font-bold text-emerald-600/60">units</span></p>
-            <p className="text-[10px] text-emerald-600/60 font-medium mt-0.5">You can update this any time before the bill is locked.</p>
+        {/* AC reading progress bar */}
+        {share?.ac_progress && share.ac_progress.total > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">
+              <span>AC Meter Readings</span>
+              <span>{share.ac_progress.submitted}/{share.ac_progress.total} submitted</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+              <div
+                className="h-full bg-blue-400 rounded-full transition-all duration-700"
+                style={{ width: `${(share.ac_progress.submitted / share.ac_progress.total) * 100}%` }}
+              />
+            </div>
           </div>
         )}
-
-        <div className="space-y-2">
-          <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">
-            AC Units Used This Month
-          </label>
-          <div className="flex gap-3">
-            <input
-              type="number" min="0" step="0.5"
-              value={acUnits} onChange={e => setAcUnits(e.target.value)}
-              placeholder="e.g. 120"
-              className="flex-1 soft-well border border-white rounded-xl px-4 py-3 text-base font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!acUnits.trim() || submitting}
-              className={cn('px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all flex items-center gap-2',
-                acUnits.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
-              )}
-            >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> :
-               saved      ? <CheckCircle2 className="w-4 h-4 text-white" /> :
-                            <Send className="w-4 h-4" />}
-              {submitting ? 'Saving…' : saved ? 'Saved!' : 'Submit'}
-            </button>
-          </div>
-          {error && <p className="text-[11px] text-red-500 font-medium">{error}</p>}
-          <p className="text-[10px] text-foreground/30 font-medium">
-            Check your AC meter at the end of the month and enter total units consumed.
-          </p>
-        </div>
       </div>
+
+      {/* ── My split breakdown (when calculated or locked) ── */}
+      {share?.my_split && (
+        <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Your Bill Breakdown</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'AC Charge',     value: `₹${share.my_split.ac_charge.toLocaleString('en-IN')}`,     sub: `${share.my_split.ac_units} units` },
+              { label: 'Common Share',  value: `₹${share.my_split.common_share.toLocaleString('en-IN')}`,  sub: 'your portion' },
+              { label: 'Total Payable', value: `₹${share.my_split.total_payable.toLocaleString('en-IN')}`, sub: share.status === 'locked' ? 'finalised' : 'estimated', highlight: true },
+            ].map(item => (
+              <div key={item.label} className={cn('soft-well border border-white rounded-xl p-3 text-center', item.highlight && 'border-primary/20 bg-primary/5')}>
+                <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">{item.label}</p>
+                <p className={cn('text-lg font-black tracking-tighter mt-0.5', item.highlight ? 'text-primary' : 'text-foreground')}>{item.value}</p>
+                <p className="text-[9px] text-foreground/30 font-medium">{item.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* All flatmates summary (locked only, totals only) */}
+          {share.status === 'locked' && share.all_splits && share.all_splits.length > 1 && (
+            <div className="space-y-1.5 border-t border-foreground/5 pt-3">
+              <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/25">All Flatmates</p>
+              {share.all_splits.map(s => (
+                <div key={s.tenant_name} className="flex justify-between items-center text-xs">
+                  <span className="text-foreground/50 font-medium">{s.tenant_name}</span>
+                  <span className="font-bold text-foreground">₹{s.total_payable.toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── AC meter reading submission (only when bill is validated & room has AC) ── */}
+      {hasAC && activeBill && (
+        <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Submit AC Reading</p>
+              <p className="text-sm font-bold text-foreground mt-0.5">
+                {new Date(activeBill.bill_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+            <span className="text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border border-blue-400/30 bg-blue-50 text-blue-600">
+              Open
+            </span>
+          </div>
+
+          {existing !== null && (
+            <div className="soft-well border border-emerald-300/30 bg-emerald-50/60 px-4 py-3 rounded-xl">
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Current submission</p>
+              <p className="text-2xl font-black text-emerald-700 tracking-tighter">{existing} <span className="text-sm font-bold text-emerald-600/60">units</span></p>
+              <p className="text-[10px] text-emerald-600/60 mt-0.5">You can update this before the bill is locked.</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">AC Units Used This Month</label>
+            <div className="flex gap-3">
+              <input
+                type="number" min="0" step="0.5"
+                value={acUnits} onChange={e => setAcUnits(e.target.value)}
+                placeholder="e.g. 120"
+                className="flex-1 soft-well border border-white rounded-xl px-4 py-3 text-base font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!acUnits.trim() || submitting}
+                className={cn('px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all flex items-center gap-2',
+                  acUnits.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+                )}
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> :
+                 saved      ? <CheckCircle2 className="w-4 h-4 text-white" /> :
+                              <Send className="w-4 h-4" />}
+                {submitting ? 'Saving…' : saved ? 'Saved!' : 'Submit'}
+              </button>
+            </div>
+            {error && <p className="text-[11px] text-red-500 font-medium">{error}</p>}
+            <p className="text-[10px] text-foreground/30">Check your AC meter at month-end and enter total units consumed.</p>
+          </div>
+        </div>
+      )}
+
+      {/* No AC room message */}
+      {!hasAC && !share?.my_split && (
+        <div className="soft-card border border-white p-5 flex items-center gap-3 text-sm text-foreground/40">
+          <BatteryCharging className="w-5 h-5 shrink-0" />
+          Your room does not have AC — no meter reading required from you.
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { allACRoomsSubmitted, runCalculateSplit } from '@/lib/billUtils';
 
 export async function POST(
   request: NextRequest,
@@ -25,53 +26,51 @@ export async function POST(
     .single();
 
   if (!bill) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
+  if (bill.status === 'locked')    return NextResponse.json({ error: 'Bill is already locked' }, { status: 403 });
+  if (bill.status !== 'validated') return NextResponse.json({ error: 'Bill is not in validated state' }, { status: 409 });
 
-  if (bill.status === 'locked') {
-    return NextResponse.json({ error: 'Bill is already locked' }, { status: 403 });
-  }
-
-  if (bill.status !== 'validated') {
-    return NextResponse.json({ error: 'Bill is not in validated state' }, { status: 409 });
-  }
-
-  // Find tenant's room in this property
   const { data: tenant } = await supabaseAdmin
     .from('tenants')
     .select('id, room_id')
     .eq('id', user.id)
     .single();
 
-  if (!tenant?.room_id) {
-    return NextResponse.json({ error: 'Tenant has no assigned room' }, { status: 403 });
-  }
+  if (!tenant?.room_id) return NextResponse.json({ error: 'Tenant has no assigned room' }, { status: 403 });
 
-  // Verify the room belongs to the bill's property
   const { data: room } = await supabaseAdmin
     .from('rooms')
-    .select('id, property_id')
+    .select('id, property_id, has_ac')
     .eq('id', tenant.room_id)
     .eq('property_id', bill.property_id)
     .single();
 
-  if (!room) {
-    return NextResponse.json({ error: 'You are not a tenant of this property' }, { status: 403 });
-  }
+  if (!room) return NextResponse.json({ error: 'You are not a tenant of this property' }, { status: 403 });
+  if (!room.has_ac) return NextResponse.json({ error: 'Your room does not have AC' }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
     .from('tenant_ac_submissions')
     .upsert({
       bill_id,
-      tenant_id: user.id,
-      room_id:   tenant.room_id,
+      tenant_id:         user.id,
+      room_id:           tenant.room_id,
       ac_units_submitted,
-      submitted_at: new Date().toISOString(),
+      submitted_at:      new Date().toISOString(),
     }, { onConflict: 'bill_id,room_id' })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data);
+  // Auto-trigger split if all AC rooms have now submitted
+  const { ready, submitted, total } = await allACRoomsSubmitted(bill_id, bill.property_id);
+  let auto_calculated = false;
+
+  if (ready) {
+    const result = await runCalculateSplit(bill_id);
+    auto_calculated = result.success;
+  }
+
+  return NextResponse.json({ ...data, auto_calculated, ac_progress: { submitted: ready ? total : submitted, total } });
 }
 
 export async function GET(
@@ -86,12 +85,9 @@ export async function GET(
 
   const { bill_id } = await params;
 
-  // Check if admin
-  const { data: adminRow } = await supabaseAdmin
-    .from('admins').select('id').eq('email', user.email).single();
+  const { data: adminRow } = await supabaseAdmin.from('admins').select('id').eq('email', user.email).single();
 
   if (adminRow) {
-    // Admin: return all submissions
     const { data, error } = await supabaseAdmin
       .from('tenant_ac_submissions')
       .select('*')
@@ -99,10 +95,6 @@ export async function GET(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
-
-  // Tenant: return own submission only
-  const { data: tenant } = await supabaseAdmin
-    .from('tenants').select('room_id').eq('id', user.id).single();
 
   const { data, error } = await supabaseAdmin
     .from('tenant_ac_submissions')

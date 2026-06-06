@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap, Plus, Check, X, ChevronDown, AlertTriangle, Loader2,
-  Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText, Trash2, Image as ImageIcon
+  Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText, Trash2, Image as ImageIcon,
+  BarChart2, CheckCircle2, Clock, AlertCircle, ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -598,6 +599,201 @@ function EditBillModal({ bill, onClose, onSaved }: EditBillModalProps) {
   );
 }
 
+// ── Billing Progress Panel ────────────────────────────────────────────────────
+
+interface ProgressRoom  { room_id: string; room_name: string; tenant_name: string; submitted: boolean; ac_units_submitted: number | null; submitted_at: string | null }
+interface ProgressSplit { tenant_name: string; room_id: string; ac_units: number; ac_charge: number; common_share: number; total_payable: number }
+interface PropertyProgress {
+  property_id:        string;
+  property_name:      string;
+  bill:               { id: string; bill_month: string; status: string; rejection_reason?: string; uploaded_by_name?: string } | null;
+  ac_rooms_total:     number;
+  ac_rooms_submitted: number;
+  ac_room_progress:   ProgressRoom[];
+  splits:             ProgressSplit[];
+}
+
+function BillingProgressPanel() {
+  const [data,     setData]     = useState<PropertyProgress[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const json = await apiCall('/api/admin/bills/progress', 'GET');
+        setData(json);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return (
+    <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-foreground/20 animate-spin" /></div>
+  );
+
+  if (!data.length) return (
+    <div className="soft-well border border-white p-10 text-center">
+      <p className="text-xs font-bold text-foreground/30 uppercase tracking-widest">No properties found</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {data.map(p => {
+        const isExpanded = expanded === p.property_id;
+        const billStatus = p.bill?.status;
+        const pct = p.ac_rooms_total > 0 ? Math.round((p.ac_rooms_submitted / p.ac_rooms_total) * 100) : 0;
+
+        const billBadge = !p.bill
+          ? { label: 'Not Uploaded', cls: 'bg-foreground/5 text-foreground/40 border-foreground/10' }
+          : STATUS_META[p.bill.status] || { label: p.bill.status, cls: 'bg-foreground/5 text-foreground/40 border-foreground/10' };
+
+        return (
+          <div key={p.property_id} className="soft-card border border-white bg-white/40 overflow-hidden">
+            {/* Property header */}
+            <button
+              onClick={() => setExpanded(isExpanded ? null : p.property_id)}
+              className="w-full p-5 flex items-center justify-between gap-4 text-left hover:bg-white/40 transition-colors"
+            >
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <BarChart2 className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-extrabold uppercase tracking-tight text-foreground truncate">{p.property_name}</p>
+                  {p.bill && (
+                    <p className="text-[10px] text-foreground/40 font-bold mt-0.5">{monthLabel(p.bill.bill_month)}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                {/* Bill status badge */}
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${billBadge.cls}`}>
+                  {billBadge.label}
+                </span>
+
+                {/* AC progress pill */}
+                {p.ac_rooms_total > 0 && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? 'bg-emerald-400' : 'bg-blue-400'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-extrabold text-foreground/40 uppercase tracking-widest whitespace-nowrap">
+                      {p.ac_rooms_submitted}/{p.ac_rooms_total} AC
+                    </span>
+                  </div>
+                )}
+
+                <ChevronRight className={`w-4 h-4 text-foreground/30 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              </div>
+            </button>
+
+            {/* Expanded detail */}
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-5 pb-5 space-y-5 border-t border-foreground/5 pt-4">
+
+                    {/* Bill info row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Bill Status',   value: p.bill ? billBadge.label : '—' },
+                        { label: 'Bill Month',    value: p.bill ? monthLabel(p.bill.bill_month) : '—' },
+                        { label: 'Uploaded By',   value: p.bill?.uploaded_by_name || '—' },
+                        { label: 'AC Submissions', value: p.ac_rooms_total > 0 ? `${p.ac_rooms_submitted} / ${p.ac_rooms_total}` : 'No AC Rooms' },
+                      ].map(item => (
+                        <div key={item.label} className="soft-well border border-white rounded-xl p-3">
+                          <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">{item.label}</p>
+                          <p className="text-sm font-bold text-foreground mt-0.5">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* AC room-by-room submissions */}
+                    {p.ac_room_progress.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">AC Meter Readings</p>
+                        <div className="space-y-1.5">
+                          {p.ac_room_progress.map(r => (
+                            <div key={r.room_id} className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs ${r.submitted ? 'bg-emerald-50/60 border-emerald-200/40' : 'bg-amber-50/60 border-amber-200/40'}`}>
+                              <div className="flex items-center gap-2.5">
+                                {r.submitted
+                                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  : <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                                <span className="font-bold text-foreground">{r.room_name}</span>
+                                <span className="text-foreground/40">{r.tenant_name}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-right">
+                                {r.submitted ? (
+                                  <>
+                                    <span className="font-extrabold text-emerald-700">{r.ac_units_submitted} units</span>
+                                    {r.submitted_at && (
+                                      <span className="text-[9px] text-foreground/30">{new Date(r.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] font-extrabold text-amber-600 uppercase tracking-widest">Pending</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Split breakdown */}
+                    {p.splits.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">
+                          Split Amounts {billStatus === 'locked' ? '(Locked)' : '(Draft)'}
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 border-b border-foreground/5">
+                                <th className="text-left pb-2 pr-4">Tenant</th>
+                                <th className="text-right pb-2 pr-4">AC Units</th>
+                                <th className="text-right pb-2 pr-4">AC Charge</th>
+                                <th className="text-right pb-2 pr-4">Common Share</th>
+                                <th className="text-right pb-2">Total Payable</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {p.splits.map(s => (
+                                <tr key={s.room_id} className="border-b border-foreground/5">
+                                  <td className="py-2 pr-4 font-bold">{s.tenant_name}</td>
+                                  <td className="py-2 pr-4 text-right text-foreground/60">{s.ac_units}</td>
+                                  <td className="py-2 pr-4 text-right text-blue-600 font-bold">{fmt(s.ac_charge)}</td>
+                                  <td className="py-2 pr-4 text-right text-amber-600 font-bold">{fmt(s.common_share)}</td>
+                                  <td className="py-2 text-right font-black text-primary">{fmt(s.total_payable)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface ElectricityTabProps {
@@ -605,6 +801,7 @@ interface ElectricityTabProps {
 }
 
 export function ElectricityTab({ properties }: ElectricityTabProps) {
+  const [view, setView] = useState<'bills' | 'progress'>('bills');
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('pending');
@@ -704,11 +901,34 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
             <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Upload · Validate · Split · Lock</p>
           </div>
         </div>
-        <button onClick={() => setShowUpload(true)}
-          className="soft-button px-5 py-2.5 border border-amber-500/30 bg-amber-500/5 text-amber-700 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2">
-          <Plus className="w-3.5 h-3.5" /> Upload Bill
-        </button>
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex gap-1 p-1 soft-well rounded-xl border border-white">
+            <button onClick={() => setView('bills')}
+              className={cn('px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-widest transition-all',
+                view === 'bills' ? 'bg-white shadow text-foreground' : 'text-foreground/40 hover:text-foreground')}>
+              Bills
+            </button>
+            <button onClick={() => setView('progress')}
+              className={cn('px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-widest transition-all flex items-center gap-1',
+                view === 'progress' ? 'bg-white shadow text-foreground' : 'text-foreground/40 hover:text-foreground')}>
+              <BarChart2 className="w-3 h-3" /> Progress
+            </button>
+          </div>
+          {view === 'bills' && (
+            <button onClick={() => setShowUpload(true)}
+              className="soft-button px-5 py-2.5 border border-amber-500/30 bg-amber-500/5 text-amber-700 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2">
+              <Plus className="w-3.5 h-3.5" /> Upload Bill
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* ── Progress view ── */}
+      {view === 'progress' && <BillingProgressPanel />}
+
+      {/* ── Bills view ── */}
+      {view === 'bills' && <>
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap gap-3">
@@ -840,6 +1060,8 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
           </table>
         </div>
       )}
+
+      </>} {/* end bills view */}
 
       {/* ── Modals ── */}
       <AnimatePresence>
