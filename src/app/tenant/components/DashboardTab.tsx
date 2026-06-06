@@ -171,7 +171,7 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
         const { data: tickets } = await supabase
           .from('tickets')
           .select('id, category, status, created_at, description')
-          .eq('tenant_id', tenantProfile.id)
+          .eq('requester_id', tenantProfile.id)
           .order('created_at', { ascending: false })
           .limit(4);
 

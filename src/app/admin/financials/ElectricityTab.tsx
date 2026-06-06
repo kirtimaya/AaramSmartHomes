@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap, Plus, Check, X, ChevronDown, AlertTriangle, Loader2,
-  Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText
+  Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText, Trash2, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -468,9 +468,137 @@ function RejectDialog({ billId, onClose, onRejected }: { billId: string; onClose
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Shared type ───────────────────────────────────────────────────────────────
 
 type BillRow = ElectricityBill & { properties?: { name: string } };
+
+// ── Edit Bill Modal ───────────────────────────────────────────────────────────
+
+interface EditBillModalProps {
+  bill: BillRow;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function EditBillModal({ bill, onClose, onSaved }: EditBillModalProps) {
+  const [billMonth,       setBillMonth]       = useState(bill.bill_month?.slice(0, 7) || '');
+  const [uscNo,           setUscNo]           = useState(bill.usc_no || '');
+  const [totalAmount,     setTotalAmount]     = useState(String(bill.total_amount || ''));
+  const [totalUnits,      setTotalUnits]      = useState(String(bill.total_units || ''));
+  const [presentReading,  setPresentReading]  = useState(String(bill.present_reading || ''));
+  const [previousReading, setPreviousReading] = useState(String(bill.previous_reading || ''));
+  const [presentDate,     setPresentDate]     = useState(bill.present_date || '');
+  const [previousDate,    setPreviousDate]    = useState(bill.previous_date || '');
+  const [loading,         setLoading]         = useState(false);
+  const [error,           setError]           = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!totalAmount) { setError('Total amount is required'); return; }
+    setLoading(true);
+    setError('');
+    const { error: err } = await supabase
+      .from('electricity_bills')
+      .update({
+        bill_month:       billMonth + '-01',
+        usc_no:           uscNo || null,
+        total_amount:     parseFloat(totalAmount),
+        total_units:      totalUnits ? parseFloat(totalUnits) : null,
+        present_reading:  presentReading ? parseFloat(presentReading) : null,
+        previous_reading: previousReading ? parseFloat(previousReading) : null,
+        present_date:     presentDate || null,
+        previous_date:    previousDate || null,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('id', bill.id);
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="soft-card border border-white max-w-xl w-full max-h-[90vh] overflow-y-auto"
+      >
+        <div className="p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold uppercase tracking-tight flex items-center gap-2">
+              <Edit2 className="w-5 h-5 text-primary" /> Edit Bill
+            </h2>
+            <button onClick={onClose} className="soft-button w-8 h-8 border border-white"><X className="w-4 h-4" /></button>
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Bill Month</label>
+                <input type="month" value={billMonth} onChange={e => setBillMonth(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">USC No.</label>
+                <input value={uscNo} onChange={e => setUscNo(e.target.value)} placeholder="e.g. USC123456"
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Total Amount (₹) *</label>
+                <input type="number" step="0.01" value={totalAmount} onChange={e => setTotalAmount(e.target.value)} required
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Total Units</label>
+                <input type="number" value={totalUnits} onChange={e => setTotalUnits(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Present Reading</label>
+                <input type="number" value={presentReading} onChange={e => setPresentReading(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Previous Reading</label>
+                <input type="number" value={previousReading} onChange={e => setPreviousReading(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Present Date</label>
+                <input type="date" value={presentDate} onChange={e => setPresentDate(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/40">Previous Date</label>
+                <input type="date" value={previousDate} onChange={e => setPreviousDate(e.target.value)}
+                  className="soft-ui-in w-full bg-white/40 border border-white px-3 py-2 text-xs outline-none rounded-xl" />
+              </div>
+            </div>
+
+            {error && <p className="text-xs text-red-600 font-bold">{error}</p>}
+
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 soft-button py-2.5 border border-white text-[10px] font-extrabold uppercase tracking-widest">
+                Cancel
+              </button>
+              <button type="submit" disabled={loading}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50">
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 interface ElectricityTabProps {
   properties: Property[];
@@ -484,6 +612,7 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
   const [showUpload, setShowUpload] = useState(false);
   const [splitBillId, setSplitBillId] = useState<string | null>(null);
   const [rejectBillId, setRejectBillId] = useState<string | null>(null);
+  const [editBill, setEditBill] = useState<BillRow | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -534,6 +663,27 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleDelete = async (bill: BillRow) => {
+    if (!confirm(`Delete bill for ${monthLabel(bill.bill_month)}? This cannot be undone.`)) return;
+    setActionLoading(bill.id);
+    setError('');
+    const { error: err } = await supabase.from('electricity_bills').delete().eq('id', bill.id);
+    setActionLoading(null);
+    if (err) { setError(err.message); return; }
+    await fetchBills();
+  };
+
+  const handleViewImage = async (bill: BillRow) => {
+    if (!bill.bill_image_url) return;
+    if (bill.bill_image_url.startsWith('http')) {
+      window.open(bill.bill_image_url, '_blank');
+      return;
+    }
+    const { data } = await supabase.storage.from('electricity-bills').createSignedUrl(bill.bill_image_url, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    else window.open(bill.bill_image_url, '_blank');
   };
 
   return (
@@ -630,7 +780,7 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
                     <StatusBadge status={bill.status} reason={bill.rejection_reason} />
                   </td>
                   <td className="py-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {bill.status === 'pending' && (
                         <>
                           <button onClick={() => handleValidate(bill)} disabled={actionLoading === bill.id}
@@ -664,10 +814,23 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
                         </button>
                       )}
                       {bill.bill_image_url && (
-                        <a href={bill.bill_image_url} target="_blank" rel="noreferrer"
-                          className="px-2.5 py-1 rounded-lg bg-foreground/5 text-foreground/50 text-[9px] font-extrabold uppercase tracking-widest border border-foreground/10">
-                          Image
-                        </a>
+                        <button onClick={() => handleViewImage(bill)}
+                          className="px-2.5 py-1 rounded-lg bg-foreground/5 text-foreground/50 text-[9px] font-extrabold uppercase tracking-widest border border-foreground/10 flex items-center gap-1 hover:bg-white/60 transition-colors">
+                          <ImageIcon className="w-2.5 h-2.5" /> View Bill
+                        </button>
+                      )}
+                      {bill.status !== 'locked' && (
+                        <button onClick={() => setEditBill(bill)}
+                          className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-[9px] font-extrabold uppercase tracking-widest border border-primary/20 flex items-center gap-1 hover:bg-primary/20 transition-colors">
+                          <Edit2 className="w-2.5 h-2.5" /> Edit
+                        </button>
+                      )}
+                      {bill.status !== 'locked' && (
+                        <button onClick={() => handleDelete(bill)} disabled={actionLoading === bill.id}
+                          className="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-600 text-[9px] font-extrabold uppercase tracking-widest border border-red-500/20 flex items-center gap-1 hover:bg-red-500/20 transition-colors disabled:opacity-40">
+                          {actionLoading === bill.id ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Trash2 className="w-2.5 h-2.5" />}
+                          Delete
+                        </button>
                       )}
                     </div>
                   </td>
@@ -699,6 +862,13 @@ export function ElectricityTab({ properties }: ElectricityTabProps) {
             billId={rejectBillId}
             onClose={() => setRejectBillId(null)}
             onRejected={fetchBills}
+          />
+        )}
+        {editBill && (
+          <EditBillModal
+            bill={editBill}
+            onClose={() => setEditBill(null)}
+            onSaved={fetchBills}
           />
         )}
       </AnimatePresence>

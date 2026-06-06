@@ -44,9 +44,9 @@ export function QuickTicketModal({ isOpen, onClose, tenantId }: Props) {
     if (!description.trim()) return;
     setSubmitting(true);
 
-    // INSERT INTO tickets (tenant_id, category, priority, description, status)
     await supabase.from('tickets').insert({
-      tenant_id:   tenantId,
+      requester_id:   tenantId,
+      requester_type: 'tenant',
       category,
       priority,
       description: description.trim(),

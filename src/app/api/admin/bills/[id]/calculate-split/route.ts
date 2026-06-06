@@ -3,7 +3,7 @@ import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
 
 function calculateSplit(
   bill: { total_amount: number; total_units: number },
-  rooms: Array<{ id: string; has_ac: boolean; tenant_name?: string }>,
+  rooms: Array<{ id: string; has_ac: boolean; tenant_name?: string; tenant_id?: string | null }>,
   acSubmissions: Array<{ room_id: string; ac_units_submitted: number; is_admin_override: boolean; admin_override_value?: number | null }>,
   acRatePerUnit: number
 ) {
@@ -11,6 +11,7 @@ function calculateSplit(
   let totalACCharge = 0;
   const splits: Array<{
     room_id: string;
+    tenant_id: string | null;
     tenant_name: string;
     acUnits: number;
     acCharge: number;
@@ -27,7 +28,7 @@ function calculateSplit(
       : 0;
     const acCharge = parseFloat((acUnits * acRatePerUnit).toFixed(2));
     totalACCharge += acCharge;
-    splits.push({ room_id: room.id, tenant_name: room.tenant_name || 'Unknown', acUnits, acCharge, commonShare: 0, totalPayable: 0 });
+    splits.push({ room_id: room.id, tenant_id: room.tenant_id ?? null, tenant_name: room.tenant_name || 'Unknown', acUnits, acCharge, commonShare: 0, totalPayable: 0 });
   }
 
   const commonPool = parseFloat((bill.total_amount - totalACCharge).toFixed(2));
@@ -72,7 +73,7 @@ export async function POST(
   // Fetch all rooms for property
   const { data: rooms } = await supabaseAdmin
     .from('rooms')
-    .select('id, has_ac, tenant_name')
+    .select('id, has_ac, tenant_name, tenant_id')
     .eq('property_id', bill.property_id)
     .order('name');
 
@@ -96,12 +97,13 @@ export async function POST(
   // Upsert bill_splits
   const now = new Date().toISOString();
   const upsertRows = splits.map(s => ({
-    bill_id:      id,
-    room_id:      s.room_id,
-    tenant_name:  s.tenant_name,
-    ac_units:     s.acUnits,
-    ac_charge:    s.acCharge,
-    common_share: s.commonShare,
+    bill_id:       id,
+    room_id:       s.room_id,
+    tenant_id:     s.tenant_id,
+    tenant_name:   s.tenant_name,
+    ac_units:      s.acUnits,
+    ac_charge:     s.acCharge,
+    common_share:  s.commonShare,
     total_payable: s.totalPayable,
   }));
 

@@ -131,7 +131,7 @@ function TicketsSection({ tenantId }: { tenantId: string }) {
     const { data } = await supabase
       .from('tickets')
       .select('*')
-      .eq('tenant_id', tenantId)
+      .eq('requester_id', tenantId)
       .order('created_at', { ascending: false });
     if (data) setTickets(data as TicketType[]);
     setLoading(false);
@@ -143,7 +143,7 @@ function TicketsSection({ tenantId }: { tenantId: string }) {
     if (!description.trim()) return;
     setSubmitting(true);
     await supabase.from('tickets').insert({
-      tenant_id: tenantId, category, priority,
+      requester_id: tenantId, requester_type: 'tenant', category, priority,
       description: description.trim(), status: 'Pending',
     });
     setSubmitting(false);
@@ -308,14 +308,13 @@ function MoveOutSection({ tenantId }: { tenantId: string }) {
     if (!moveOutDate) return;
     setSubmitting(true);
 
-    // INSERT INTO tickets (tenant_id, category, priority, description, status)
-    // Also update tenants.notice_date = today via a separate call if desired
     await supabase.from('tickets').insert({
-      tenant_id:   tenantId,
-      category:    'Move-Out Request',
-      priority:    'High',
-      description: `Requested move-out on ${moveOutDate}. ${reason ? 'Reason: ' + reason : ''}`,
-      status:      'Pending',
+      requester_id:   tenantId,
+      requester_type: 'tenant',
+      category:       'Move-Out Request',
+      priority:       'High',
+      description:    `Requested move-out on ${moveOutDate}. ${reason ? 'Reason: ' + reason : ''}`,
+      status:         'Pending',
     });
 
     setSubmitting(false);

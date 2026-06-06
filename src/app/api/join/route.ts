@@ -62,10 +62,10 @@ export async function POST(request: NextRequest) {
     .update({ occupancy_status: 'Occupied', tenant_id: user.id })
     .eq('id', inv.room_id);
 
-  // Mark invitation claimed
+  // Mark invitation claimed and record which auth user claimed it
   await supabaseAdmin
     .from('tenant_invitations')
-    .update({ status: 'claimed' })
+    .update({ status: 'claimed', auth_user_id: user.id })
     .eq('id', inv.id);
 
   // Remove guest record if present
