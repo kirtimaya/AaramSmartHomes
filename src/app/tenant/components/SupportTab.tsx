@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Ticket, LogOut, MessageSquare, MessageCircle, FileText, Download,
   CheckCircle2, Clock, AlertCircle, Loader2, Send, ChevronRight,
-  Shield, FileCheck, Receipt, Phone,
+  Shield, FileCheck, Receipt, Phone, Plus, Wrench, Zap, Droplets,
+  Wind, HelpCircle, X, BatteryCharging,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -15,14 +16,15 @@ import { Ticket as TicketType } from '@/lib/types';
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
-type SupportSection = 'tickets' | 'moveout' | 'contact' | 'feedback' | 'vault';
+type SupportSection = 'tickets' | 'electricity' | 'moveout' | 'contact' | 'feedback' | 'vault';
 
 const SECTIONS: { id: SupportSection; icon: React.ElementType; label: string }[] = [
-  { id: 'tickets',  icon: Ticket,        label: 'Tickets'    },
-  { id: 'moveout',  icon: LogOut,        label: 'Move-Out'   },
-  { id: 'contact',  icon: Phone,         label: 'Contact'    },
-  { id: 'feedback', icon: MessageCircle, label: 'Feedback'   },
-  { id: 'vault',    icon: Shield,        label: 'Vault'      },
+  { id: 'tickets',     icon: Ticket,          label: 'Tickets'     },
+  { id: 'electricity', icon: BatteryCharging, label: 'Electricity' },
+  { id: 'moveout',     icon: LogOut,          label: 'Move-Out'    },
+  { id: 'contact',     icon: Phone,           label: 'Contact'     },
+  { id: 'feedback',    icon: MessageCircle,   label: 'Feedback'    },
+  { id: 'vault',       icon: Shield,          label: 'Vault'       },
 ];
 
 const STATUS_STYLE: Record<string, string> = {
@@ -81,11 +83,12 @@ export function SupportTab({ tenantId }: Props) {
           exit={{   opacity: 0, y: -8 }}
           transition={{ duration: 0.25 }}
         >
-          {section === 'tickets'  && <TicketsSection  tenantId={tenantId} />}
-          {section === 'moveout'  && <MoveOutSection  tenantId={tenantId} />}
-          {section === 'contact'  && <ContactSection  />}
-          {section === 'feedback' && <FeedbackSection tenantId={tenantId} />}
-          {section === 'vault'    && <VaultSection    tenantId={tenantId} />}
+          {section === 'tickets'     && <TicketsSection     tenantId={tenantId} />}
+          {section === 'electricity' && <ElectricitySection tenantId={tenantId} />}
+          {section === 'moveout'     && <MoveOutSection     tenantId={tenantId} />}
+          {section === 'contact'     && <ContactSection />}
+          {section === 'feedback'    && <FeedbackSection    tenantId={tenantId} />}
+          {section === 'vault'       && <VaultSection       tenantId={tenantId} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -96,29 +99,167 @@ export function SupportTab({ tenantId }: Props) {
 // Tickets section
 // ────────────────────────────────────────────────────────────────────────────
 
-function TicketsSection({ tenantId }: { tenantId: string }) {
-  const [tickets, setTickets] = useState<TicketType[]>([]);
-  const [loading, setLoading] = useState(true);
+type TicketCategory = 'Maintenance' | 'Electrical' | 'Plumbing' | 'Housekeeping' | 'Other';
+type TicketPriority  = 'Low' | 'Medium' | 'High' | 'Urgent';
 
-  useEffect(() => {
-    (async () => {
-      // SELECT * FROM tickets WHERE tenant_id = ? ORDER BY created_at DESC
-      const { data } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false });
-      if (data) setTickets(data as TicketType[]);
-      setLoading(false);
-    })();
-  }, [tenantId]);
+const TICKET_CATEGORIES: { value: TicketCategory; icon: React.ElementType; color: string }[] = [
+  { value: 'Maintenance',  icon: Wrench,     color: 'text-amber-600  bg-amber-50  border-amber-300/60'  },
+  { value: 'Electrical',   icon: Zap,        color: 'text-yellow-600 bg-yellow-50 border-yellow-300/60' },
+  { value: 'Plumbing',     icon: Droplets,   color: 'text-blue-600   bg-blue-50   border-blue-300/60'   },
+  { value: 'Housekeeping', icon: Wind,       color: 'text-green-600  bg-green-50  border-green-300/60'  },
+  { value: 'Other',        icon: HelpCircle, color: 'text-purple-600 bg-purple-50 border-purple-300/60' },
+];
+
+const TICKET_PRIORITIES: { value: TicketPriority; active: string }[] = [
+  { value: 'Low',    active: 'bg-emerald-500 border-emerald-500 text-white' },
+  { value: 'Medium', active: 'bg-amber-500   border-amber-500   text-white' },
+  { value: 'High',   active: 'bg-orange-500  border-orange-500  text-white' },
+  { value: 'Urgent', active: 'bg-red-500     border-red-500     text-white' },
+];
+
+function TicketsSection({ tenantId }: { tenantId: string }) {
+  const [tickets,     setTickets]     = useState<TicketType[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [showForm,    setShowForm]    = useState(false);
+  const [category,    setCategory]    = useState<TicketCategory>('Maintenance');
+  const [priority,    setPriority]    = useState<TicketPriority>('Medium');
+  const [description, setDescription] = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
+
+  const fetchTickets = async () => {
+    const { data } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    if (data) setTickets(data as TicketType[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchTickets(); }, [tenantId]);
+
+  const handleSubmit = async () => {
+    if (!description.trim()) return;
+    setSubmitting(true);
+    await supabase.from('tickets').insert({
+      tenant_id: tenantId, category, priority,
+      description: description.trim(), status: 'Pending',
+    });
+    setSubmitting(false);
+    setSubmitted(true);
+    setTimeout(async () => {
+      setSubmitted(false);
+      setDescription('');
+      setCategory('Maintenance');
+      setPriority('Medium');
+      setShowForm(false);
+      await fetchTickets();
+    }, 1800);
+  };
 
   if (loading) return <Spinner />;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Raise ticket button / inline form */}
+      <AnimatePresence mode="wait">
+        {!showForm ? (
+          <motion.button
+            key="open-btn"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowForm(true)}
+            className="w-full flex items-center gap-3 soft-card border border-primary/20 bg-primary/5 px-5 py-4 text-left hover:bg-primary/10 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Plus className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-extrabold uppercase tracking-tight text-primary">Raise a Ticket</p>
+              <p className="text-[10px] text-foreground/40 font-medium">Our team responds within 2 hours</p>
+            </div>
+          </motion.button>
+        ) : submitted ? (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            className="soft-card border border-emerald-300/40 bg-emerald-50 p-6 flex flex-col items-center gap-2 text-center"
+          >
+            <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+            <p className="font-extrabold uppercase tracking-tight text-emerald-700">Ticket submitted!</p>
+            <p className="text-[11px] text-emerald-600/70">We'll get back to you shortly.</p>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="form"
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="soft-card border border-white bg-white/50 p-5 space-y-5"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-extrabold uppercase tracking-tight">New Ticket</p>
+              <button onClick={() => setShowForm(false)} className="soft-button w-7 h-7 border border-white text-foreground/30">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Category */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Category</p>
+              <div className="grid grid-cols-5 gap-2">
+                {TICKET_CATEGORIES.map(c => (
+                  <button key={c.value} onClick={() => setCategory(c.value)}
+                    className={cn('flex flex-col items-center gap-1 p-2.5 rounded-xl border text-[9px] font-extrabold uppercase tracking-widest transition-all',
+                      category === c.value ? c.color : 'border-foreground/10 text-foreground/30 hover:border-foreground/20'
+                    )}>
+                    <c.icon className="w-4 h-4" />
+                    {c.value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Priority */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Priority</p>
+              <div className="flex gap-2">
+                {TICKET_PRIORITIES.map(p => (
+                  <button key={p.value} onClick={() => setPriority(p.value)}
+                    className={cn('flex-1 py-2 rounded-xl border text-[9px] font-extrabold uppercase tracking-widest transition-all',
+                      priority === p.value ? p.active : 'border-foreground/10 text-foreground/30 hover:border-foreground/20'
+                    )}>
+                    {p.value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Describe the issue</p>
+              <textarea
+                value={description} onChange={e => setDescription(e.target.value)}
+                rows={3} placeholder="e.g. Tap in bathroom is dripping constantly..."
+                className="w-full soft-well border border-white rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
+              />
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={!description.trim() || submitting}
+              className={cn('w-full py-3.5 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all flex items-center justify-center gap-2',
+                description.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+              )}
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {submitting ? 'Submitting…' : 'Submit Ticket'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Existing tickets list */}
       {tickets.length === 0 ? (
-        <EmptyState icon={Ticket} title="No tickets yet" sub="Raise one from the Dashboard." />
+        <EmptyState icon={Ticket} title="No tickets yet" sub="Raise your first one above." />
       ) : tickets.map((t, i) => (
         <motion.div
           key={t.id}
@@ -138,9 +279,9 @@ function TicketsSection({ tenantId }: { tenantId: string }) {
               <p className="text-[11px] text-foreground/50 font-medium mt-1 line-clamp-2">{t.description}</p>
             </div>
             <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase tracking-widest shrink-0', STATUS_STYLE[t.status] ?? '')}>
-              {t.status === 'Resolved'     ? <CheckCircle2 className="w-2.5 h-2.5" /> :
-               t.status === 'In-Progress'  ? <Clock        className="w-2.5 h-2.5" /> :
-                                             <AlertCircle  className="w-2.5 h-2.5" />}
+              {t.status === 'Resolved'    ? <CheckCircle2 className="w-2.5 h-2.5" /> :
+               t.status === 'In-Progress' ? <Clock        className="w-2.5 h-2.5" /> :
+                                            <AlertCircle  className="w-2.5 h-2.5" />}
               {t.status}
             </span>
           </div>
@@ -435,6 +576,151 @@ function VaultSection({ tenantId }: { tenantId: string }) {
       <p className="text-[10px] text-foreground/25 font-bold px-2">
         Files are served from Supabase Storage bucket <code className="bg-foreground/5 px-1 rounded">tenant-documents/{'{'}tenantId{'}'}/</code>
       </p>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Electricity section — tenant AC unit submission
+// ────────────────────────────────────────────────────────────────────────────
+
+function ElectricitySection({ tenantId }: { tenantId: string }) {
+  const [bill,       setBill]       = useState<{ id: string; bill_month: string; status: string } | null>(null);
+  const [existing,   setExisting]   = useState<number | null>(null);
+  const [acUnits,    setAcUnits]    = useState('');
+  const [loading,    setLoading]    = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [saved,      setSaved]      = useState(false);
+  const [error,      setError]      = useState('');
+
+  function getAuthHeader(): Record<string, string> {
+    if (typeof window === 'undefined') return {};
+    const e = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (e) { try { const t = JSON.parse(e[1])?.access_token; if (t) return { Authorization: `Bearer ${t}` }; } catch {} }
+    return {};
+  }
+
+  useEffect(() => {
+    (async () => {
+      // Find the latest validated bill for the tenant's property
+      const { data: tenant } = await supabase.from('tenants').select('room_id').eq('id', tenantId).single();
+      if (!tenant?.room_id) { setLoading(false); return; }
+
+      const { data: room } = await supabase.from('rooms').select('property_id').eq('id', tenant.room_id).single();
+      if (!room?.property_id) { setLoading(false); return; }
+
+      const { data: bills } = await supabase
+        .from('electricity_bills')
+        .select('id, bill_month, status')
+        .eq('property_id', room.property_id)
+        .eq('status', 'validated')
+        .order('bill_month', { ascending: false })
+        .limit(1);
+
+      if (!bills?.length) { setLoading(false); return; }
+      const activeBill = bills[0];
+      setBill(activeBill);
+
+      // Check existing submission
+      const { data: sub } = await supabase
+        .from('tenant_ac_submissions')
+        .select('ac_units_submitted')
+        .eq('bill_id', activeBill.id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (sub) {
+        setExisting(sub.ac_units_submitted);
+        setAcUnits(String(sub.ac_units_submitted));
+      }
+      setLoading(false);
+    })();
+  }, [tenantId]);
+
+  const handleSubmit = async () => {
+    if (!bill || !acUnits.trim()) return;
+    const val = parseFloat(acUnits);
+    if (isNaN(val) || val < 0) { setError('Enter a valid number of AC units (≥ 0)'); return; }
+    setError('');
+    setSubmitting(true);
+    const res = await fetch(`/api/bills/${bill.id}/ac-units`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ac_units_submitted: val }),
+    });
+    const json = await res.json();
+    setSubmitting(false);
+    if (!res.ok) { setError(json.error || 'Submission failed'); return; }
+    setExisting(val);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  if (loading) return <Spinner />;
+
+  if (!bill) {
+    return (
+      <EmptyState
+        icon={BatteryCharging}
+        title="No active bill"
+        sub="Your admin hasn't published an electricity bill for submission yet."
+      />
+    );
+  }
+
+  const monthLabel = new Date(bill.bill_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="space-y-5">
+      <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Bill Period</p>
+            <p className="text-lg font-bold tracking-tight text-foreground">{monthLabel}</p>
+          </div>
+          <span className="text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border border-blue-400/30 bg-blue-50 text-blue-600">
+            Open for submission
+          </span>
+        </div>
+
+        {existing !== null && (
+          <div className="soft-well border border-emerald-300/30 bg-emerald-50/60 px-4 py-3 rounded-xl">
+            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Current submission</p>
+            <p className="text-2xl font-black text-emerald-700 tracking-tighter">{existing} <span className="text-sm font-bold text-emerald-600/60">units</span></p>
+            <p className="text-[10px] text-emerald-600/60 font-medium mt-0.5">You can update this any time before the bill is locked.</p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">
+            AC Units Used This Month
+          </label>
+          <div className="flex gap-3">
+            <input
+              type="number" min="0" step="0.5"
+              value={acUnits} onChange={e => setAcUnits(e.target.value)}
+              placeholder="e.g. 120"
+              className="flex-1 soft-well border border-white rounded-xl px-4 py-3 text-base font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!acUnits.trim() || submitting}
+              className={cn('px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all flex items-center gap-2',
+                acUnits.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+              )}
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> :
+               saved      ? <CheckCircle2 className="w-4 h-4 text-white" /> :
+                            <Send className="w-4 h-4" />}
+              {submitting ? 'Saving…' : saved ? 'Saved!' : 'Submit'}
+            </button>
+          </div>
+          {error && <p className="text-[11px] text-red-500 font-medium">{error}</p>}
+          <p className="text-[10px] text-foreground/30 font-medium">
+            Check your AC meter at the end of the month and enter total units consumed.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

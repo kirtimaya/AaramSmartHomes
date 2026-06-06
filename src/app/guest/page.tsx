@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -36,6 +36,14 @@ async function apiCall(path: string, method = 'GET', body?: object) {
 type Tab = 'explore' | 'visits' | 'support';
 
 export default function GuestPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <GuestPageInner />
+    </Suspense>
+  );
+}
+
+function GuestPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [guest, setGuest] = useState<Guest | null>(null);

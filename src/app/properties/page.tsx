@@ -158,14 +158,36 @@ export default function PropertiesCatalog() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border/40 flex justify-between items-center">
-                <div className="space-y-0.5">
-                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em] leading-none">Rooms</p>
-                  <p className="font-bold text-xs text-foreground">{property.total_rooms} Nodes Available</p>
+              <div className="pt-4 border-t border-border/40 space-y-3">
+                {/* Occupancy bar */}
+                {(() => {
+                  const rooms = (property as any).rooms ?? [];
+                  const total = rooms.length || property.total_rooms || 0;
+                  const occupied = rooms.filter((r: any) => r.occupancy_status === 'Occupied').length;
+                  const vacant = total - occupied;
+                  const pct = total > 0 ? Math.round((occupied / total) * 100) : 0;
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em]">Occupancy</p>
+                        <div className="flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-widest">
+                          <span className="text-red-500">{occupied} occupied</span>
+                          <span className="text-foreground/20">·</span>
+                          <span className="text-emerald-600">{vacant} vacant</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-foreground/5 overflow-hidden">
+                        <div className="h-full bg-red-400 rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div className="flex justify-between items-center">
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-[0.15em]">{property.total_rooms} rooms total</p>
+                  <Link href={`/properties/${property.id}`} className="soft-button w-9 h-9 flex items-center justify-center text-primary group-hover:shadow-md transition-all border border-white">
+                    <ArrowRight className="w-5 h-5" />
+                  </Link>
                 </div>
-                <Link href={`/properties/${property.id}`} className="soft-button w-9 h-9 flex items-center justify-center text-primary group-hover:shadow-md transition-all border border-white">
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
               </div>
             </div>
           </motion.div>
