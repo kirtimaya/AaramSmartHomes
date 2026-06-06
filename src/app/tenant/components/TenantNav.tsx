@@ -6,6 +6,7 @@ import { Home, Utensils, LifeBuoy, Settings, Shield, LogOut } from 'lucide-react
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export type TenantTab = 'dashboard' | 'meals' | 'support' | 'settings';
 
@@ -29,7 +30,7 @@ export function TenantSidebar({ activeTab, onTabChange, userName }: TenantNavPro
   return (
     <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-64 bg-background border-r border-white/40 z-40 shadow-[4px_0_24px_rgba(0,0,0,0.04)]">
       {/* Logo */}
-      <div className="px-6 pt-8 pb-5">
+      <div className="px-6 pt-8 pb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
             <Shield className="w-5 h-5 text-white" />
@@ -39,6 +40,7 @@ export function TenantSidebar({ activeTab, onTabChange, userName }: TenantNavPro
             <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-foreground/30 mt-0.5">Resident Portal</p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       {/* User greeting chip */}

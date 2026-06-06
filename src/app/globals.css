@@ -26,6 +26,50 @@
   --neo-out-shadow: 6px 6px 12px #E0D9CD, -6px -6px 12px #FFFFFF;
   --neo-in-shadow: inset 4px 4px 8px #E0D9CD, inset -4px -4px 8px #FFFFFF;
   --neo-out-shadow-sm: 4px 4px 8px #E0D9CD, -4px -4px 8px #FFFFFF;
+
+  /* Soft button hover/active (for overrides) */
+  --soft-hover-shadow: 6px 6px 14px #E8E5E0, -6px -6px 14px #FFFFFF;
+  --soft-active-shadow: inset 3px 3px 6px #E8E5E0, inset -3px -3px 6px #FFFFFF;
+  --soft-card-border: rgba(255, 255, 255, 0.6);
+  --soft-button-border: rgba(255, 255, 255, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #1C1D26;
+    --foreground: #E2D9CC;
+    --primary: #E08B6C;
+    --secondary: #8BA88E;
+    --accent: #23242F;
+    --border: #2E2F3C;
+
+    --neo-out-shadow: 6px 6px 12px #131419, -6px -6px 12px #272835;
+    --neo-in-shadow: inset 4px 4px 8px #131419, inset -4px -4px 8px #272835;
+    --neo-out-shadow-sm: 4px 4px 8px #131419, -4px -4px 8px #272835;
+
+    --soft-hover-shadow: 6px 6px 14px #131419, -6px -6px 14px #282938;
+    --soft-active-shadow: inset 3px 3px 6px #131419, inset -3px -3px 6px #282938;
+    --soft-card-border: rgba(255, 255, 255, 0.07);
+    --soft-button-border: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.dark {
+  --background: #1C1D26;
+  --foreground: #E2D9CC;
+  --primary: #E08B6C;
+  --secondary: #8BA88E;
+  --accent: #23242F;
+  --border: #2E2F3C;
+
+  --neo-out-shadow: 6px 6px 12px #131419, -6px -6px 12px #272835;
+  --neo-in-shadow: inset 4px 4px 8px #131419, inset -4px -4px 8px #272835;
+  --neo-out-shadow-sm: 4px 4px 8px #131419, -4px -4px 8px #272835;
+
+  --soft-hover-shadow: 6px 6px 14px #131419, -6px -6px 14px #282938;
+  --soft-active-shadow: inset 3px 3px 6px #131419, inset -3px -3px 6px #282938;
+  --soft-card-border: rgba(255, 255, 255, 0.07);
+  --soft-button-border: rgba(255, 255, 255, 0.06);
 }
 
 html {
@@ -77,14 +121,14 @@ body::after {
   background: var(--background);
   box-shadow: var(--neo-out-shadow);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--soft-card-border);
 }
 
 @utility soft-card-sm {
   background: var(--background);
   box-shadow: var(--neo-out-shadow-sm);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--soft-card-border);
 }
 
 @utility soft-well {
@@ -102,16 +146,16 @@ body::after {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--soft-button-border);
 }
 
 .soft-button:hover {
   transform: translateY(-1px);
-  box-shadow: 6px 6px 14px #E8E5E0, -6px -6px 14px #FFFFFF;
+  box-shadow: var(--soft-hover-shadow);
 }
 
 .soft-button:active {
-  box-shadow: inset 3px 3px 6px #E8E5E0, inset -3px -3px 6px #FFFFFF;
+  box-shadow: var(--soft-active-shadow);
   transform: translateY(1px);
 }
 
@@ -169,3 +213,16 @@ body::after {
 @utility sage-badge {
   @apply badge-sage;
 }
+
+/* ── Dark mode overrides for inline Tailwind white helpers ─────────────────── */
+.dark .border-white       { border-color: rgba(255, 255, 255, 0.08); }
+.dark .border-white\/40   { border-color: rgba(255, 255, 255, 0.06); }
+.dark .border-white\/50   { border-color: rgba(255, 255, 255, 0.07); }
+.dark .border-white\/60   { border-color: rgba(255, 255, 255, 0.08); }
+.dark .bg-white\/30       { background-color: rgba(255, 255, 255, 0.04); }
+.dark .bg-white\/40       { background-color: rgba(255, 255, 255, 0.05); }
+.dark .bg-white\/50       { background-color: rgba(255, 255, 255, 0.06); }
+.dark .bg-white\/60       { background-color: rgba(255, 255, 255, 0.07); }
+.dark .bg-white\/80       { background-color: rgba(255, 255, 255, 0.08); }
+.dark .bg-white\/95       { background-color: rgba(28, 29, 38, 0.95); }
+.dark .hover\:bg-white\/60:hover { background-color: rgba(255, 255, 255, 0.06); }

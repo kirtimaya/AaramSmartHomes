@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Shield, ArrowRight, Zap, Leaf, Loader2, Home } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Property } from "@/lib/types";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LandingPage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -72,9 +73,10 @@ export default function LandingPage() {
           <Link href="#amenities" className="font-medium text-foreground/50 hover:text-primary transition-colors">Amenities</Link>
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <button
             onClick={handleTenantPortalClick}
-            className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 border border-white hover:text-primary transition-all"
+            className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 hover:text-primary transition-all"
           >
             <Home className="w-3.5 h-3.5" />
             {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Tenant Portal'}
