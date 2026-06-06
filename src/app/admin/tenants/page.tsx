@@ -295,13 +295,15 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
   );
 }
 
-function InvitationCard({ invitation, rooms, properties, onDelete, toast }: {
+function InvitationCard({ invitation, rooms, properties, onDelete, onActivate, toast }: {
   invitation: TenantInvitation; rooms: Room[]; properties: Property[];
   onDelete: (id: string) => void;
+  onActivate: (id: string) => Promise<void>;
   toast: (msg: string, ok?: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activating, setActivating] = useState(false);
   const room = rooms.find(r => r.id === invitation.room_id);
   const property = room ? properties.find(p => p.id === room.property_id) : null;
   const joinUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/join?token=${invitation.token}`;
@@ -324,6 +326,20 @@ function InvitationCard({ invitation, rooms, properties, onDelete, toast }: {
       toast('Failed to remove invitation', false);
     }
     setDeleting(false);
+  };
+
+  const handleActivate = async () => {
+    if (!confirm(`Activate ${invitation.name} as a tenant now? This will create their account and send them a login link.`)) return;
+    setActivating(true);
+    try {
+      await onActivate(invitation.id);
+      toast(`${invitation.name} is now active!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Activation failed';
+      toast(msg, false);
+    } finally {
+      setActivating(false);
+    }
   };
 
   return (
@@ -359,6 +375,17 @@ function InvitationCard({ invitation, rooms, properties, onDelete, toast }: {
           </div>
         )}
       </div>
+
+      {/* Activate button */}
+      <button
+        onClick={handleActivate}
+        disabled={activating}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest border border-secondary/30 text-secondary hover:bg-secondary/5 transition-all"
+      >
+        {activating
+          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Activating…</>
+          : <><ToggleRight className="w-3.5 h-3.5" /> Make Active</>}
+      </button>
 
       <div className="flex gap-2">
         <button
@@ -442,6 +469,25 @@ export default function TenantsPage() {
       throw new Error(error || 'Update failed');
     }
     setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, ...updates } : t));
+  };
+
+  const handleActivateInvitation = async (invitationId: string) => {
+    const res = await fetch('/api/admin/tenants/activate-invitation', {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invitationId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Activation failed');
+    // Move from invitations to tenants
+    setInvitations(prev => prev.filter(i => i.id !== invitationId));
+    setTenants(prev => [...prev, data as Tenant]);
+    // Refresh rooms so occupancy reflects the change
+    const { data: updatedRooms } = await supabase
+      .from('rooms')
+      .select('id, name, property_id, occupancy_status, tenant_id')
+      .order('name');
+    if (updatedRooms) setRooms(updatedRooms as Room[]);
   };
 
   const handleRoomChange = async (tenantId: string, newRoomId: string | null) => {
@@ -567,6 +613,7 @@ export default function TenantsPage() {
                   rooms={rooms}
                   properties={properties}
                   onDelete={id => setInvitations(prev => prev.filter(i => i.id !== id))}
+                  onActivate={handleActivateInvitation}
                   toast={showToast}
                 />
               ))}
