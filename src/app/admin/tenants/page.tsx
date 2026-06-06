@@ -16,7 +16,7 @@ interface Tenant {
   phone: string | null;
   room_id: string | null;
   created_at: string;
-  is_active: boolean;
+  status: string;
 }
 interface TenantInvitation {
   id: string;
@@ -120,9 +120,9 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, toast }: {
         </div>
         <span className={cn(
           'text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full border',
-          tenant.is_active !== false ? 'border-secondary/30 text-secondary bg-secondary/5' : 'border-red-300/30 text-red-400 bg-red-50'
+          tenant.status === 'active' ? 'border-secondary/30 text-secondary bg-secondary/5' : 'border-red-300/30 text-red-400 bg-red-50'
         )}>
-          {tenant.is_active !== false ? 'Active' : 'Inactive'}
+          {tenant.status === 'active' ? 'Active' : tenant.status ?? 'Unknown'}
         </span>
       </div>
 
@@ -280,7 +280,7 @@ export default function TenantsPage() {
     const [propsRes, roomsRes, tenantsRes, invitesRes] = await Promise.all([
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, property_id, occupancy_status, tenant_id').order('name'),
-      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, is_active').order('name'),
+      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status').order('name'),
       supabase.from('tenant_invitations').select('id, room_id, name, phone, email, status, token, created_at').eq('status', 'pending').order('created_at', { ascending: false }),
     ]);
     if (propsRes.data) setProperties(propsRes.data);
