@@ -24,6 +24,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -48,6 +52,22 @@ export default function LoginPage() {
       if (role === 'tenant') { router.push('/tenant'); return; }
     }
     router.push('/guest');
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    setError(null);
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${origin}/auth/callback?next=/reset-password`,
+    });
+    setForgotLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setForgotSent(true);
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -141,7 +161,8 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground/30">Auth Key</label>
-                <button type="button" className="text-[9px] font-bold text-primary/60 hover:text-primary transition-colors uppercase tracking-widest">Forgot?</button>
+                <button type="button" onClick={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setError(null); }}
+                  className="text-[9px] font-bold text-primary/60 hover:text-primary transition-colors uppercase tracking-widest">Forgot?</button>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/20 group-focus-within:text-primary transition-colors" />
@@ -193,6 +214,70 @@ export default function LoginPage() {
         </div>
       </motion.div>
 
+      {/* Forgot password overlay */}
+      {forgotMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-6"
+          onClick={() => setForgotMode(false)}>
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm soft-card border border-white bg-background p-8 rounded-3xl shadow-2xl space-y-5"
+          >
+            {forgotSent ? (
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto">
+                  <Mail className="w-6 h-6 text-secondary" />
+                </div>
+                <p className="font-extrabold text-foreground tracking-tight">Check your inbox</p>
+                <p className="text-[11px] text-foreground/40 font-medium leading-relaxed">
+                  A password reset link was sent to <span className="font-bold text-foreground/60">{forgotEmail}</span>. Check spam if you don't see it.
+                </p>
+                <button onClick={() => setForgotMode(false)}
+                  className="w-full btn-terracotta py-3 text-[11px] font-extrabold uppercase tracking-widest mt-2">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <p className="font-extrabold text-foreground tracking-tight">Reset Password</p>
+                  <p className="text-[11px] text-foreground/40 mt-1">Enter your email and we'll send a reset link.</p>
+                </div>
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/20 group-focus-within:text-primary transition-colors" />
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => setForgotEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      required
+                      className="soft-ui-in w-full py-3.5 pl-11 pr-5 text-xs focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-foreground bg-white/60 border border-white/50"
+                    />
+                  </div>
+                  {error && (
+                    <p className="text-[10px] text-red-500 font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-3 h-3" /> {error}
+                    </p>
+                  )}
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setForgotMode(false)}
+                      className="flex-1 soft-button border border-white py-3 text-[11px] font-extrabold uppercase tracking-widest text-foreground/40">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={forgotLoading}
+                      className="flex-1 btn-terracotta py-3 text-[11px] font-extrabold uppercase tracking-widest flex items-center justify-center gap-2">
+                      {forgotLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                      {forgotLoading ? 'Sending…' : 'Send Link'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

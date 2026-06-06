@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, supabaseAdmin } from '@/lib/supabaseAdmin';
+import { randomUUID } from 'crypto';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
   const { adminClient: db, email: adminEmail } = auth;
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json(
-      { error: 'SUPABASE_SERVICE_ROLE_KEY is required to activate tenants' },
-      { status: 501 }
-    );
-  }
 
   const { invitationId } = await request.json();
   if (!invitationId) {
@@ -31,46 +25,60 @@ export async function POST(request: NextRequest) {
   if (inv.status !== 'pending') {
     return NextResponse.json({ error: 'Invitation is no longer pending' }, { status: 409 });
   }
-  if (!inv.email) {
-    return NextResponse.json({ error: 'Invitation has no email address' }, { status: 400 });
-  }
 
-  // Resolve or create auth user
   let userId: string;
+  let emailSent = false;
 
-  const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-    inv.email,
-    {
-      data: { name: inv.name },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/tenant`,
+  if (inv.email && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Try to create/resend invite via auth
+    const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      inv.email,
+      {
+        data: { name: inv.name },
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/tenant`,
+      }
+    );
+
+    if (!inviteErr && inviteData?.user) {
+      userId = inviteData.user.id;
+      emailSent = true;
+    } else {
+      // User already exists — find by email
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      const existing = users.find(u => u.email === inv.email);
+      if (existing) {
+        userId = existing.id;
+      } else {
+        // Auth creation failed for unknown reason — fall back to placeholder UUID
+        userId = randomUUID();
+      }
     }
-  );
-
-  if (!inviteErr && inviteData?.user) {
-    userId = inviteData.user.id;
   } else {
-    // User already exists — find by email
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-    const existing = users.find(u => u.email === inv.email);
-    if (!existing) {
-      return NextResponse.json(
-        { error: inviteErr?.message ?? 'Could not create or find auth user' },
-        { status: 500 }
-      );
-    }
-    userId = existing.id;
+    // No email or no service role key — create a placeholder tenant record.
+    // The auth callback will re-link the real UID when the tenant signs up.
+    userId = randomUUID();
   }
 
-  // Check if tenant record already exists
+  // Check if tenant record already exists with this userId
   const { data: existingTenant } = await db
     .from('tenants')
     .select('id')
     .eq('id', userId)
     .maybeSingle();
 
+  // Also check if a tenant with this email already exists (for email-based re-link)
+  let emailConflict = false;
+  if (inv.email) {
+    const { data: byEmail } = await db
+      .from('tenants')
+      .select('id')
+      .eq('email', inv.email)
+      .maybeSingle();
+    if (byEmail && byEmail.id !== userId) emailConflict = true;
+  }
+
   let tenant;
   if (existingTenant) {
-    // Already exists — just mark active
     const { data, error } = await db
       .from('tenants')
       .update({ status: 'active', updated_at: new Date().toISOString() })
@@ -79,14 +87,13 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     tenant = data;
-  } else {
-    // Create tenant record
+  } else if (!emailConflict) {
     const { data, error } = await db
       .from('tenants')
       .insert({
         id:           userId,
         name:         inv.name,
-        email:        inv.email,
+        email:        inv.email ?? null,
         phone:        inv.phone ?? null,
         room_id:      inv.room_id ?? null,
         status:       'active',
@@ -96,9 +103,20 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     tenant = data;
+  } else {
+    // Email already exists as tenant — just activate that existing record
+    const { data, error } = await db
+      .from('tenants')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('email', inv.email)
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    tenant = data;
+    userId = tenant.id;
   }
 
-  // Update room occupancy if room is assigned
+  // Update room occupancy
   if (inv.room_id) {
     await db
       .from('rooms')
@@ -106,7 +124,7 @@ export async function POST(request: NextRequest) {
       .eq('id', inv.room_id);
   }
 
-  // Mark invitation as accepted
+  // Mark invitation accepted
   await db
     .from('tenant_invitations')
     .update({ status: 'accepted' })
@@ -116,8 +134,12 @@ export async function POST(request: NextRequest) {
   await db.from('tenant_change_log').insert({
     tenant_id:        userId,
     changed_by_email: adminEmail,
-    changes:          { status: { from: 'pending_invitation', to: 'active' }, activated_from_invitation: invitationId },
+    changes: {
+      status:                   { from: 'pending_invitation', to: 'active' },
+      activated_from_invitation: invitationId,
+      email_sent:               emailSent,
+    },
   });
 
-  return NextResponse.json(tenant, { status: 201 });
+  return NextResponse.json({ ...tenant, email_sent: emailSent }, { status: 201 });
 }

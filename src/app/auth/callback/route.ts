@@ -84,7 +84,8 @@ export async function GET(request: NextRequest) {
       await adminClient.from('tenants').delete().eq('id', tenantByEmail.id);
       await adminClient.from('tenants').insert({ ...oldTenant, id: user.id });
     }
-    return NextResponse.redirect(new URL('/tenant', requestUrl.origin));
+    const dest = next ? new URL(next, requestUrl.origin) : new URL('/tenant', requestUrl.origin);
+    return NextResponse.redirect(dest);
   }
 
   // 3. Known guest — update last_login_at
