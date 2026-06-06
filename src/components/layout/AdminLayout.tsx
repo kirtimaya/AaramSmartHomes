@@ -9,6 +9,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
+  const [isRoot, setIsRoot] = React.useState(false);
   const [statusChecked, setStatusChecked] = React.useState(false);
 
   useEffect(() => {
@@ -19,8 +20,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           headers: { 'Authorization': `Bearer ${session!.access_token}` }
         });
         if (res.ok) {
-          const { isAdmin: adminStatus } = await res.json();
+          const { isAdmin: adminStatus, isRoot: rootStatus } = await res.json();
           setIsAdmin(adminStatus);
+          setIsRoot(!!rootStatus);
         }
       } finally {
         setStatusChecked(true);
@@ -79,7 +81,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background selection:bg-primary/20">
-      <Sidebar />
+      <Sidebar isRoot={isRoot} />
       <main className="md:pl-64 min-h-screen relative">
         <header className="h-20 border-b border-white/50 bg-background/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
           <div>

@@ -7,23 +7,23 @@ import {
   BarChart3,
   Home,
   Users,
+  UserCog,
   ClipboardList,
   Droplets,
   LogOut,
   PieChart,
   Calendar,
-  Settings,
-  Bell,
   Shield,
   User,
   ChefHat
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const sidebarItems = [
+const baseSidebarItems = [
   { icon: Home, label: 'Dashboard', href: '/admin' },
   { icon: Shield, label: 'Properties', href: '/admin/properties/manage' },
   { icon: PieChart, label: 'Occupancy', href: '/admin/occupancy' },
+  { icon: Users, label: 'Tenants', href: '/admin/tenants' },
   { icon: Calendar, label: 'Move-Outs', href: '/admin/calendar' },
   { icon: BarChart3, label: 'Financials', href: '/admin/financials' },
   { icon: ClipboardList, label: 'Tickets', href: '/admin/tickets' },
@@ -31,10 +31,14 @@ const sidebarItems = [
   { icon: ChefHat, label: 'Kitchen', href: '/admin/kitchen' },
 ];
 
+const rootOnlyItems = [
+  { icon: UserCog, label: 'Admins', href: '/admin/admins' },
+];
+
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
-export function Sidebar() {
+export function Sidebar({ isRoot = false }: { isRoot?: boolean }) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -56,7 +60,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 mt-4 px-4 space-y-1.5">
-        {sidebarItems.map((item) => (
+        {[...baseSidebarItems, ...(isRoot ? rootOnlyItems : [])].map((item) => (
           <Link
             key={item.href}
             href={item.href}

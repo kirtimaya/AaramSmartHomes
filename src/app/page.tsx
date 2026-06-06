@@ -29,8 +29,12 @@ export default function LandingPage() {
     setPortalRole(role);
   };
 
-  const handlePortalClick = () => {
-    if (portalRole === 'admin') { router.push('/admin'); return; }
+  const handleTenantPortalClick = async () => {
+    if (portalRole === 'admin') {
+      await supabase.auth.signOut();
+      router.push('/login');
+      return;
+    }
     if (portalRole === 'tenant') { router.push('/tenant'); return; }
     if (portalRole === 'guest') { router.push('/guest'); return; }
     router.push('/login');
@@ -69,11 +73,11 @@ export default function LandingPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handlePortalClick}
+            onClick={handleTenantPortalClick}
             className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 border border-white hover:text-primary transition-all"
           >
             <Home className="w-3.5 h-3.5" />
-            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'admin' ? 'Admin' : portalRole === 'guest' ? 'My Space' : 'Tenant Portal'}
+            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Tenant Portal'}
           </button>
           <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all">
             Sign In

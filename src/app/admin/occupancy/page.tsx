@@ -200,7 +200,7 @@ export default function OccupancyPage() {
       supabase.from('properties').select('*').order('name'),
       supabase.from('rooms').select('*'),
       supabase.from('tenants').select('*'),
-      supabase.from('tenant_invitations').select('id, room_id, name, phone, email, accepted_at').is('accepted_at', null),
+      supabase.from('tenant_invitations').select('id, room_id, name, phone, email, status').eq('status', 'pending'),
     ]);
 
     if (propsRes.data) {
