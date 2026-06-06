@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { supabaseAdmin, requireAdmin, makeAdminClient } from '@/lib/supabaseAdmin';
 import { ROOT_EMAIL } from '@/lib/constants';
 
-async function requireRoot(req: NextRequest): Promise<string | NextResponse> {
+type RootResult = { userId: string; adminClient: ReturnType<typeof makeAdminClient> };
+
+async function requireRoot(req: NextRequest): Promise<RootResult | NextResponse> {
   const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
 
@@ -11,14 +13,15 @@ async function requireRoot(req: NextRequest): Promise<string | NextResponse> {
   if (!user || user.email?.toLowerCase() !== ROOT_EMAIL.toLowerCase()) {
     return NextResponse.json({ error: 'Root access required' }, { status: 403 });
   }
-  return user.id;
+  return { userId: user.id, adminClient: auth.adminClient };
 }
 
 export async function GET(req: NextRequest) {
   const result = await requireRoot(req);
   if (result instanceof NextResponse) return result;
+  const { adminClient: db } = result;
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await db
     .from('admins')
     .select('id, email, created_at')
     .order('created_at');
@@ -30,6 +33,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const result = await requireRoot(req);
   if (result instanceof NextResponse) return result;
+  const { adminClient: db } = result;
 
   const { email } = await req.json();
   if (!email || typeof email !== 'string') {
@@ -40,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Root user cannot be added as admin' }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await db
     .from('admins')
     .insert({ email: normalised })
     .select()
@@ -53,11 +57,12 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const result = await requireRoot(req);
   if (result instanceof NextResponse) return result;
+  const { adminClient: db } = result;
 
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const { error } = await supabaseAdmin.from('admins').delete().eq('id', id);
+  const { error } = await db.from('admins').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

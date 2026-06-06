@@ -8,9 +8,10 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { adminClient } = auth;
 
   const { id } = await params;
-  const result = await runCalculateSplit(id);
+  const result = await runCalculateSplit(id, adminClient);
 
   if (!result.success) {
     const status = result.error === 'Bill not found' ? 404

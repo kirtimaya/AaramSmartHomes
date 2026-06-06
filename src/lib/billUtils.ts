@@ -1,3 +1,4 @@
+import { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './supabaseAdmin';
 
 // ── Pure split math (shared between calculate-split route and auto-trigger) ───
@@ -46,8 +47,8 @@ export function calculateSplitMath(
 
 // ── Run split calculation and persist results ─────────────────────────────────
 
-export async function runCalculateSplit(billId: string): Promise<{ success: boolean; error?: string; missing_submissions?: string[] }> {
-  const { data: bill, error: billErr } = await supabaseAdmin
+export async function runCalculateSplit(billId: string, db: SupabaseClient = supabaseAdmin): Promise<{ success: boolean; error?: string; missing_submissions?: string[] }> {
+  const { data: bill, error: billErr } = await db
     .from('electricity_bills')
     .select('*, properties(ac_rate_per_unit)')
     .eq('id', billId)
@@ -59,7 +60,7 @@ export async function runCalculateSplit(billId: string): Promise<{ success: bool
 
   const acRate = (bill as any).properties?.ac_rate_per_unit ?? 9.00;
 
-  const { data: rooms } = await supabaseAdmin
+  const { data: rooms } = await db
     .from('rooms')
     .select('id, has_ac, tenant_name, tenant_id')
     .eq('property_id', bill.property_id)
@@ -67,14 +68,14 @@ export async function runCalculateSplit(billId: string): Promise<{ success: bool
 
   if (!rooms?.length) return { success: false, error: 'No rooms found for this property' };
 
-  const { data: submissions } = await supabaseAdmin
+  const { data: submissions } = await db
     .from('tenant_ac_submissions')
     .select('*')
     .eq('bill_id', billId);
 
   const { splits } = calculateSplitMath(bill, rooms, submissions ?? [], acRate);
 
-  const { error: splitErr } = await supabaseAdmin
+  const { error: splitErr } = await db
     .from('bill_splits')
     .upsert(
       splits.map(s => ({
@@ -92,7 +93,7 @@ export async function runCalculateSplit(billId: string): Promise<{ success: bool
 
   if (splitErr) return { success: false, error: splitErr.message };
 
-  await supabaseAdmin
+  await db
     .from('electricity_bills')
     .update({ status: 'split_calculated', updated_at: new Date().toISOString() })
     .eq('id', billId);
@@ -103,8 +104,8 @@ export async function runCalculateSplit(billId: string): Promise<{ success: bool
 
 // ── Check whether all AC rooms have submitted for a bill ──────────────────────
 
-export async function allACRoomsSubmitted(billId: string, propertyId: string): Promise<{ ready: boolean; submitted: number; total: number }> {
-  const { data: acRooms } = await supabaseAdmin
+export async function allACRoomsSubmitted(billId: string, propertyId: string, db: SupabaseClient = supabaseAdmin): Promise<{ ready: boolean; submitted: number; total: number }> {
+  const { data: acRooms } = await db
     .from('rooms')
     .select('id')
     .eq('property_id', propertyId)
@@ -113,7 +114,7 @@ export async function allACRoomsSubmitted(billId: string, propertyId: string): P
   const total = acRooms?.length ?? 0;
   if (total === 0) return { ready: false, submitted: 0, total: 0 };
 
-  const { data: subs } = await supabaseAdmin
+  const { data: subs } = await db
     .from('tenant_ac_submissions')
     .select('room_id')
     .eq('bill_id', billId);

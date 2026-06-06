@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { requireAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(
   request: NextRequest,
@@ -7,6 +7,7 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { adminClient: db } = auth;
 
   const { id } = await params;
   const { reason } = await request.json();
@@ -15,7 +16,7 @@ export async function POST(
     return NextResponse.json({ error: 'rejection reason is required' }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await db
     .from('electricity_bills')
     .update({ status: 'rejected', rejection_reason: reason, updated_at: new Date().toISOString() })
     .eq('id', id)

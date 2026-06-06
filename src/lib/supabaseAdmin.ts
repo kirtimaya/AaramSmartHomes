@@ -1,25 +1,38 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { ROOT_EMAIL } from './constants';
 
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.warn(
     '[supabaseAdmin] SUPABASE_SERVICE_ROLE_KEY is not set. ' +
-    'Admin API routes will fail. Add it to .env.local:\n' +
-    'SUPABASE_SERVICE_ROLE_KEY=your-service-role-key'
+    'Admin DB operations will use user JWT via RLS policies instead of bypassing RLS. ' +
+    'Add SUPABASE_SERVICE_ROLE_KEY to .env.local or Vercel env vars for full bypass.'
   );
 }
 
 export const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  // Service role key is required for server-side auth.getUser() and bypassing RLS.
-  // Falls back to anon key so the app starts, but admin routes will return 401/403.
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+/**
+ * Returns a per-request Supabase client for admin DB operations.
+ * - With SUPABASE_SERVICE_ROLE_KEY: returns the global supabaseAdmin (bypasses RLS entirely).
+ * - Without it: returns a new client with the user's JWT so auth.email() is set and
+ *   RLS policies using auth_is_admin() can grant access.
+ */
+export function makeAdminClient(userToken: string): SupabaseClient {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) return supabaseAdmin;
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${userToken}` } } }
+  );
+}
+
 export async function requireAdmin(
   request: NextRequest
-): Promise<{ userId: string; email: string } | NextResponse> {
+): Promise<{ userId: string; email: string; adminClient: SupabaseClient } | NextResponse> {
   const token = request.headers.get('Authorization')?.replace('Bearer ', '');
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -27,10 +40,10 @@ export async function requireAdmin(
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const email = user.email?.toLowerCase().trim() ?? '';
+  const adminClient = makeAdminClient(token);
 
-  // Root user always has admin access
   if (email === ROOT_EMAIL.toLowerCase()) {
-    return { userId: user.id, email };
+    return { userId: user.id, email, adminClient };
   }
 
   const { data: admin } = await supabaseAdmin
@@ -41,7 +54,7 @@ export async function requireAdmin(
 
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  return { userId: user.id, email };
+  return { userId: user.id, email, adminClient };
 }
 
 export async function requireTenant(

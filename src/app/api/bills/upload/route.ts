@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
-  // requireAdmin handles both root email and admins table check
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { adminClient } = auth;
 
   const { data: { user } } = await supabaseAdmin.auth.getUser(
     request.headers.get('Authorization')!.replace('Bearer ', '')
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   // Check for existing non-rejected bill
   const billMonthDate = `${billMonth}-01`;
-  const { data: existing } = await supabaseAdmin
+  const { data: existing } = await adminClient
     .from('electricity_bills')
     .select('id, status')
     .eq('property_id', propertyId)
@@ -59,7 +59,6 @@ export async function POST(request: NextRequest) {
       billImageUrl = urlData.publicUrl;
     }
   } else {
-    // Allow plain URL string
     const imageUrl = formData.get('image_url') as string | null;
     if (imageUrl) billImageUrl = imageUrl;
   }
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
     ? presentReading - previousReading
     : Number(formData.get('total_units') || 0);
 
-  const { data: bill, error } = await supabaseAdmin
+  const { data: bill, error } = await adminClient
     .from('electricity_bills')
     .insert({
       property_id:      propertyId,

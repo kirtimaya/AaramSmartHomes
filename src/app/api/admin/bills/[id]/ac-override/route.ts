@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { requireAdmin } from '@/lib/supabaseAdmin';
 
 export async function PATCH(
   request: NextRequest,
@@ -7,6 +7,7 @@ export async function PATCH(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { adminClient: db } = auth;
 
   const { id } = await params;
   const { tenant_id, ac_units } = await request.json();
@@ -15,8 +16,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'tenant_id and non-negative ac_units are required' }, { status: 400 });
   }
 
-  // Find the tenant's room submission for this bill
-  const { data: existing } = await supabaseAdmin
+  const { data: existing } = await db
     .from('tenant_ac_submissions')
     .select('*')
     .eq('bill_id', id)
@@ -26,22 +26,21 @@ export async function PATCH(
   let data, error;
 
   if (existing) {
-    ({ data, error } = await supabaseAdmin
+    ({ data, error } = await db
       .from('tenant_ac_submissions')
       .update({ is_admin_override: true, admin_override_value: ac_units })
       .eq('id', existing.id)
       .select()
       .single());
   } else {
-    // Find the room for this tenant
-    const { data: tenant } = await supabaseAdmin
+    const { data: tenant } = await db
       .from('tenants').select('room_id').eq('id', tenant_id).single();
 
     if (!tenant?.room_id) {
       return NextResponse.json({ error: 'Tenant not found or has no room' }, { status: 404 });
     }
 
-    ({ data, error } = await supabaseAdmin
+    ({ data, error } = await db
       .from('tenant_ac_submissions')
       .insert({
         bill_id: id,

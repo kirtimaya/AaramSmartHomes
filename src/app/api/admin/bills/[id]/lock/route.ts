@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { requireAdmin } from '@/lib/supabaseAdmin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export async function POST(
@@ -8,10 +8,11 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { adminClient: db } = auth;
 
   const { id } = await params;
 
-  const { data: bill } = await supabaseAdmin
+  const { data: bill } = await db
     .from('electricity_bills')
     .select('id, status, property_id')
     .eq('id', id)
@@ -25,25 +26,21 @@ export async function POST(
 
   const now = new Date().toISOString();
 
-  // Lock all split rows
-  const { error: splitErr } = await supabaseAdmin
+  const { error: splitErr } = await db
     .from('bill_splits')
     .update({ locked_at: now })
     .eq('bill_id', id);
 
   if (splitErr) return NextResponse.json({ error: splitErr.message }, { status: 500 });
 
-  // Lock the bill
-  const { error: billErr } = await supabaseAdmin
+  const { error: billErr } = await db
     .from('electricity_bills')
     .update({ status: 'locked', updated_at: now })
     .eq('id', id);
 
   if (billErr) return NextResponse.json({ error: billErr.message }, { status: 500 });
 
-  // In-app notification: insert a notification record if that table exists
-  // (fire-and-forget — don't fail if table doesn't exist)
-  const { data: splits } = await supabaseAdmin
+  const { data: splits } = await db
     .from('bill_splits')
     .select('tenant_id, total_payable')
     .eq('bill_id', id);
@@ -59,11 +56,10 @@ export async function POST(
       created_at: now,
     }));
 
-    await supabaseAdmin.from('notifications').insert(notifications).then(() => {});
+    await db.from('notifications').insert(notifications).then(() => {});
 
-    // WhatsApp: send per tenant who has a phone number
     const tenantIds = splits.map((s: any) => s.tenant_id);
-    const { data: tenants } = await supabaseAdmin
+    const { data: tenants } = await db
       .from('tenants')
       .select('id, name, phone')
       .in('id', tenantIds);
