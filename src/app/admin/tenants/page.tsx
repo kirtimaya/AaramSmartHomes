@@ -454,7 +454,7 @@ export default function TenantsPage() {
     const [propsRes, roomsRes, tenantsRes, invitesRes] = await Promise.all([
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, property_id, occupancy_status, tenant_id').order('name'),
-      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status, move_in_date, move_out_date').order('name'),
+      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status, move_in_date').order('name'),
       supabase.from('tenant_invitations').select('id, room_id, name, phone, email, status, token, created_at').eq('status', 'pending').order('created_at', { ascending: false }),
     ]);
     if (propsRes.data) setProperties(propsRes.data);

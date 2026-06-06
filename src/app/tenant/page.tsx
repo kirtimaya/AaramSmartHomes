@@ -33,19 +33,39 @@ export default function TenantPortal() {
     if (!user)   { router.push('/login'); return; }
 
     (async () => {
-      const { data, error } = await supabase
+      // Primary lookup via RLS-gated anon client
+      const { data } = await supabase
         .from('tenants')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .in('status', ['active', 'notice'])
+        .maybeSingle();
 
-      if (error || !data) {
-        // Not a registered tenant — redirect to guest portal
-        router.push('/guest');
+      if (data) {
+        setTenantProfile(data as Tenant);
+        setDashboardLoading(false);
         return;
       }
-      setTenantProfile(data as Tenant);
-      setDashboardLoading(false);
+
+      // Fallback: tenant was activated with a placeholder UUID (no email invite).
+      // The anon client can't see their row via RLS, so hit the server route
+      // which uses the service-role client and can match by email.
+      const session = await supabase.auth.getSession();
+      const token   = session.data.session?.access_token;
+      if (token) {
+        const res = await fetch('/api/tenant/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const profile = await res.json();
+          setTenantProfile(profile as Tenant);
+          setDashboardLoading(false);
+          return;
+        }
+      }
+
+      // Not a registered tenant — redirect to guest portal
+      router.push('/guest');
     })();
   }, [user, loading, router]);
 

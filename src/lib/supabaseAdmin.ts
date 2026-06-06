@@ -119,5 +119,17 @@ export async function getUserRole(token: string): Promise<{
   if (tenantRow) return { role: 'tenant', userId: user.id, email };
   if (guestRow) return { role: 'guest', userId: user.id, email };
 
+  // Fallback: tenant may have been activated with a placeholder UUID before they
+  // had an auth account — match by email so login still works.
+  if (email) {
+    const { data: tenantByEmail } = await db
+      .from('tenants')
+      .select('id')
+      .eq('email', email)
+      .in('status', ['active', 'notice'])
+      .maybeSingle();
+    if (tenantByEmail) return { role: 'tenant', userId: user.id, email };
+  }
+
   return { role: null, userId: user.id, email };
 }
