@@ -30,12 +30,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
 
-  const ALLOWED = ['name', 'email', 'phone', 'move_in_date', 'status'] as const;
+  const ALLOWED = ['name', 'email', 'phone', 'move_in_date', 'move_out_date', 'status'] as const;
   type AllowedKey = typeof ALLOWED[number];
 
   const { data: current, error: fetchErr } = await db
     .from('tenants')
-    .select('name, email, phone, move_in_date, status')
+    .select('name, email, phone, move_in_date, move_out_date, status')
     .eq('id', id)
     .single();
 

@@ -58,9 +58,15 @@ export default function LoginPage() {
     e.preventDefault();
     setForgotLoading(true);
     setError(null);
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Use explicit env var so the reset link in the email points to production,
+    // not localhost. Set NEXT_PUBLIC_SITE_URL in Vercel env vars (e.g. https://aaramsmarthomes.com).
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : typeof window !== 'undefined' ? window.location.origin : '');
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${origin}/auth/callback?next=/reset-password`,
+      redirectTo: `${siteUrl}/auth/callback?next=/reset-password`,
     });
     setForgotLoading(false);
     if (error) {

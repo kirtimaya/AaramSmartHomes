@@ -16,7 +16,22 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
-type Tab = 'menu' | 'log' | 'reorder' | 'suggestions';
+type Tab = 'weekly' | 'menu' | 'log' | 'reorder' | 'suggestions';
+type DayName = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+const DAYS: DayName[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const MEALS: MealBlock[] = ['Breakfast', 'Lunch', 'Dinner'];
+
+// Default weekly template — pre-populated from house menu
+const DEFAULT_WEEKLY: Record<DayName, Record<MealBlock, string>> = {
+  Monday:    { Breakfast: 'Poha + Sev',       Lunch: 'Rice + Roti + Toor Dal + Mix Veg Fry',             Dinner: 'Paratha + Chole' },
+  Tuesday:   { Breakfast: 'Idly + Sambar',    Lunch: 'Rice + Roti + Rajma + Bhindi Fry',                Dinner: 'Roti + Palak Paneer' },
+  Wednesday: { Breakfast: 'Aloo Paratha',     Lunch: 'Fried Rice / Lemon Rice + Roti + Moong Dal + Aloo Fry', Dinner: 'Roti + Mix Dal Tadka / Egg Tadka' },
+  Thursday:  { Breakfast: 'Dosa + Chutney',   Lunch: 'Rice + Roti + Chole + Beetroot Fry',              Dinner: 'Dal Khichdi + Sev' },
+  Friday:    { Breakfast: 'Upma',             Lunch: 'Jeera Rice + Roti + Dal Fry + Matar Paneer',      Dinner: 'Roti + Soyachunks Curry / Chicken Curry' },
+  Saturday:  { Breakfast: 'Poori + Aloo Sabji', Lunch: 'Mix Veg Pulao + Raita',                          Dinner: 'Roti + Chilly Mushroom' },
+  Sunday:    { Breakfast: '',                 Lunch: '',                                                 Dinner: '' },
+};
 
 interface MenuRow { id: string; notes: string | null; }
 interface Dish    { id?: string; name: string; }
@@ -147,6 +162,231 @@ async function getMealCount(date: string, block: MealBlock): Promise<number | nu
     .in('tenant_id', activeIds);
 
   return Math.max(0, activeIds.length - (skips ?? 0));
+}
+
+// ── Tab 0: Weekly Menu ────────────────────────────────────────────────────────
+
+function getWeekStart(offset = 0): string {
+  // Returns the Monday of the week (offset weeks from now), in IST
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const day = ist.getUTCDay(); // 0=Sun, 1=Mon …
+  const monday = new Date(ist);
+  monday.setUTCDate(ist.getUTCDate() - ((day + 6) % 7) + offset * 7);
+  return monday.toISOString().slice(0, 10);
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+const MEAL_COLORS: Record<MealBlock, string> = {
+  Breakfast: 'text-amber-600',
+  Lunch:     'text-emerald-600',
+  Dinner:    'text-blue-600',
+};
+
+function WeeklyMenuTab() {
+  const [weekOffset, setWeekOffset]   = useState(0);
+  const [grid, setGrid]               = useState<Record<DayName, Record<MealBlock, string>>>(
+    JSON.parse(JSON.stringify(DEFAULT_WEEKLY))
+  );
+  const [loading, setLoading]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [toast, setToast]       = useState<string | null>(null);
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const weekStart = getWeekStart(weekOffset);
+
+  // Load saved menus for this week
+  const loadWeek = useCallback(async () => {
+    setLoading(true);
+    const dates = DAYS.map((_, i) => addDays(weekStart, i));
+    const { data } = await supabase
+      .from('menus')
+      .select('date, meal_block, notes, menu_items(item_name, sort_order)')
+      .in('date', dates);
+
+    if (data?.length) {
+      const fresh: Record<DayName, Record<MealBlock, string>> = JSON.parse(JSON.stringify(DEFAULT_WEEKLY));
+      for (const row of data) {
+        const dayIdx = dates.indexOf(row.date);
+        if (dayIdx < 0) continue;
+        const dayName = DAYS[dayIdx];
+        const block = row.meal_block as MealBlock;
+        if (!MEALS.includes(block)) continue;
+        const items = (row.menu_items as { item_name: string; sort_order: number }[]) ?? [];
+        const text = items.length
+          ? items.sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name).join(' + ')
+          : (row.notes ?? '');
+        fresh[dayName][block] = text;
+      }
+      setGrid(fresh);
+    } else {
+      // No saved data for this week — show default template
+      setGrid(JSON.parse(JSON.stringify(DEFAULT_WEEKLY)));
+    }
+    setLoading(false);
+  }, [weekStart]);
+
+  useEffect(() => { loadWeek(); }, [loadWeek]);
+
+  const updateCell = (day: DayName, meal: MealBlock, val: string) =>
+    setGrid(prev => ({ ...prev, [day]: { ...prev[day], [meal]: val } }));
+
+  const saveWeek = async () => {
+    setSaving(true);
+    try {
+      const dates = DAYS.map((_, i) => addDays(weekStart, i));
+
+      for (let d = 0; d < DAYS.length; d++) {
+        const dayName = DAYS[d];
+        const date = dates[d];
+        for (const meal of MEALS) {
+          const text = grid[dayName][meal].trim();
+
+          // Find or create menu record
+          const { data: existing } = await supabase
+            .from('menus')
+            .select('id')
+            .eq('date', date)
+            .eq('meal_block', meal)
+            .maybeSingle();
+
+          let menuId: string;
+          if (existing?.id) {
+            menuId = existing.id;
+            await supabase.from('menus').update({ notes: text || null }).eq('id', menuId);
+          } else {
+            if (!text) continue; // skip empty cells for new weeks
+            const { data: created } = await supabase
+              .from('menus')
+              .insert({ date, meal_block: meal, notes: text || null })
+              .select('id')
+              .single();
+            if (!created) continue;
+            menuId = created.id;
+          }
+
+          // Replace menu_items with comma/plus-split items
+          await supabase.from('menu_items').delete().eq('menu_id', menuId);
+          if (text) {
+            const items = text.split(/\s*[+,]\s*/).map(s => s.trim()).filter(Boolean);
+            if (items.length) {
+              await supabase.from('menu_items').insert(
+                items.map((name, i) => ({ menu_id: menuId, item_name: name, sort_order: i }))
+              );
+            }
+          }
+        }
+      }
+
+      showToast('Week saved!');
+    } catch {
+      showToast('Save failed. Please try again.');
+    }
+    setSaving(false);
+  };
+
+  const weekEnd = addDays(weekStart, 6);
+  const fmtDate = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+  return (
+    <div className="space-y-6">
+      {/* Week navigator */}
+      <div className="soft-card p-5 border border-white bg-white/40 flex items-center justify-between gap-4">
+        <button onClick={() => setWeekOffset(v => v - 1)}
+          className="soft-button w-9 h-9 border border-white text-foreground/40 hover:text-primary text-lg font-black">‹</button>
+        <div className="text-center">
+          <p className="text-[10px] font-black uppercase tracking-widest text-foreground/30">Week of</p>
+          <p className="font-black text-foreground">{fmtDate(weekStart)} — {fmtDate(weekEnd)}</p>
+        </div>
+        <button onClick={() => setWeekOffset(v => v + 1)}
+          className="soft-button w-9 h-9 border border-white text-foreground/40 hover:text-primary text-lg font-black">›</button>
+        <button onClick={() => setWeekOffset(0)}
+          className="soft-button px-4 py-2 border border-white text-[10px] font-black uppercase tracking-widest text-foreground/30 hover:text-primary ml-2">
+          This Week
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
+      ) : (
+        <>
+          {/* Grid — desktop: 4 columns (day + 3 meals), mobile: stacked cards */}
+          <div className="hidden lg:grid grid-cols-[140px_1fr_1fr_1fr] gap-3">
+            {/* Header row */}
+            <div />
+            {MEALS.map(m => (
+              <div key={m} className={cn('text-[10px] font-black uppercase tracking-widest text-center py-2', MEAL_COLORS[m])}>
+                {m}
+              </div>
+            ))}
+            {/* Data rows */}
+            {DAYS.map((day, di) => (
+              <React.Fragment key={day}>
+                <div className="flex flex-col justify-center py-1">
+                  <p className="text-[11px] font-black text-foreground uppercase tracking-widest">{day}</p>
+                  <p className="text-[9px] text-foreground/30 font-bold">{fmtDate(addDays(weekStart, di))}</p>
+                </div>
+                {MEALS.map(meal => (
+                  <textarea
+                    key={meal}
+                    value={grid[day][meal]}
+                    onChange={e => updateCell(day, meal, e.target.value)}
+                    placeholder={day === 'Sunday' ? 'Rest day' : `${meal} items…`}
+                    rows={2}
+                    className="soft-ui-in w-full px-3 py-2.5 text-[12px] resize-none focus:outline-none bg-white/70 border border-white leading-relaxed"
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* Mobile: stacked cards per day */}
+          <div className="lg:hidden space-y-4">
+            {DAYS.map((day, di) => (
+              <div key={day} className="soft-card p-4 border border-white bg-white/40 space-y-3">
+                <p className="text-[11px] font-black text-foreground uppercase tracking-widest">
+                  {day} <span className="text-foreground/30 normal-case font-bold tracking-normal">— {fmtDate(addDays(weekStart, di))}</span>
+                </p>
+                {MEALS.map(meal => (
+                  <div key={meal} className="space-y-1">
+                    <label className={cn('text-[9px] font-black uppercase tracking-widest', MEAL_COLORS[meal])}>{meal}</label>
+                    <textarea
+                      value={grid[day][meal]}
+                      onChange={e => updateCell(day, meal, e.target.value)}
+                      placeholder={day === 'Sunday' ? 'Rest day' : `${meal} items…`}
+                      rows={2}
+                      className="soft-ui-in w-full px-3 py-2.5 text-[12px] resize-none focus:outline-none bg-white/70 border border-white leading-relaxed"
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <button onClick={saveWeek} disabled={saving}
+            className="btn-terracotta w-full py-4 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving…' : 'Save Full Week'}
+          </button>
+        </>
+      )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-2xl z-50"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 // ── Tab 1: Menu Builder ───────────────────────────────────────────────────────
@@ -827,10 +1067,11 @@ function SuggestionsTab() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function KitchenPage() {
-  const [tab, setTab] = useState<Tab>('menu');
+  const [tab, setTab] = useState<Tab>('weekly');
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: 'menu',        label: 'Menu Builder',  icon: ChefHat       },
+    { id: 'weekly',      label: 'Weekly Plan',   icon: Edit3         },
+    { id: 'menu',        label: 'Day Builder',   icon: ChefHat       },
     { id: 'log',         label: 'Alexa Log',     icon: MessageSquare },
     { id: 'reorder',     label: 'Reorder List',  icon: ShoppingCart  },
     { id: 'suggestions', label: 'Suggestions',   icon: Lightbulb     },
@@ -881,6 +1122,7 @@ export default function KitchenPage() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
           >
+            {tab === 'weekly'      && <WeeklyMenuTab />}
             {tab === 'menu'        && <MenuBuilderTab />}
             {tab === 'log'         && <AlexaLogTab />}
             {tab === 'reorder'     && <ReorderListTab />}

@@ -104,10 +104,15 @@ export async function getUserRole(token: string): Promise<{
   }
 
   // Check admins table
+  // Use per-request client so the user's JWT is attached — required for RLS policies
+  // (e.g. "tenant_read_own_profile" uses auth.uid()). When service role key is present,
+  // makeAdminClient returns supabaseAdmin and bypasses RLS entirely.
+  const db = makeAdminClient(token);
+
   const [{ data: adminRow }, { data: tenantRow }, { data: guestRow }] = await Promise.all([
-    supabaseAdmin.from('admins').select('id').eq('email', email).single(),
-    supabaseAdmin.from('tenants').select('id').eq('id', user.id).single(),
-    supabaseAdmin.from('guests').select('id').eq('id', user.id).single(),
+    db.from('admins').select('id').eq('email', email).single(),
+    db.from('tenants').select('id').eq('id', user.id).single(),
+    db.from('guests').select('id').eq('id', user.id).single(),
   ]);
 
   if (adminRow) return { role: 'admin', userId: user.id, email };

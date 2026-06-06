@@ -17,6 +17,8 @@ interface Tenant {
   room_id: string | null;
   created_at: string;
   status: string;
+  move_in_date: string | null;
+  move_out_date: string | null;
 }
 interface TenantInvitation {
   id: string;
@@ -92,14 +94,21 @@ function EditTenantModal({
 }) {
   const [name, setName] = useState(tenant.name);
   const [phone, setPhone] = useState(tenant.phone ?? '');
-  const [moveIn, setMoveIn] = useState('');
+  const [moveIn, setMoveIn] = useState(tenant.move_in_date?.slice(0, 10) ?? '');
+  const [moveOut, setMoveOut] = useState(tenant.move_out_date?.slice(0, 10) ?? '');
   const [status, setStatus] = useState(tenant.status);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(tenant.id, { name, phone: phone || null, status });
+      await onSave(tenant.id, {
+        name,
+        phone: phone || null,
+        status,
+        move_in_date:  moveIn  || null,
+        move_out_date: moveOut || null,
+      });
       toast('Tenant updated');
       onClose();
     } catch {
@@ -139,6 +148,18 @@ function EditTenantModal({
             <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Phone</label>
             <input value={phone} onChange={e => setPhone(e.target.value)}
               className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Move-in Date</label>
+              <input type="date" value={moveIn} onChange={e => setMoveIn(e.target.value)}
+                className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Move-out Date</label>
+              <input type="date" value={moveOut} onChange={e => setMoveOut(e.target.value)}
+                className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Status</label>
@@ -433,7 +454,7 @@ export default function TenantsPage() {
     const [propsRes, roomsRes, tenantsRes, invitesRes] = await Promise.all([
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, property_id, occupancy_status, tenant_id').order('name'),
-      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status').order('name'),
+      supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status, move_in_date, move_out_date').order('name'),
       supabase.from('tenant_invitations').select('id, room_id, name, phone, email, status, token, created_at').eq('status', 'pending').order('created_at', { ascending: false }),
     ]);
     if (propsRes.data) setProperties(propsRes.data);
