@@ -6,7 +6,7 @@ ALTER TABLE tenant_invitations
   ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id);
 
 -- Fix 3: Remove stale (non-seed) tenants — clear FK dependents first
--- Identify stale tenant IDs: those whose room_id doesn't match any invitation
+-- Uses dynamic SQL so missing tables are silently skipped
 DO $$
 DECLARE
   stale_ids UUID[];
@@ -22,15 +22,38 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Clear dependent rows so the tenant DELETE can proceed
-  DELETE FROM payments              WHERE tenant_id = ANY(stale_ids);
-  DELETE FROM bill_splits           WHERE tenant_id = ANY(stale_ids);
-  DELETE FROM tenant_ac_submissions WHERE tenant_id = ANY(stale_ids);
-  DELETE FROM tickets               WHERE requester_id = ANY(stale_ids) AND requester_type = 'tenant';
-  DELETE FROM notifications         WHERE user_id = ANY(stale_ids) AND user_type = 'tenant';
-  DELETE FROM tenant_meal_preferences WHERE tenant_id = ANY(stale_ids);
-  DELETE FROM meal_skip_requests    WHERE tenant_id = ANY(stale_ids);
-  DELETE FROM tenant_profiles       WHERE tenant_id = ANY(stale_ids);
+  -- Delete from each dependent table only if it exists
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'payments') THEN
+    DELETE FROM payments WHERE tenant_id = ANY(stale_ids);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bill_splits') THEN
+    DELETE FROM bill_splits WHERE tenant_id = ANY(stale_ids);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tenant_ac_submissions') THEN
+    DELETE FROM tenant_ac_submissions WHERE tenant_id = ANY(stale_ids);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tickets') THEN
+    DELETE FROM tickets WHERE requester_id = ANY(stale_ids) AND requester_type = 'tenant';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notifications') THEN
+    DELETE FROM notifications WHERE user_id = ANY(stale_ids) AND user_type = 'tenant';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tenant_meal_preferences') THEN
+    DELETE FROM tenant_meal_preferences WHERE tenant_id = ANY(stale_ids);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'meal_skip_requests') THEN
+    DELETE FROM meal_skip_requests WHERE tenant_id = ANY(stale_ids);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tenant_profiles') THEN
+    DELETE FROM tenant_profiles WHERE tenant_id = ANY(stale_ids);
+  END IF;
 
   -- Now safe to delete the tenants themselves
   DELETE FROM tenants WHERE id = ANY(stale_ids);
@@ -39,7 +62,7 @@ BEGIN
 END;
 $$;
 
--- Fix 4: Reset any rooms whose tenant_id points to a now-deleted tenant
+-- Fix 4: Reset rooms whose tenant_id points to a now-deleted tenant
 UPDATE rooms
 SET tenant_id = NULL
 WHERE tenant_id IS NOT NULL
