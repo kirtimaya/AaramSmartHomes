@@ -33,6 +33,7 @@ import {
   Info
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -216,7 +217,14 @@ export default function FoodHub() {
             </div>
           </div>
           
-          <button 
+          <Link
+            href="/food-hub/nutrition"
+            className="soft-button px-6 py-3 text-[11px] font-black uppercase tracking-[0.15em] text-secondary hover:text-secondary/80 flex items-center gap-2"
+          >
+            <Leaf className="w-4 h-4" /> Nutrition
+          </Link>
+
+          <button
             onClick={() => setIsAdminMode(!isAdminMode)}
             className={cn(
               "soft-button px-6 py-3 text-[11px] font-black uppercase tracking-[0.15em] transition-all relative overflow-hidden group",
