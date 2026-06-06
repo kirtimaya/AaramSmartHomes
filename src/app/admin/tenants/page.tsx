@@ -295,17 +295,14 @@ export default function TenantsPage() {
     if (!tenant) return;
     const oldRoomId = tenant.room_id;
 
-    // Update tenants table
-    const { error: tErr } = await supabase.from('tenants').update({ room_id: newRoomId }).eq('id', tenantId);
-    if (tErr) throw tErr;
-
-    // Update rooms: clear old room tenant_id
-    if (oldRoomId) {
-      await supabase.from('rooms').update({ tenant_id: null, occupancy_status: 'Vacant' }).eq('id', oldRoomId);
-    }
-    // Set new room tenant_id
-    if (newRoomId) {
-      await supabase.from('rooms').update({ tenant_id: tenantId, occupancy_status: 'Occupied' }).eq('id', newRoomId);
+    const res = await fetch('/api/admin/tenants/assign-room', {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId, roomId: newRoomId }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json();
+      throw new Error(error || 'Assignment failed');
     }
 
     setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room_id: newRoomId } : t));

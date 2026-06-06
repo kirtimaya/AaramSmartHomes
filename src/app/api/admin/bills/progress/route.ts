@@ -31,6 +31,17 @@ export async function GET(request: NextRequest) {
       .eq('has_ac', true)
       .order('name');
 
+    // Fetch tenant contact info for AC rooms
+    const tenantIds = (acRooms ?? []).map(r => r.tenant_id).filter(Boolean) as string[];
+    const tenantContacts: Record<string, { phone: string | null; email: string | null }> = {};
+    if (tenantIds.length > 0) {
+      const { data: contacts } = await supabaseAdmin
+        .from('tenants')
+        .select('id, phone, email')
+        .in('id', tenantIds);
+      (contacts ?? []).forEach(c => { tenantContacts[c.id] = { phone: c.phone, email: c.email }; });
+    }
+
     // AC submissions for current bill (if any)
     const submissions: { room_id: string; ac_units_submitted: number; submitted_at: string }[] = [];
     if (bill && ['validated', 'split_calculated', 'locked'].includes(bill.status)) {
@@ -54,13 +65,16 @@ export async function GET(request: NextRequest) {
 
     const acRoomProgress = (acRooms ?? []).map(r => {
       const sub = submissions.find(s => s.room_id === r.id);
+      const contact = r.tenant_id ? tenantContacts[r.tenant_id] : null;
       return {
-        room_id:          r.id,
-        room_name:        r.name,
-        tenant_name:      r.tenant_name || '(vacant)',
-        submitted:        !!sub,
+        room_id:            r.id,
+        room_name:          r.name,
+        tenant_name:        r.tenant_name || '(vacant)',
+        tenant_phone:       contact?.phone ?? null,
+        tenant_email:       contact?.email ?? null,
+        submitted:          !!sub,
         ac_units_submitted: sub?.ac_units_submitted ?? null,
-        submitted_at:     sub?.submitted_at ?? null,
+        submitted_at:       sub?.submitted_at ?? null,
       };
     });
 

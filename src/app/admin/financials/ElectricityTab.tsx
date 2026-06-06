@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap, Plus, Check, X, ChevronDown, AlertTriangle, Loader2,
   Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText, Trash2, Image as ImageIcon,
-  BarChart2, CheckCircle2, Clock, AlertCircle, ChevronRight,
+  BarChart2, CheckCircle2, Clock, AlertCircle, ChevronRight, Bell,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -601,7 +601,7 @@ function EditBillModal({ bill, onClose, onSaved }: EditBillModalProps) {
 
 // ── Billing Progress Panel ────────────────────────────────────────────────────
 
-interface ProgressRoom  { room_id: string; room_name: string; tenant_name: string; submitted: boolean; ac_units_submitted: number | null; submitted_at: string | null }
+interface ProgressRoom  { room_id: string; room_name: string; tenant_name: string; tenant_phone: string | null; tenant_email: string | null; submitted: boolean; ac_units_submitted: number | null; submitted_at: string | null }
 interface ProgressSplit { tenant_name: string; room_id: string; ac_units: number; ac_charge: number; common_share: number; total_payable: number }
 interface PropertyProgress {
   property_id:        string;
@@ -614,20 +614,48 @@ interface PropertyProgress {
 }
 
 function BillingProgressPanel() {
-  const [data,     setData]     = useState<PropertyProgress[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [data,           setData]           = useState<PropertyProgress[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [expanded,       setExpanded]       = useState<string | null>(null);
+  const [overrideInputs, setOverrideInputs] = useState<Record<string, string>>({});
+  const [overriding,     setOverriding]     = useState<string | null>(null);
+  const [copiedRoom,     setCopiedRoom]     = useState<string | null>(null);
+
+  const refreshData = async () => {
+    const json = await apiCall('/api/admin/bills/progress', 'GET');
+    setData(json);
+  };
 
   useEffect(() => {
     (async () => {
-      try {
-        const json = await apiCall('/api/admin/bills/progress', 'GET');
-        setData(json);
-      } finally {
-        setLoading(false);
-      }
+      try { await refreshData(); } finally { setLoading(false); }
     })();
   }, []);
+
+  const handleOverrideAC = async (billId: string, roomId: string) => {
+    const units = parseFloat(overrideInputs[roomId] ?? '');
+    if (isNaN(units) || units < 0) return;
+    setOverriding(roomId);
+    try {
+      await apiCall('/api/admin/bills/override-ac', 'POST', { bill_id: billId, room_id: roomId, ac_units_submitted: units });
+      setOverrideInputs(prev => { const n = { ...prev }; delete n[roomId]; return n; });
+      await refreshData();
+    } finally {
+      setOverriding(null);
+    }
+  };
+
+  const handleNotify = (room: ProgressRoom) => {
+    const phone = room.tenant_phone?.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Hi ${room.tenant_name}, please upload your AC meter reading for this month in the Aaram tenant portal: https://aaram.space/tenant`);
+    if (phone) {
+      window.open(`https://wa.me/91${phone}?text=${msg}`, '_blank');
+    } else {
+      navigator.clipboard.writeText(decodeURIComponent(msg));
+      setCopiedRoom(room.room_id);
+      setTimeout(() => setCopiedRoom(null), 2000);
+    }
+  };
 
   if (loading) return (
     <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-foreground/20 animate-spin" /></div>
@@ -723,28 +751,59 @@ function BillingProgressPanel() {
                     {p.ac_room_progress.length > 0 && (
                       <div className="space-y-2">
                         <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">AC Meter Readings</p>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {p.ac_room_progress.map(r => (
-                            <div key={r.room_id} className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs ${r.submitted ? 'bg-emerald-50/60 border-emerald-200/40' : 'bg-amber-50/60 border-amber-200/40'}`}>
-                              <div className="flex items-center gap-2.5">
-                                {r.submitted
-                                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                  : <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
-                                <span className="font-bold text-foreground">{r.room_name}</span>
-                                <span className="text-foreground/40">{r.tenant_name}</span>
+                            <div key={r.room_id} className={`rounded-xl border text-xs ${r.submitted ? 'bg-emerald-50/60 border-emerald-200/40' : 'bg-amber-50/60 border-amber-200/40'}`}>
+                              <div className="flex items-center justify-between px-4 py-2.5">
+                                <div className="flex items-center gap-2.5">
+                                  {r.submitted
+                                    ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    : <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                                  <span className="font-bold text-foreground">{r.room_name}</span>
+                                  <span className="text-foreground/40">{r.tenant_name}</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-right">
+                                  {r.submitted ? (
+                                    <>
+                                      <span className="font-extrabold text-emerald-700">{r.ac_units_submitted} units</span>
+                                      {r.submitted_at && (
+                                        <span className="text-[9px] text-foreground/30">{new Date(r.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold text-amber-600 uppercase tracking-widest">Pending</span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-3 text-right">
-                                {r.submitted ? (
-                                  <>
-                                    <span className="font-extrabold text-emerald-700">{r.ac_units_submitted} units</span>
-                                    {r.submitted_at && (
-                                      <span className="text-[9px] text-foreground/30">{new Date(r.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="text-[10px] font-extrabold text-amber-600 uppercase tracking-widest">Pending</span>
-                                )}
-                              </div>
+                              {/* Admin override + notify for unsubmitted rooms */}
+                              {!r.submitted && p.bill && (
+                                <div className="flex items-center gap-2 px-4 pb-3">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Enter units"
+                                    value={overrideInputs[r.room_id] ?? ''}
+                                    onChange={e => setOverrideInputs(prev => ({ ...prev, [r.room_id]: e.target.value }))}
+                                    className="flex-1 soft-ui-in bg-white/60 border border-white px-3 py-1.5 text-[11px] font-bold outline-none rounded-lg placeholder:text-foreground/30"
+                                  />
+                                  <button
+                                    onClick={() => handleOverrideAC(p.bill!.id, r.room_id)}
+                                    disabled={overriding === r.room_id || !overrideInputs[r.room_id]}
+                                    className="px-3 py-1.5 rounded-lg bg-primary text-white text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40 flex items-center gap-1"
+                                  >
+                                    {overriding === r.room_id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Set'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleNotify(r)}
+                                    title={r.tenant_phone ? 'Send WhatsApp reminder' : 'Copy reminder message'}
+                                    className="px-3 py-1.5 rounded-lg border border-amber-300/60 text-amber-700 bg-amber-50 text-[10px] font-extrabold uppercase tracking-widest hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                  >
+                                    {copiedRoom === r.room_id ? <Check className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
+                                    {copiedRoom === r.room_id ? 'Copied' : r.tenant_phone ? 'WhatsApp' : 'Notify'}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
