@@ -59,20 +59,41 @@ export async function requireAdmin(
 
 export async function requireTenant(
   request: NextRequest
-): Promise<{ userId: string; email: string; roomId: string | null } | NextResponse> {
+): Promise<{ userId: string; tenantId: string; email: string; roomId: string | null } | NextResponse> {
   const token = request.headers.get('Authorization')?.replace('Bearer ', '');
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data: tenant } = await supabaseAdmin
+  // Primary: match by auth UID
+  const { data: byId } = await supabaseAdmin
     .from('tenants')
     .select('id, room_id')
     .eq('id', user.id)
-    .single();
+    .in('status', ['active', 'notice'])
+    .maybeSingle();
 
-  return { userId: user.id, email: user.email!, roomId: tenant?.room_id ?? null };
+  if (byId) {
+    return { userId: user.id, tenantId: user.id, email: user.email!, roomId: byId.room_id ?? null };
+  }
+
+  // Fallback: tenant activated with a placeholder UUID — match by email
+  const email = user.email?.toLowerCase().trim();
+  if (email) {
+    const { data: byEmail } = await supabaseAdmin
+      .from('tenants')
+      .select('id, room_id')
+      .eq('email', email)
+      .in('status', ['active', 'notice'])
+      .maybeSingle();
+
+    if (byEmail) {
+      return { userId: user.id, tenantId: byEmail.id, email: user.email!, roomId: byEmail.room_id ?? null };
+    }
+  }
+
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
 
 export async function requireGuest(

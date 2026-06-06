@@ -4,7 +4,7 @@ import { supabaseAdmin, requireTenant } from '@/lib/supabaseAdmin';
 export async function POST(request: NextRequest) {
   const auth = await requireTenant(request);
   if (auth instanceof NextResponse) return auth;
-  const { userId, roomId } = auth;
+  const { userId, tenantId, roomId } = auth;
 
   if (!roomId) {
     return NextResponse.json({ error: 'You have no assigned room' }, { status: 403 });
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   const { data: tenant } = await supabaseAdmin
     .from('tenants')
     .select('name')
-    .eq('id', userId)
+    .eq('id', tenantId)
     .single();
 
   const { data: bill, error } = await supabaseAdmin

@@ -581,7 +581,7 @@ function VaultSection({ tenantId }: { tenantId: string }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Electricity section — bill share status + AC unit submission
+// Electricity section — bill share status + AC meter reading + bill upload
 // ────────────────────────────────────────────────────────────────────────────
 
 import type { BillShareResponse } from '@/app/api/tenant/bills/my-share/route';
@@ -593,101 +593,103 @@ function getAuthHeader(): Record<string, string> {
   return {};
 }
 
+interface ACReading {
+  id: string;
+  reading_month: string;
+  meter_reading: number;
+  photo_url: string | null;
+  submitted_at: string;
+}
+
 function ElectricitySection({ tenantId }: { tenantId: string }) {
-  const [share,      setShare]      = useState<BillShareResponse | null>(null);
-  const [hasAC,      setHasAC]      = useState(false);
-  const [activeBill, setActiveBill] = useState<{ id: string; bill_month: string } | null>(null);
-  const [existing,   setExisting]   = useState<number | null>(null);
-  const [acUnits,    setAcUnits]    = useState('');
-  const [loading,    setLoading]    = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [saved,      setSaved]      = useState(false);
-  const [error,      setError]      = useState('');
+  const [share,        setShare]        = useState<BillShareResponse | null>(null);
+  const [hasAC,        setHasAC]        = useState(false);
+  const [prevReading,  setPrevReading]  = useState<ACReading | null>(null);
+  const [currReading,  setCurrReading]  = useState<ACReading | null>(null);
+  const [readingVal,   setReadingVal]   = useState('');
+  const [loading,      setLoading]      = useState(true);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [saved,        setSaved]        = useState(false);
+  const [error,        setError]        = useState('');
 
   // Meter photo upload
-  const meterPhotoRef                   = useRef<HTMLInputElement>(null);
-  const [meterPhoto, setMeterPhoto]     = useState<File | null>(null);
-  const [meterPhotoUrl, setMeterPhotoUrl] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const meterPhotoRef                       = useRef<HTMLInputElement>(null);
+  const [meterPhoto,    setMeterPhoto]      = useState<File | null>(null);
+  const [meterPhotoUrl, setMeterPhotoUrl]   = useState<string | null>(null);
+  const [uploadingPhoto,setUploadingPhoto]  = useState(false);
 
   // Main bill upload
-  const billFileRef                     = useRef<HTMLInputElement>(null);
-  const [billMonth,  setBillMonth]      = useState('');
-  const [billFile,   setBillFile]       = useState<File | null>(null);
-  const [uploadingBill, setUploadingBill] = useState(false);
-  const [billUploaded, setBillUploaded] = useState(false);
-  const [billUploadErr, setBillUploadErr] = useState('');
+  const billFileRef                         = useRef<HTMLInputElement>(null);
+  const [billMonth,     setBillMonth]       = useState('');
+  const [billFile,      setBillFile]        = useState<File | null>(null);
+  const [uploadingBill, setUploadingBill]   = useState(false);
+  const [billUploaded,  setBillUploaded]    = useState(false);
+  const [billUploadErr, setBillUploadErr]   = useState('');
 
   const load = async () => {
     setLoading(true);
-    // Fetch bill share status
-    const res = await fetch('/api/tenant/bills/my-share', { headers: getAuthHeader() });
-    if (res.ok) setShare(await res.json());
 
-    // Fetch room's AC flag + current validated bill for submission
-    const { data: tenant } = await supabase.from('tenants').select('room_id').eq('id', tenantId).single();
-    if (!tenant?.room_id) { setLoading(false); return; }
+    const [shareRes, roomRes, readRes] = await Promise.all([
+      fetch('/api/tenant/bills/my-share', { headers: getAuthHeader() }),
+      supabase.from('tenants').select('room_id').eq('id', tenantId).maybeSingle(),
+      fetch('/api/tenant/ac-readings', { headers: getAuthHeader() }),
+    ]);
 
-    const { data: room } = await supabase.from('rooms').select('property_id, has_ac').eq('id', tenant.room_id).single();
-    setHasAC(!!room?.has_ac);
+    if (shareRes.ok) setShare(await shareRes.json());
 
-    if (room?.property_id) {
-      const { data: bills } = await supabase
-        .from('electricity_bills')
-        .select('id, bill_month')
-        .eq('property_id', room.property_id)
-        .eq('status', 'validated')
-        .order('bill_month', { ascending: false })
-        .limit(1);
-
-      if (bills?.length) {
-        setActiveBill(bills[0]);
-        const { data: sub } = await supabase
-          .from('tenant_ac_submissions')
-          .select('ac_units_submitted')
-          .eq('bill_id', bills[0].id)
-          .eq('tenant_id', tenantId)
-          .maybeSingle();
-        if (sub) { setExisting(sub.ac_units_submitted); setAcUnits(String(sub.ac_units_submitted)); }
-      }
+    if (roomRes.data?.room_id) {
+      const { data: room } = await supabase.from('rooms').select('has_ac').eq('id', roomRes.data.room_id).single();
+      setHasAC(!!room?.has_ac);
     }
+
+    if (readRes.ok) {
+      const { current, previous } = await readRes.json();
+      setCurrReading(current ?? null);
+      setPrevReading(previous ?? null);
+      if (current)           setReadingVal(String(current.meter_reading));
+      if (current?.photo_url) setMeterPhotoUrl(current.photo_url);
+    }
+
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [tenantId]);
+  useEffect(() => { load(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Upload meter photo to storage, return public URL
   const handleMeterPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeBill) return;
+    if (!file) return;
     setMeterPhoto(file);
     setUploadingPhoto(true);
-    const path = `ac-meter-photos/${tenantId}/${activeBill.id}.${file.name.split('.').pop() || 'jpg'}`;
-    const { error } = await supabase.storage.from('bills').upload(path, file, { upsert: true, contentType: file.type });
-    if (!error) {
+    const month = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 7);
+    const path  = `ac-meter-photos/${tenantId}/${month}.${file.name.split('.').pop() || 'jpg'}`;
+    const { error: upErr } = await supabase.storage.from('bills').upload(path, file, { upsert: true, contentType: file.type });
+    if (!upErr) {
       const { data: { publicUrl } } = supabase.storage.from('bills').getPublicUrl(path);
       setMeterPhotoUrl(publicUrl);
     }
     setUploadingPhoto(false);
   };
 
-  const handleSubmit = async () => {
-    if (!activeBill || !acUnits.trim()) return;
-    const val = parseFloat(acUnits);
-    if (isNaN(val) || val < 0) { setError('Enter a valid number ≥ 0'); return; }
+  const handleSubmitReading = async () => {
+    const val = parseFloat(readingVal);
+    if (isNaN(val) || val < 0) { setError('Enter a valid meter reading ≥ 0'); return; }
+    if (prevReading && val < Number(prevReading.meter_reading)) {
+      setError(`Reading must be ≥ previous (${prevReading.meter_reading})`);
+      return;
+    }
     setError('');
     setSubmitting(true);
-    const res = await fetch(`/api/bills/${activeBill.id}/ac-units`, {
+    const res = await fetch('/api/tenant/ac-readings', {
       method: 'POST',
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ac_units_submitted: val, meter_photo_url: meterPhotoUrl }),
+      body: JSON.stringify({ meter_reading: val, photo_url: meterPhotoUrl }),
     });
     const json = await res.json();
     setSubmitting(false);
     if (!res.ok) { setError(json.error || 'Submission failed'); return; }
-    setExisting(val);
+    setCurrReading(json);
     setSaved(true);
-    setTimeout(async () => { setSaved(false); await load(); }, 2000);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const handleBillUpload = async () => {
@@ -697,11 +699,7 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
     const fd = new FormData();
     fd.append('bill_month', billMonth);
     fd.append('image', billFile);
-    const res = await fetch('/api/tenant/bills/upload', {
-      method: 'POST',
-      headers: getAuthHeader(),
-      body: fd,
-    });
+    const res  = await fetch('/api/tenant/bills/upload', { method: 'POST', headers: getAuthHeader(), body: fd });
     const json = await res.json();
     setUploadingBill(false);
     if (!res.ok) { setBillUploadErr(json.error || 'Upload failed'); return; }
@@ -722,13 +720,26 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
     locked:           { icon: CheckCircle2,    color: 'text-emerald-600',   bg: 'bg-emerald-50',      border: 'border-emerald-200/60'},
   } as const;
 
-  const cfg = share ? STATUS_CONFIG[share.status] : STATUS_CONFIG.no_bill;
+  const cfg        = share ? STATUS_CONFIG[share.status] : STATUS_CONFIG.no_bill;
   const StatusIcon = cfg.icon;
+
+  const thisMonthLabel = new Date(Date.now() + 5.5 * 3600000).toLocaleString('en-IN', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+  const prevMonthLabel = prevReading
+    ? new Date(prevReading.reading_month + 'T12:00:00Z').toLocaleString('en-IN', {
+        month: 'short', year: 'numeric', timeZone: 'UTC',
+      })
+    : null;
+  const unitsConsumed = (currReading && prevReading)
+    ? (Number(currReading.meter_reading) - Number(prevReading.meter_reading)).toFixed(1)
+    : null;
 
   return (
     <div className="space-y-4">
+
       {/* ── Bill share status card ── */}
-      <div className={cn('soft-card border p-5 space-y-3', cfg.bg, cfg.border)}>
+      <div className={cn('soft-card border p-5', cfg.bg, cfg.border)}>
         <div className="flex items-start gap-3">
           <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', cfg.bg)}>
             <StatusIcon className={cn('w-5 h-5', cfg.color)} />
@@ -740,25 +751,9 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
             <p className={cn('text-sm font-bold leading-snug', cfg.color)}>{share?.message ?? 'Loading billing status…'}</p>
           </div>
         </div>
-
-        {/* AC reading progress bar */}
-        {share?.ac_progress && share.ac_progress.total > 0 && (
-          <div className="space-y-1.5 pt-1">
-            <div className="flex justify-between text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">
-              <span>AC Meter Readings</span>
-              <span>{share.ac_progress.submitted}/{share.ac_progress.total} submitted</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-              <div
-                className="h-full bg-blue-400 rounded-full transition-all duration-700"
-                style={{ width: `${(share.ac_progress.submitted / share.ac_progress.total) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* ── My split breakdown (when calculated or locked) ── */}
+      {/* ── My split breakdown ── */}
       {share?.my_split && (
         <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Your Bill Breakdown</p>
@@ -775,8 +770,6 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
               </div>
             ))}
           </div>
-
-          {/* All flatmates summary (locked only, totals only) */}
           {share.status === 'locked' && share.all_splits && share.all_splits.length > 1 && (
             <div className="space-y-1.5 border-t border-foreground/5 pt-3">
               <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/25">All Flatmates</p>
@@ -791,69 +784,95 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {/* ── AC meter reading submission (only when bill is validated & room has AC) ── */}
-      {hasAC && activeBill && (
+      {/* ── AC meter reading (rooms with AC only) ── */}
+      {hasAC && (
         <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">Submit AC Reading</p>
-              <p className="text-sm font-bold text-foreground mt-0.5">
-                {new Date(activeBill.bill_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-              </p>
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30">AC Meter Reading</p>
+              <p className="text-sm font-bold text-foreground mt-0.5">{thisMonthLabel}</p>
             </div>
-            <span className="text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border border-blue-400/30 bg-blue-50 text-blue-600">
-              Open
-            </span>
+            {currReading && (
+              <span className="text-[9px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border border-emerald-400/30 bg-emerald-50 text-emerald-600">
+                Submitted
+              </span>
+            )}
           </div>
 
-          {existing !== null && (
-            <div className="soft-well border border-emerald-300/30 bg-emerald-50/60 px-4 py-3 rounded-xl">
-              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Current submission</p>
-              <p className="text-2xl font-black text-emerald-700 tracking-tighter">{existing} <span className="text-sm font-bold text-emerald-600/60">units</span></p>
-              <p className="text-[10px] text-emerald-600/60 mt-0.5">You can update this before the bill is locked.</p>
+          {/* Previous / units consumed */}
+          {prevReading ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="soft-well border border-foreground/10 rounded-xl p-3 text-center">
+                <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Previous Reading</p>
+                <p className="text-xl font-black tracking-tighter text-foreground mt-0.5">
+                  {Number(prevReading.meter_reading).toLocaleString('en-IN')}
+                </p>
+                <p className="text-[9px] text-foreground/30 font-medium">{prevMonthLabel}</p>
+              </div>
+              <div className={cn('soft-well border rounded-xl p-3 text-center',
+                unitsConsumed !== null ? 'border-blue-400/30 bg-blue-50/60' : 'border-foreground/10')}>
+                <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Units This Month</p>
+                <p className={cn('text-xl font-black tracking-tighter mt-0.5',
+                  unitsConsumed !== null ? 'text-blue-700' : 'text-foreground/30')}>
+                  {unitsConsumed ?? '—'}
+                </p>
+                <p className="text-[9px] text-foreground/30 font-medium">current − previous</p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200/60">
+              <p className="text-[11px] text-amber-700 font-bold">
+                No previous reading on record. Your first submission becomes the baseline.
+              </p>
             </div>
           )}
 
-          {/* Units input */}
+          {/* Reading input */}
           <div className="space-y-2">
-            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">AC Units Used This Month</label>
+            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Current Meter Reading</label>
             <div className="flex gap-3">
               <input
-                type="number" min="0" step="0.5"
-                value={acUnits} onChange={e => setAcUnits(e.target.value)}
-                placeholder="e.g. 120"
+                type="number"
+                min={prevReading ? String(prevReading.meter_reading) : '0'}
+                step="1"
+                value={readingVal}
+                onChange={e => setReadingVal(e.target.value)}
+                placeholder="e.g. 1380"
                 className="flex-1 soft-well border border-white rounded-xl px-4 py-3 text-base font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
               />
               <button
-                onClick={handleSubmit}
-                disabled={!acUnits.trim() || submitting}
+                onClick={handleSubmitReading}
+                disabled={!readingVal.trim() || submitting}
                 className={cn('px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest transition-all flex items-center gap-2',
-                  acUnits.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+                  readingVal.trim() && !submitting ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
                 )}
               >
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> :
                  saved      ? <CheckCircle2 className="w-4 h-4 text-white" /> :
                               <Send className="w-4 h-4" />}
-                {submitting ? 'Saving…' : saved ? 'Saved!' : 'Submit'}
+                {submitting ? 'Saving…' : saved ? 'Saved!' : currReading ? 'Update' : 'Submit'}
               </button>
             </div>
             {error && <p className="text-[11px] text-red-500 font-medium">{error}</p>}
-            <p className="text-[10px] text-foreground/30">Check your AC meter at month-end and enter total units consumed.</p>
+            <p className="text-[10px] text-foreground/30">Enter the cumulative reading shown on your AC meter at month-end.</p>
           </div>
 
-          {/* Meter photo upload */}
+          {/* Photo upload */}
           <div className="border-t border-white/60 pt-4 space-y-2">
             <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40 flex items-center gap-1.5">
-              <Camera className="w-3 h-3" /> Meter Photo <span className="text-foreground/20 normal-case tracking-normal font-medium">(optional)</span>
+              <Camera className="w-3 h-3" /> Meter Photo
+              <span className="text-foreground/20 normal-case tracking-normal font-medium">(recommended)</span>
             </label>
             {meterPhotoUrl ? (
               <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200/50">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                 <span className="text-[11px] font-bold text-emerald-700 flex-1 truncate">
-                  {meterPhoto?.name ?? 'Photo uploaded'}
+                  {meterPhoto?.name ?? 'Photo attached'}
                 </span>
+                <a href={meterPhotoUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] font-bold text-blue-500 hover:underline">View</a>
                 <button onClick={() => { setMeterPhoto(null); setMeterPhotoUrl(null); }}
-                  className="text-emerald-400 hover:text-red-400 transition-colors text-[10px] font-bold">Remove</button>
+                  className="text-emerald-400 hover:text-red-400 transition-colors text-[10px] font-bold ml-2">Remove</button>
               </div>
             ) : (
               <button
@@ -868,9 +887,7 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
             )}
             <input
               ref={meterPhotoRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
+              type="file" accept="image/*" capture="environment"
               className="hidden"
               onChange={handleMeterPhoto}
             />
@@ -878,7 +895,6 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {/* No AC room message */}
       {!hasAC && !share?.my_split && (
         <div className="soft-card border border-white p-5 flex items-center gap-3 text-sm text-foreground/40">
           <BatteryCharging className="w-5 h-5 shrink-0" />
@@ -886,14 +902,14 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {/* ── Upload main electricity bill ─── */}
+      {/* ── Upload main electricity bill ── */}
       <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
         <div>
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload Electricity Bill
           </p>
           <p className="text-[11px] text-foreground/40 mt-1">
-            If you have the physical bill, upload a photo and we'll add it to your account.
+            If you have the physical bill, upload a photo or PDF and we'll add it to your account.
           </p>
         </div>
 
@@ -908,9 +924,7 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
           <div className="space-y-1.5">
             <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Bill Month</label>
             <input
-              type="month"
-              value={billMonth}
-              onChange={e => setBillMonth(e.target.value)}
+              type="month" value={billMonth} onChange={e => setBillMonth(e.target.value)}
               className="w-full soft-well border border-white rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
             />
           </div>
@@ -922,7 +936,8 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
             >
               {billFile ? billFile.name : 'Choose file…'}
             </button>
-            <input ref={billFileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => setBillFile(e.target.files?.[0] ?? null)} />
+            <input ref={billFileRef} type="file" accept="image/*,.pdf" className="hidden"
+              onChange={e => setBillFile(e.target.files?.[0] ?? null)} />
           </div>
         </div>
 
@@ -933,12 +948,12 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
           disabled={!billFile || !billMonth || uploadingBill}
           className={cn(
             'px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest flex items-center gap-2 transition-all',
-            billFile && billMonth && !uploadingBill
-              ? 'btn-terracotta'
-              : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+            billFile && billMonth && !uploadingBill ? 'btn-terracotta' : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
           )}
         >
-          {uploadingBill ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</> : <><Upload className="w-3.5 h-3.5" /> Submit Bill</>}
+          {uploadingBill
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+            : <><Upload className="w-3.5 h-3.5" /> Submit Bill</>}
         </button>
       </div>
     </div>
