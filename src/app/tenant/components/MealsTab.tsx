@@ -149,15 +149,14 @@ export function MealsTab({ userId }: Props) {
   const loadAll = useCallback(async () => {
     setLoadingInit(true);
 
-    const [prefsRes, menusRes, todaySkipsRes, futureSkipsRes] = await Promise.all([
+    // Get session token once for API route calls
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? '';
+    const apiHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    const [prefsRes, todaySkipsRes, futureSkipsRes, menusRows] = await Promise.all([
       // SELECT * FROM tenant_meal_preferences WHERE tenant_id = ?
       supabase.from('tenant_meal_preferences').select('*').eq('tenant_id', userId).single(),
-
-      // SELECT date, meal_block, menu_items(*) FROM menus WHERE date BETWEEN today AND today+7
-      supabase.from('menus')
-        .select('date, meal_block, menu_items(item_name, sort_order)')
-        .gte('date', today)
-        .lte('date', istDate(7)),
 
       // SELECT meal_block FROM meal_skip_requests WHERE tenant_id = ? AND skip_date = today
       supabase.from('meal_skip_requests')
@@ -166,11 +165,15 @@ export function MealsTab({ userId }: Props) {
         .eq('skip_date', today),
 
       // SELECT skip_date, meal_block FROM meal_skip_requests WHERE tenant_id = ? AND skip_date > today
-      // Kitchen Hub queries this table to calculate daily prep headcount
       supabase.from('meal_skip_requests')
         .select('skip_date, meal_block')
         .eq('tenant_id', userId)
         .gt('skip_date', today),
+
+      // Menus fetched via service-role API route to bypass RLS
+      fetch(`/api/tenant/menus?from=${today}&to=${istDate(7)}`, { headers: apiHeaders })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []),
     ]);
 
     if (prefsRes.data) {
@@ -181,13 +184,11 @@ export function MealsTab({ userId }: Props) {
       });
     }
 
-    if (menusRes.data) {
-      setWeekMenus((menusRes.data as any[]).map(m => ({
-        date:  m.date,
-        block: m.meal_block as MealBlock,
-        items: ((m.menu_items as any[]) ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order),
-      })));
-    }
+    setWeekMenus((menusRows as any[]).map(m => ({
+      date:  m.date,
+      block: m.meal_block as MealBlock,
+      items: ((m.menu_items as any[]) ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order),
+    })));
 
     if (todaySkipsRes.data) {
       setSkips(new Set(todaySkipsRes.data.map((s: any) => s.meal_block as MealBlock)));

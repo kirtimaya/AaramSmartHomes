@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon, Pencil, ToggleLeft, ToggleRight, Save, Loader2, History, Coffee, Utensils, Moon, CheckCircle2 } from 'lucide-react';
+import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon, Pencil, ToggleLeft, ToggleRight, Save, Loader2, History, Plus, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -192,27 +192,44 @@ function EditTenantModal({
   );
 }
 
-const MEAL_META = [
-  { block: 'Breakfast', icon: Coffee, short: 'B' },
-  { block: 'Lunch',     icon: Utensils, short: 'L' },
-  { block: 'Dinner',    icon: Moon, short: 'D' },
-] as const;
+interface MealServicePeriod { id: string; start_date: string; end_date: string }
 
-function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, toast, mealAttendance, onToggleMeal }: {
+function fmtShortDate(dateStr: string): string {
+  return new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', timeZone: 'UTC',
+  });
+}
+
+function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, toast }: {
   tenant: Tenant; rooms: Room[]; properties: Property[];
   onRoomChange: (tenantId: string, newRoomId: string | null) => Promise<void>;
   onStatusToggle: (tenantId: string, currentStatus: string) => Promise<void>;
   onEdit: (tenant: Tenant) => void;
   toast: (msg: string, ok?: boolean) => void;
-  mealAttendance: Set<string>;
-  onToggleMeal: (tenantId: string, block: string) => Promise<void>;
 }) {
   const [pickerOpen,     setPickerOpen]     = useState(false);
   const [saving,         setSaving]         = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
-  const [togglingMeal,   setTogglingMeal]   = useState<string | null>(null);
+
+  // ── Meal service periods ──────────────────────────────────────────────
+  const [periods,        setPeriods]        = useState<MealServicePeriod[] | null>(null);
+  const [periodsLoading, setPeriodsLoading] = useState(false);
+  const [showAddForm,    setShowAddForm]    = useState(false);
+  const [newStart,       setNewStart]       = useState('');
+  const [newEnd,         setNewEnd]         = useState('');
+  const [addingPeriod,   setAddingPeriod]   = useState(false);
+  const [deletingId,     setDeletingId]     = useState<string | null>(null);
+
   const room     = rooms.find(r => r.id === tenant.room_id);
   const property = room ? properties.find(p => p.id === room.property_id) : null;
+
+  useEffect(() => {
+    setPeriodsLoading(true);
+    fetch(`/api/admin/meal-service-periods?tenantId=${tenant.id}`, { headers: getAuthHeader() })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setPeriods(data); setPeriodsLoading(false); })
+      .catch(() => setPeriodsLoading(false));
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAssign = async (roomId: string | null) => {
     setSaving(true);
@@ -237,11 +254,40 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
     }
   };
 
-  const handleMeal = async (block: string) => {
-    setTogglingMeal(block);
-    try { await onToggleMeal(tenant.id, block); }
-    catch { toast('Meal update failed', false); }
-    finally { setTogglingMeal(null); }
+  const addPeriod = async () => {
+    if (!newStart || !newEnd || newEnd < newStart) {
+      toast('End date must be on or after start date', false);
+      return;
+    }
+    setAddingPeriod(true);
+    const res = await fetch('/api/admin/meal-service-periods', {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: tenant.id, startDate: newStart, endDate: newEnd }),
+    });
+    if (res.ok) {
+      const period = await res.json();
+      setPeriods(prev => [period, ...(prev ?? [])]);
+      setNewStart(''); setNewEnd(''); setShowAddForm(false);
+      toast('Meal period added');
+    } else {
+      toast('Failed to add period', false);
+    }
+    setAddingPeriod(false);
+  };
+
+  const deletePeriod = async (id: string) => {
+    setDeletingId(id);
+    const res = await fetch(`/api/admin/meal-service-periods?id=${id}`, {
+      method: 'DELETE', headers: getAuthHeader(),
+    });
+    if (res.ok) {
+      setPeriods(prev => (prev ?? []).filter(p => p.id !== id));
+      toast('Period removed');
+    } else {
+      toast('Failed to remove period', false);
+    }
+    setDeletingId(null);
   };
 
   return (
@@ -283,36 +329,80 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
         )}
       </div>
 
-      {/* ── Meal attendance (today) ── */}
-      <div className="border-t border-white/60 pt-3">
-        <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 mb-2">Meals Today</p>
-        <div className="flex gap-2">
-          {MEAL_META.map(({ block, icon: Icon, short }) => {
-            const attended = mealAttendance.has(`${tenant.id}:${block}`);
-            const loading  = togglingMeal === block;
-            return (
-              <button
-                key={block}
-                onClick={() => handleMeal(block)}
-                disabled={loading}
-                title={block}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl border text-[10px] font-extrabold uppercase tracking-widest transition-all',
-                  attended
-                    ? 'bg-emerald-50 border-emerald-300/50 text-emerald-700'
-                    : 'soft-button border-white text-foreground/30 hover:border-foreground/20'
-                )}
-              >
-                {loading
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : attended
-                    ? <CheckCircle2 className="w-3 h-3" />
-                    : <Icon className="w-3 h-3" />}
-                {short}
-              </button>
-            );
-          })}
+      {/* ── Meal Service Periods ── */}
+      <div className="border-t border-white/60 pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 flex items-center gap-1.5">
+            <Calendar className="w-3 h-3" /> Meal Service
+          </p>
+          {periodsLoading && <Loader2 className="w-3 h-3 animate-spin text-foreground/25" />}
         </div>
+
+        {/* Existing periods */}
+        {(periods ?? []).length > 0 && (
+          <div className="space-y-1.5">
+            {(periods ?? []).map(p => (
+              <div key={p.id} className="flex items-center justify-between gap-2 bg-emerald-50/80 border border-emerald-200/50 rounded-xl px-3 py-2">
+                <span className="text-[10px] font-extrabold text-emerald-700">
+                  {fmtShortDate(p.start_date)} → {fmtShortDate(p.end_date)}
+                </span>
+                <button
+                  onClick={() => deletePeriod(p.id)}
+                  disabled={deletingId === p.id}
+                  className="text-red-400 hover:text-red-500 transition-colors shrink-0"
+                >
+                  {deletingId === p.id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <X className="w-3 h-3" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add period form */}
+        <AnimatePresence>
+          {showAddForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-2 pt-1">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-extrabold text-foreground/30 uppercase tracking-widest">From</p>
+                    <input type="date" value={newStart} onChange={e => setNewStart(e.target.value)}
+                      className="w-full soft-well border border-white rounded-xl px-2.5 py-2 text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-extrabold text-foreground/30 uppercase tracking-widest">To</p>
+                    <input type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)}
+                      className="w-full soft-well border border-white rounded-xl px-2.5 py-2 text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => { setShowAddForm(false); setNewStart(''); setNewEnd(''); }}
+                    className="flex-1 soft-button border border-white py-2 text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">
+                    Cancel
+                  </button>
+                  <button onClick={addPeriod} disabled={addingPeriod || !newStart || !newEnd}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-widest border border-secondary/30 text-secondary hover:bg-secondary/5 transition-all disabled:opacity-40">
+                    {addingPeriod ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!showAddForm && (
+          <button onClick={() => setShowAddForm(true)}
+            className="w-full flex items-center justify-center gap-1.5 soft-button border border-white py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-foreground/40 hover:text-secondary transition-colors">
+            <Plus className="w-3 h-3" /> Add Period
+          </button>
+        )}
       </div>
 
       <div className="relative">
@@ -533,13 +623,12 @@ function InvitationCard({ invitation, rooms, properties, onDelete, onActivate, t
 }
 
 export default function TenantsPage() {
-  const [tenants,       setTenants]       = useState<Tenant[]>([]);
-  const [pastTenants,   setPastTenants]   = useState<Tenant[]>([]);
-  const [invitations,   setInvitations]   = useState<TenantInvitation[]>([]);
-  const [rooms,         setRooms]         = useState<Room[]>([]);
-  const [properties,    setProperties]    = useState<Property[]>([]);
-  const [mealAttendance, setMealAttendance] = useState<Set<string>>(new Set());
-  const [loading,       setLoading]       = useState(true);
+  const [tenants,     setTenants]     = useState<Tenant[]>([]);
+  const [pastTenants, setPastTenants] = useState<Tenant[]>([]);
+  const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
+  const [rooms,       setRooms]       = useState<Room[]>([]);
+  const [properties,  setProperties]  = useState<Property[]>([]);
+  const [loading,     setLoading]     = useState(true);
   const [search,        setSearch]        = useState('');
   const [activeTab,     setActiveTab]     = useState<'tenants' | 'invitations' | 'past'>('tenants');
   const [toast,         setToastState]    = useState<{ msg: string; ok: boolean } | null>(null);
@@ -555,12 +644,11 @@ export default function TenantsPage() {
   const fetchAll = async () => {
     setLoading(true);
     const today = getISTDateStr();
-    const [propsRes, roomsRes, tenantsRes, invitesRes, mealRes] = await Promise.all([
+    const [propsRes, roomsRes, tenantsRes, invitesRes] = await Promise.all([
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, property_id, occupancy_status, tenant_id').order('name'),
       supabase.from('tenants').select('id, name, email, phone, room_id, created_at, status, move_in_date, move_out_date').order('name'),
       supabase.from('tenant_invitations').select('id, room_id, name, phone, email, status, token, created_at').eq('status', 'pending').order('created_at', { ascending: false }),
-      fetch(`/api/admin/meal-attendance?date=${today}`, { headers: getAuthHeader() }).then(r => r.ok ? r.json() : []),
     ]);
     if (propsRes.data) setProperties(propsRes.data);
     if (roomsRes.data) setRooms(roomsRes.data as Room[]);
@@ -575,8 +663,6 @@ export default function TenantsPage() {
       setPastTenants(past);
     }
     if (invitesRes.data) setInvitations(invitesRes.data as TenantInvitation[]);
-    const attendanceArr = Array.isArray(mealRes) ? mealRes as { tenant_id: string; meal_block: string }[] : [];
-    setMealAttendance(new Set(attendanceArr.map(r => `${r.tenant_id}:${r.meal_block}`)));
     setLoading(false);
   };
 
@@ -648,25 +734,6 @@ export default function TenantsPage() {
       if (r.id === newRoomId) return { ...r, tenant_id: tenantId, occupancy_status: 'Occupied' };
       return r;
     }));
-  };
-
-  const handleToggleMeal = async (tenantId: string, mealBlock: string) => {
-    const today = getISTDateStr();
-    const res = await fetch('/api/admin/meal-attendance', {
-      method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantId, date: today, mealBlock }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || 'Meal toggle failed');
-    }
-    const key = `${tenantId}:${mealBlock}`;
-    setMealAttendance(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
   };
 
   const q = search.toLowerCase();
@@ -760,8 +827,6 @@ export default function TenantsPage() {
                   onStatusToggle={handleStatusToggle}
                   onEdit={setEditingTenant}
                   toast={showToast}
-                  mealAttendance={mealAttendance}
-                  onToggleMeal={handleToggleMeal}
                 />
               ))}
             </div>
