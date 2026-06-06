@@ -127,7 +127,53 @@ CREATE POLICY "tenant_read_own_split" ON bill_splits
     )
   );
 
+-- ── expenses ──────────────────────────────────────────────────
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "admins_all_expenses"       ON expenses;
+DROP POLICY IF EXISTS "anyone_read_expenses"       ON expenses;
+
+CREATE POLICY "admins_all_expenses" ON expenses
+  FOR ALL TO authenticated
+  USING (auth_is_admin()) WITH CHECK (auth_is_admin());
+
+-- ── income_records ────────────────────────────────────────────
+ALTER TABLE income_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "admins_all_income_records"  ON income_records;
+
+CREATE POLICY "admins_all_income_records" ON income_records
+  FOR ALL TO authenticated
+  USING (auth_is_admin()) WITH CHECK (auth_is_admin());
+
+-- ── expense_room_splits ───────────────────────────────────────
+ALTER TABLE expense_room_splits ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "admins_all_expense_room_splits" ON expense_room_splits;
+
+CREATE POLICY "admins_all_expense_room_splits" ON expense_room_splits
+  FOR ALL TO authenticated
+  USING (auth_is_admin()) WITH CHECK (auth_is_admin());
+
+-- ── properties (ensure readable) ─────────────────────────────
+ALTER TABLE properties ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anyone_read_properties" ON properties;
+DROP POLICY IF EXISTS "admins_all_properties"  ON properties;
+
+CREATE POLICY "anyone_read_properties" ON properties
+  FOR SELECT TO anon, authenticated
+  USING (true);
+
+CREATE POLICY "admins_all_properties" ON properties
+  FOR ALL TO authenticated
+  USING (auth_is_admin()) WITH CHECK (auth_is_admin());
+
 -- Verify
 SELECT tablename, rowsecurity FROM pg_tables
-WHERE tablename IN ('tenant_invitations','electricity_bills','rooms','tenants','tenant_ac_submissions','bill_splits')
+WHERE tablename IN (
+  'tenant_invitations','electricity_bills','rooms','tenants',
+  'tenant_ac_submissions','bill_splits',
+  'expenses','income_records','expense_room_splits','properties'
+)
 ORDER BY tablename;
