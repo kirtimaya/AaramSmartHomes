@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon } from 'lucide-react';
+import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon, Pencil, ToggleLeft, ToggleRight, Save, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -82,13 +82,101 @@ function RoomPicker({
   );
 }
 
-function TenantCard({ tenant, rooms, properties, onRoomChange, toast }: {
+function EditTenantModal({
+  tenant, onClose, onSave, toast,
+}: {
+  tenant: Tenant;
+  onClose: () => void;
+  onSave: (id: string, updates: Partial<Tenant>) => Promise<void>;
+  toast: (msg: string, ok?: boolean) => void;
+}) {
+  const [name, setName] = useState(tenant.name);
+  const [phone, setPhone] = useState(tenant.phone ?? '');
+  const [moveIn, setMoveIn] = useState('');
+  const [status, setStatus] = useState(tenant.status);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(tenant.id, { name, phone: phone || null, status });
+      toast('Tenant updated');
+      onClose();
+    } catch {
+      toast('Failed to update tenant', false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="soft-card border border-white bg-background w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Edit Tenant</p>
+          <button onClick={onClose} className="text-foreground/30 hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Name</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Phone</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value)}
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60 appearance-none">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="notice">On Notice</option>
+              <option value="moved_out">Moved Out</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 soft-button border border-white py-2.5 text-[11px] font-extrabold uppercase tracking-widest text-foreground/40">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 flex items-center justify-center gap-2 btn-terracotta py-2.5 text-[11px] font-extrabold uppercase tracking-widest">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, toast }: {
   tenant: Tenant; rooms: Room[]; properties: Property[];
   onRoomChange: (tenantId: string, newRoomId: string | null) => Promise<void>;
+  onStatusToggle: (tenantId: string, currentStatus: string) => Promise<void>;
+  onEdit: (tenant: Tenant) => void;
   toast: (msg: string, ok?: boolean) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [togglingStatus, setTogglingStatus] = useState(false);
   const room = rooms.find(r => r.id === tenant.room_id);
   const property = room ? properties.find(p => p.id === room.property_id) : null;
 
@@ -101,6 +189,17 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, toast }: {
       toast('Failed to update room', false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggle = async () => {
+    setTogglingStatus(true);
+    try {
+      await onStatusToggle(tenant.id, tenant.status);
+    } catch {
+      toast('Failed to update status', false);
+    } finally {
+      setTogglingStatus(false);
     }
   };
 
@@ -118,12 +217,18 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, toast }: {
             Since {new Date(tenant.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
           </p>
         </div>
-        <span className={cn(
-          'text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full border',
-          tenant.status === 'active' ? 'border-secondary/30 text-secondary bg-secondary/5' : 'border-red-300/30 text-red-400 bg-red-50'
-        )}>
-          {tenant.status === 'active' ? 'Active' : tenant.status ?? 'Unknown'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn(
+            'text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full border',
+            tenant.status === 'active' ? 'border-secondary/30 text-secondary bg-secondary/5' : 'border-red-300/30 text-red-400 bg-red-50'
+          )}>
+            {tenant.status === 'active' ? 'Active' : tenant.status ?? 'Unknown'}
+          </span>
+          <button onClick={() => onEdit(tenant)}
+            className="w-7 h-7 flex items-center justify-center soft-button border border-white text-foreground/30 hover:text-primary transition-colors rounded-lg">
+            <Pencil className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-1.5 text-[11px] font-bold text-foreground/50">
@@ -166,6 +271,26 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, toast }: {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Status toggle */}
+      <button
+        onClick={handleToggle}
+        disabled={togglingStatus}
+        className={cn(
+          'w-full flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-widest border transition-all',
+          tenant.status === 'active'
+            ? 'border-red-200/40 text-red-400 hover:bg-red-50 bg-transparent'
+            : 'border-secondary/30 text-secondary hover:bg-secondary/5 bg-transparent'
+        )}
+      >
+        {togglingStatus ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : tenant.status === 'active' ? (
+          <><ToggleLeft className="w-3.5 h-3.5" /> Deactivate</>
+        ) : (
+          <><ToggleRight className="w-3.5 h-3.5" /> Activate</>
+        )}
+      </button>
     </motion.div>
   );
 }
@@ -267,6 +392,7 @@ export default function TenantsPage() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'tenants' | 'invitations'>('tenants');
   const [toast, setToastState] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToastState({ msg, ok });
@@ -288,6 +414,34 @@ export default function TenantsPage() {
     if (tenantsRes.data) setTenants(tenantsRes.data as Tenant[]);
     if (invitesRes.data) setInvitations(invitesRes.data as TenantInvitation[]);
     setLoading(false);
+  };
+
+  const handleStatusToggle = async (tenantId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const res = await fetch(`/api/admin/tenants/${tenantId}`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json();
+      throw new Error(error || 'Status update failed');
+    }
+    setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, status: newStatus } : t));
+    showToast(`Tenant marked ${newStatus}`);
+  };
+
+  const handleUpdateTenant = async (tenantId: string, updates: Partial<Tenant>) => {
+    const res = await fetch(`/api/admin/tenants/${tenantId}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const { error } = await res.json();
+      throw new Error(error || 'Update failed');
+    }
+    setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, ...updates } : t));
   };
 
   const handleRoomChange = async (tenantId: string, newRoomId: string | null) => {
@@ -391,6 +545,8 @@ export default function TenantsPage() {
                   rooms={rooms}
                   properties={properties}
                   onRoomChange={handleRoomChange}
+                  onStatusToggle={handleStatusToggle}
+                  onEdit={setEditingTenant}
                   toast={showToast}
                 />
               ))}
@@ -418,6 +574,18 @@ export default function TenantsPage() {
           )
         )}
       </div>
+
+      {/* Edit modal */}
+      <AnimatePresence>
+        {editingTenant && (
+          <EditTenantModal
+            tenant={editingTenant}
+            onClose={() => setEditingTenant(null)}
+            onSave={handleUpdateTenant}
+            toast={showToast}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Toast */}
       <AnimatePresence>

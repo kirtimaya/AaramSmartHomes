@@ -4,10 +4,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   User, Phone, MapPin, Calendar, Shield, Upload,
-  CheckCircle2, Loader2, Camera, FileText, Eye, EyeOff,
+  CheckCircle2, Loader2, Camera, FileText, Eye, EyeOff, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -53,6 +55,8 @@ interface Props {
 // ────────────────────────────────────────────────────────────────────────────
 
 export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: Props) {
+  const { signOut } = useAuth();
+  const router = useRouter();
   const [basic, setBasic] = useState<TenantBasic>({ name: initialName, email: initialEmail, phone: '' });
   const [ext,   setExt]   = useState<ExtendedProfile>({
     date_of_birth: '', permanent_address: '', emergency_name: '', emergency_phone: '', emergency_rel: '', avatar_url: '', id_doc_url: '',
@@ -368,6 +372,19 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
           <p className="text-[10px] text-foreground/25 font-bold">PDF, JPG or PNG · Max 10 MB</p>
         </div>
       </motion.section>
+
+      {/* ── Sign Out (visible on mobile — desktop has it in the sidebar) ─── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}
+        className="md:hidden"
+      >
+        <button
+          onClick={async () => { await signOut(); router.push('/login'); }}
+          className="w-full soft-card border border-red-200/40 bg-red-50/40 px-6 py-4 flex items-center justify-center gap-2.5 text-[11px] font-extrabold uppercase tracking-widest text-red-500 hover:bg-red-100/40 transition-colors rounded-2xl"
+        >
+          <LogOut className="w-4 h-4" /> Sign Out
+        </button>
+      </motion.div>
 
     </div>
   );

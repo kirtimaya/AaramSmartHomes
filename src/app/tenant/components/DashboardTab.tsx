@@ -70,7 +70,7 @@ function formatHour(h: number): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Unit { room_number: string; status: string; lease_end_date?: string; property_name?: string }
+interface Unit { room_number: string; status: string; property_name?: string }
 interface Bill  { total_amount: number; status: 'unpaid' | 'paid'; bill_month: string }
 interface Notice {
   id:   string;
@@ -108,18 +108,17 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
     const nowMonth = today.slice(0, 7);
 
     await Promise.all([
-      // Unit / room info  — SELECT units JOIN properties
+      // Room info
       (async () => {
         if (!tenantProfile.room_id) return;
         const { data } = await supabase
-          .from('units')
-          .select('room_number, status, lease_end_date, properties(name)')
+          .from('rooms')
+          .select('name, occupancy_status, properties(name)')
           .eq('id', tenantProfile.room_id)
           .single();
         if (data) setUnit({
-          room_number: (data as any).room_number,
-          status:      (data as any).status,
-          lease_end_date: (data as any).lease_end_date,
+          room_number:   (data as any).name,
+          status:        (data as any).occupancy_status,
           property_name: (data as any).properties?.name,
         });
       })(),
@@ -149,20 +148,22 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
         }
       })(),
 
-      // Current electricity bill  — SELECT room_electricity_bills JOIN electricity_bills
+      // Current electricity bill split
       (async () => {
         if (!tenantProfile.room_id) return;
         const { data } = await supabase
-          .from('room_electricity_bills')
-          .select('total_amount, status, electricity_bills!inner(bill_month, status)')
-          .eq('unit_id', tenantProfile.room_id)
-          .eq('electricity_bills.status', 'published')
-          .eq('electricity_bills.bill_month', nowMonth)
-          .single();
+          .from('bill_splits')
+          .select('total_payable, locked_at, electricity_bills(bill_month)')
+          .eq('room_id', tenantProfile.room_id)
+          .not('locked_at', 'is', null)
+          .order('locked_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
         if (data) setBill({
-          total_amount: (data as any).total_amount,
-          status:       (data as any).status,
-          bill_month:   (data as any).electricity_bills?.bill_month,
+          total_amount: (data as any).total_payable,
+          status:       'unpaid',
+          bill_month:   new Date((data as any).electricity_bills?.bill_month)
+                          .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
         });
       })(),
 
@@ -277,14 +278,6 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
                 <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Move-in</p>
                 <p className="text-sm font-black text-foreground mt-0.5">
                   {new Date(tenantProfile.move_in_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </p>
-              </div>
-            )}
-            {unit?.lease_end_date && (
-              <div className="soft-well border border-white px-4 py-2.5 rounded-xl">
-                <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Lease ends</p>
-                <p className="text-sm font-black text-foreground mt-0.5">
-                  {new Date(unit.lease_end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
               </div>
             )}

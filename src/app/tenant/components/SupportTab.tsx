@@ -6,8 +6,9 @@ import {
   Ticket, LogOut, MessageSquare, MessageCircle, FileText, Download,
   CheckCircle2, Clock, AlertCircle, Loader2, Send, ChevronRight,
   Shield, FileCheck, Receipt, Phone, Plus, Wrench, Zap, Droplets,
-  Wind, HelpCircle, X, BatteryCharging, CreditCard,
+  Wind, HelpCircle, X, BatteryCharging, CreditCard, Camera, Upload,
 } from 'lucide-react';
+import { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { Ticket as TicketType } from '@/lib/types';
@@ -603,6 +604,20 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
   const [saved,      setSaved]      = useState(false);
   const [error,      setError]      = useState('');
 
+  // Meter photo upload
+  const meterPhotoRef                   = useRef<HTMLInputElement>(null);
+  const [meterPhoto, setMeterPhoto]     = useState<File | null>(null);
+  const [meterPhotoUrl, setMeterPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Main bill upload
+  const billFileRef                     = useRef<HTMLInputElement>(null);
+  const [billMonth,  setBillMonth]      = useState('');
+  const [billFile,   setBillFile]       = useState<File | null>(null);
+  const [uploadingBill, setUploadingBill] = useState(false);
+  const [billUploaded, setBillUploaded] = useState(false);
+  const [billUploadErr, setBillUploadErr] = useState('');
+
   const load = async () => {
     setLoading(true);
     // Fetch bill share status
@@ -641,6 +656,21 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
 
   useEffect(() => { load(); }, [tenantId]);
 
+  // Upload meter photo to storage, return public URL
+  const handleMeterPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeBill) return;
+    setMeterPhoto(file);
+    setUploadingPhoto(true);
+    const path = `ac-meter-photos/${tenantId}/${activeBill.id}.${file.name.split('.').pop() || 'jpg'}`;
+    const { error } = await supabase.storage.from('bills').upload(path, file, { upsert: true, contentType: file.type });
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('bills').getPublicUrl(path);
+      setMeterPhotoUrl(publicUrl);
+    }
+    setUploadingPhoto(false);
+  };
+
   const handleSubmit = async () => {
     if (!activeBill || !acUnits.trim()) return;
     const val = parseFloat(acUnits);
@@ -650,7 +680,7 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
     const res = await fetch(`/api/bills/${activeBill.id}/ac-units`, {
       method: 'POST',
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ac_units_submitted: val }),
+      body: JSON.stringify({ ac_units_submitted: val, meter_photo_url: meterPhotoUrl }),
     });
     const json = await res.json();
     setSubmitting(false);
@@ -658,6 +688,27 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
     setExisting(val);
     setSaved(true);
     setTimeout(async () => { setSaved(false); await load(); }, 2000);
+  };
+
+  const handleBillUpload = async () => {
+    if (!billFile || !billMonth) return;
+    setBillUploadErr('');
+    setUploadingBill(true);
+    const fd = new FormData();
+    fd.append('bill_month', billMonth);
+    fd.append('image', billFile);
+    const res = await fetch('/api/tenant/bills/upload', {
+      method: 'POST',
+      headers: getAuthHeader(),
+      body: fd,
+    });
+    const json = await res.json();
+    setUploadingBill(false);
+    if (!res.ok) { setBillUploadErr(json.error || 'Upload failed'); return; }
+    setBillUploaded(true);
+    setBillFile(null);
+    setBillMonth('');
+    setTimeout(() => setBillUploaded(false), 4000);
   };
 
   if (loading) return <Spinner />;
@@ -763,6 +814,7 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
             </div>
           )}
 
+          {/* Units input */}
           <div className="space-y-2">
             <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">AC Units Used This Month</label>
             <div className="flex gap-3">
@@ -788,6 +840,41 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
             {error && <p className="text-[11px] text-red-500 font-medium">{error}</p>}
             <p className="text-[10px] text-foreground/30">Check your AC meter at month-end and enter total units consumed.</p>
           </div>
+
+          {/* Meter photo upload */}
+          <div className="border-t border-white/60 pt-4 space-y-2">
+            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40 flex items-center gap-1.5">
+              <Camera className="w-3 h-3" /> Meter Photo <span className="text-foreground/20 normal-case tracking-normal font-medium">(optional)</span>
+            </label>
+            {meterPhotoUrl ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200/50">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span className="text-[11px] font-bold text-emerald-700 flex-1 truncate">
+                  {meterPhoto?.name ?? 'Photo uploaded'}
+                </span>
+                <button onClick={() => { setMeterPhoto(null); setMeterPhotoUrl(null); }}
+                  className="text-emerald-400 hover:text-red-400 transition-colors text-[10px] font-bold">Remove</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => meterPhotoRef.current?.click()}
+                disabled={uploadingPhoto}
+                className="w-full soft-button border border-dashed border-foreground/20 py-3 flex items-center justify-center gap-2 text-[11px] font-bold text-foreground/40 hover:text-foreground/60 hover:border-foreground/30 transition-colors rounded-xl"
+              >
+                {uploadingPhoto
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+                  : <><Camera className="w-3.5 h-3.5" /> Take / Upload Photo</>}
+              </button>
+            )}
+            <input
+              ref={meterPhotoRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleMeterPhoto}
+            />
+          </div>
         </div>
       )}
 
@@ -798,6 +885,62 @@ function ElectricitySection({ tenantId }: { tenantId: string }) {
           Your room does not have AC — no meter reading required from you.
         </div>
       )}
+
+      {/* ── Upload main electricity bill ─── */}
+      <div className="soft-card border border-white bg-white/40 p-5 space-y-4">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/30 flex items-center gap-1.5">
+            <Upload className="w-3 h-3" /> Upload Electricity Bill
+          </p>
+          <p className="text-[11px] text-foreground/40 mt-1">
+            If you have the physical bill, upload a photo and we'll add it to your account.
+          </p>
+        </div>
+
+        {billUploaded && (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200/50">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span className="text-[11px] font-bold text-emerald-700">Bill submitted — our team will review it shortly.</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Bill Month</label>
+            <input
+              type="month"
+              value={billMonth}
+              onChange={e => setBillMonth(e.target.value)}
+              className="w-full soft-well border border-white rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Bill Image / PDF</label>
+            <button
+              onClick={() => billFileRef.current?.click()}
+              className="w-full soft-well border border-white rounded-xl px-4 py-3 text-[11px] font-bold text-left text-foreground/40 hover:text-foreground/60 transition-colors bg-white/60"
+            >
+              {billFile ? billFile.name : 'Choose file…'}
+            </button>
+            <input ref={billFileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => setBillFile(e.target.files?.[0] ?? null)} />
+          </div>
+        </div>
+
+        {billUploadErr && <p className="text-[11px] text-red-500 font-medium">{billUploadErr}</p>}
+
+        <button
+          onClick={handleBillUpload}
+          disabled={!billFile || !billMonth || uploadingBill}
+          className={cn(
+            'px-6 py-3 rounded-xl text-[11px] font-extrabold uppercase tracking-widest flex items-center gap-2 transition-all',
+            billFile && billMonth && !uploadingBill
+              ? 'btn-terracotta'
+              : 'bg-foreground/5 text-foreground/20 cursor-not-allowed'
+          )}
+        >
+          {uploadingBill ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</> : <><Upload className="w-3.5 h-3.5" /> Submit Bill</>}
+        </button>
+      </div>
     </div>
   );
 }
