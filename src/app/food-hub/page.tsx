@@ -37,7 +37,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
-type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
+type MealType = 'Breakfast' | 'Lunch' | 'Dinner';
 type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 
 interface MenuItem {
@@ -63,19 +63,18 @@ interface Expense {
 
 // --- Mock Data ---
 const WEEKLY_MENU: MenuItem[] = [
-  { day: 'Monday', meals: { Breakfast: 'Poha & Jalebi', Lunch: 'Dal Tadka, Rice, Bhindi Fry', Dinner: 'Paneer Lababdar & Roti', Snacks: 'Masala Chai & Samosa' } },
-  { day: 'Tuesday', meals: { Breakfast: 'Aloo Paratha & Curd', Lunch: 'Chole Bhature & Salad', Dinner: 'Mix Veg & Dal Fry', Snacks: 'Coffee & Biscuits' } },
-  { day: 'Wednesday', meals: { Breakfast: 'Idli Sambar', Lunch: 'Rajma Chawal & Papad', Dinner: 'Egg Curry / Kadai Paneer', Snacks: 'Tea & Pakora' } },
-  { day: 'Thursday', meals: { Breakfast: 'Upma & Chutney', Lunch: 'South Indian Thali', Dinner: 'Mushroom Masala & Naan', Snacks: 'Fruit Salad' } },
-  { day: 'Friday', meals: { Breakfast: 'Bread Omelette', Lunch: 'Hyderabadi Veg Biryani', Dinner: 'Chicken / Paneer Tikka Masala', Snacks: 'Cold Coffee' } },
-  { day: 'Saturday', meals: { Breakfast: 'Misal Pav', Lunch: 'Pav Bhaji', Dinner: 'Chinese Special (Noodles/Manchurian)', Snacks: 'Milkshake' } },
-  { day: 'Sunday', meals: { Breakfast: 'Chole Kulche', Lunch: 'Chef\'s Special Surprise', Dinner: 'Light Khichdi & Kadhi', Snacks: 'Tea & Cookies' } },
+  { day: 'Monday',    meals: { Breakfast: 'Moong Dal Cheela',       Lunch: 'Palak Dal, Rice, Bhindi Fry', Dinner: 'Vegetable Khichdi' } },
+  { day: 'Tuesday',   meals: { Breakfast: 'Ragi Idli & Sambar',     Lunch: 'Rajma Chawal & Salad',        Dinner: 'Mushroom Palak Masala' } },
+  { day: 'Wednesday', meals: { Breakfast: 'Oats Vegetable Upma',    Lunch: 'Quinoa Vegetable Pulao',      Dinner: 'Palak Dal & Roti' } },
+  { day: 'Thursday',  meals: { Breakfast: 'Oats Vegetable Upma',    Lunch: 'Kala Chana Masala & Rice',   Dinner: 'Mushroom Palak Masala & Naan' } },
+  { day: 'Friday',    meals: { Breakfast: 'Besan Cheela & Chutney', Lunch: 'Quinoa Vegetable Pulao',      Dinner: 'Vegetable Khichdi' } },
+  { day: 'Saturday',  meals: { Breakfast: 'Set Dosa & Sambar',      Lunch: 'Kala Chana Masala',          Dinner: 'Palak Dal & Roti' } },
+  { day: 'Sunday',    meals: { Breakfast: 'Besan Cheela & Curd',    Lunch: 'Palak Dal & Rice',            Dinner: 'Vegetable Khichdi & Kadhi' } },
 ];
 
 const MEAL_TIMINGS: Record<MealType, string> = {
   'Breakfast': '08:00 AM - 10:00 AM',
   'Lunch': '01:00 PM - 03:00 PM',
-  'Snacks': '05:00 PM - 06:00 PM',
   'Dinner': '08:30 PM - 10:30 PM',
 };
 

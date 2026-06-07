@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Shield, ArrowRight, Zap, Leaf, Loader2, Home } from "lucide-react";
+import { Shield, ArrowRight, Zap, Leaf, Loader2, Home, ChefHat, Sprout, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Property } from "@/lib/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -71,6 +71,7 @@ export default function LandingPage() {
           <Link href="/properties" className="font-bold text-foreground/70 hover:text-primary transition-colors">Find a Home</Link>
           <Link href="#spaces" className="font-medium text-foreground/50 hover:text-primary transition-colors">Spaces</Link>
           <Link href="#amenities" className="font-medium text-foreground/50 hover:text-primary transition-colors">Amenities</Link>
+          <Link href="/food-hub" className="font-medium text-foreground/50 hover:text-primary transition-colors">Kitchen</Link>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
@@ -196,6 +197,75 @@ export default function LandingPage() {
             type="Social"
           />
         </div>
+      </section>
+
+      {/* Food Hub Section */}
+      <section className="py-16 px-6 lg:px-12 max-w-7xl mx-auto">
+        <Link href="/food-hub" className="group block">
+          <div className="relative rounded-[40px] soft-card p-8 md:p-12 border border-white overflow-hidden bg-white/30 hover:border-primary/30 transition-all duration-500">
+            {/* Background glow */}
+            <div className="absolute top-0 right-0 w-1/2 h-full bg-secondary/5 rounded-full blur-[80px] pointer-events-none" />
+            <div className="absolute -bottom-8 -left-8 w-64 h-64 bg-primary/5 rounded-full blur-[60px] pointer-events-none" />
+
+            <div className="relative flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-12">
+              {/* Icon cluster */}
+              <div className="flex-shrink-0 grid grid-cols-2 gap-3 w-24">
+                {['🫓', '🌿', '🥘', '🌱'].map((e, i) => (
+                  <div key={i} className="w-10 h-10 rounded-2xl soft-well border border-white flex items-center justify-center text-xl">
+                    {e}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex-1 space-y-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-[10px] font-bold uppercase tracking-[0.2em]">
+                  <Sprout className="w-3 h-3" /> Aaram Kitchen
+                </div>
+                <h2 className="text-3xl lg:text-4xl font-bold tracking-tighter text-foreground leading-tight">
+                  Organic Food Hub &<br />
+                  <span className="text-primary italic">Nutrition Science</span>
+                </h2>
+                <p className="text-foreground/50 text-sm max-w-lg leading-relaxed">
+                  Whole spice recipes, weekly balanced menus, and nutritional science — tailored for residents. No processed masala. Maximum nutrition, minimum oil.
+                </p>
+                <div className="flex flex-wrap gap-3 pt-1">
+                  {['Weekly Balanced Menu', 'Whole Spice Recipes', 'Live Nutrition Charts', 'AI Dish Analysis'].map(f => (
+                    <span key={f} className="px-3 py-1.5 soft-well border border-white text-[10px] font-black uppercase tracking-widest text-foreground/40">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-shrink-0 flex flex-col items-center gap-3">
+                <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300 shadow-lg group-hover:shadow-primary/20 group-hover:shadow-xl group-hover:scale-110">
+                  <ChefHat className="w-7 h-7" />
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase tracking-widest group-hover:gap-2.5 transition-all">
+                  Explore <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Stat row */}
+            <div className="relative mt-8 pt-8 border-t border-white/60 grid grid-cols-2 md:grid-cols-4 gap-6">
+              {[
+                { emoji: '🥗', label: '7-Day Plan',      desc: 'Balanced macros & micros' },
+                { emoji: '🧑‍🍳', label: '12+ Dishes',    desc: 'With full nutrition profiles' },
+                { emoji: '⚗️', label: 'Whole Spices',    desc: 'Science-backed combinations' },
+                { emoji: '📊', label: 'Live Charts',     desc: 'Dynamic daily balance tracking' },
+              ].map(s => (
+                <div key={s.label} className="flex items-center gap-3">
+                  <span className="text-2xl">{s.emoji}</span>
+                  <div>
+                    <p className="text-xs font-black text-foreground uppercase tracking-tight">{s.label}</p>
+                    <p className="text-[9px] text-foreground/40">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Link>
       </section>
 
       {/* Footer */}
