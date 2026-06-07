@@ -98,28 +98,30 @@ function InlineAddRow({ onAdd, onCancel, properties, defaultDate }: {
   return (
     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
       className="soft-well border border-secondary/30 bg-secondary/5 p-3 space-y-3">
-      <div className="grid grid-cols-12 gap-2">
-        <input ref={ref} type="text" value={label} onChange={e => textLabel(e.target.value)}
-          placeholder="Item description..." onKeyDown={e => e.key === 'Enter' && submit()}
-          className="col-span-4 soft-ui-in py-2.5 px-4 text-xs bg-white/60 border border-white outline-none" />
-        <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
-          <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && submit()}
-            placeholder="0" className="w-full text-xs bg-transparent outline-none font-bold" />
-        </div>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="col-span-2 soft-ui-in py-2.5 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
-        <input type="text" value={note} onChange={e => setNote(e.target.value)}
-          placeholder="Note" onKeyDown={e => e.key === 'Enter' && submit()}
-          className="col-span-2 soft-ui-in py-2.5 px-3 text-xs bg-white/60 border border-white outline-none" />
-        <div className="col-span-2 flex gap-1.5">
-          <button onClick={submit} className="flex-1 py-2 rounded-xl bg-secondary text-white flex items-center justify-center hover:bg-secondary/80 transition-all">
-            <Check className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={onCancel} className="w-9 soft-button border border-white text-foreground/30">
-            <X className="w-3.5 h-3.5" />
-          </button>
+      <div className="overflow-x-auto -mx-3 px-3">
+        <div className="grid grid-cols-12 gap-2 min-w-[560px]">
+          <input ref={ref} type="text" value={label} onChange={e => textLabel(e.target.value)}
+            placeholder="Item description..." onKeyDown={e => e.key === 'Enter' && submit()}
+            className="col-span-4 soft-ui-in py-2.5 px-4 text-xs bg-white/60 border border-white outline-none" />
+          <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+            <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="0" className="w-full text-xs bg-transparent outline-none font-bold" />
+          </div>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="col-span-2 soft-ui-in py-2.5 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
+          <input type="text" value={note} onChange={e => setNote(e.target.value)}
+            placeholder="Note" onKeyDown={e => e.key === 'Enter' && submit()}
+            className="col-span-2 soft-ui-in py-2.5 px-3 text-xs bg-white/60 border border-white outline-none" />
+          <div className="col-span-2 flex gap-1.5">
+            <button onClick={submit} className="flex-1 py-2 rounded-xl bg-secondary text-white flex items-center justify-center hover:bg-secondary/80 transition-all">
+              <Check className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onCancel} className="w-9 soft-button border border-white text-foreground/30">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
       <div className="flex gap-2">
@@ -508,25 +510,27 @@ function InlineEditRow({ item, properties, onSave, onDelete, onCancel }: {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="soft-well border border-secondary/30 bg-secondary/5 p-3 space-y-2">
-      <div className="grid grid-cols-12 gap-2">
-        <input type="text" value={draft.label} onChange={e => setDraft({...draft, label: e.target.value})}
-          className="col-span-5 soft-ui-in py-2.5 px-4 text-xs bg-white/60 border border-white outline-none font-semibold" />
-        <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
-          <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
-          <input type="number" value={draft.amount} onChange={e => setDraft({...draft, amount: parseFloat(e.target.value)||0})}
-            className="w-full text-xs bg-transparent outline-none font-bold" />
-        </div>
-        <select value={draft.category} onChange={e => setDraft({...draft, category: e.target.value as ExpenseCategory})}
-          className="col-span-3 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none appearance-none">
-          {ALL_CATS.map(c => <option key={c} value={c}>{CATEGORY_META[c].label}</option>)}
-        </select>
-        <div className="col-span-2 flex gap-1.5">
-          <button onClick={() => onSave(draft)} className="flex-1 py-2 rounded-xl bg-secondary text-white flex items-center justify-center hover:bg-secondary/80 transition-all">
-            <Check className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onDelete(item.id)} className="w-9 soft-button border border-primary/20 text-primary hover:bg-primary hover:text-white transition-all">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+      <div className="overflow-x-auto -mx-3 px-3">
+        <div className="grid grid-cols-12 gap-2 min-w-[500px]">
+          <input type="text" value={draft.label} onChange={e => setDraft({...draft, label: e.target.value})}
+            className="col-span-5 soft-ui-in py-2.5 px-4 text-xs bg-white/60 border border-white outline-none font-semibold" />
+          <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+            <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+            <input type="number" value={draft.amount} onChange={e => setDraft({...draft, amount: parseFloat(e.target.value)||0})}
+              className="w-full text-xs bg-transparent outline-none font-bold" />
+          </div>
+          <select value={draft.category} onChange={e => setDraft({...draft, category: e.target.value as ExpenseCategory})}
+            className="col-span-3 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none appearance-none">
+            {ALL_CATS.map(c => <option key={c} value={c}>{CATEGORY_META[c].label}</option>)}
+          </select>
+          <div className="col-span-2 flex gap-1.5">
+            <button onClick={() => onSave(draft)} className="flex-1 py-2 rounded-xl bg-secondary text-white flex items-center justify-center hover:bg-secondary/80 transition-all">
+              <Check className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onDelete(item.id)} className="w-9 soft-button border border-primary/20 text-primary hover:bg-primary hover:text-white transition-all">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
       <div className="flex gap-2">
@@ -635,7 +639,8 @@ function IncomeRecordTable({ title, color, icon: Icon, records, rooms, propertie
             return (
               <div key={rec.id} className={cn('group px-5 py-3 transition-all', c.hoverRow)}>
                 {editId === rec.id && editForm ? (
-                  <div className="grid grid-cols-12 gap-2 py-1">
+                  <div className="overflow-x-auto -mx-2 px-2">
+                  <div className="grid grid-cols-12 gap-2 py-1 min-w-[480px]">
                     <div className="col-span-3 flex items-center soft-ui-in border border-white bg-white/60 px-3">
                       <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
                       <input type="number" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: parseFloat(e.target.value)||0 })}
@@ -652,6 +657,7 @@ function IncomeRecordTable({ title, color, icon: Icon, records, rooms, propertie
                       </button>
                       <button onClick={() => setEditId(null)} className="w-9 soft-button border border-white text-foreground/30"><X className="w-3.5 h-3.5" /></button>
                     </div>
+                  </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-3">
@@ -718,26 +724,28 @@ function ExpenseRecordTable({ title, color, icon: Icon, emptyText, addPlaceholde
 
       {adding && (
         <div className={cn('px-5 py-3 border-b border-white/40 space-y-2', c.addBg)}>
-          <div className="grid grid-cols-12 gap-2">
-            <input type="text" value={newForm.label} onChange={e => setNewForm({ ...newForm, label: e.target.value })}
-              placeholder={addPlaceholder} className="col-span-4 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none" />
-            <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
-              <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
-              <input type="number" value={newForm.amount} onChange={e => setNewForm({ ...newForm, amount: e.target.value })}
-                placeholder="0" className="w-full text-xs bg-transparent outline-none font-bold" />
-            </div>
-            <input type="date" value={newForm.date} onChange={e => setNewForm({ ...newForm, date: e.target.value })}
-              className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
-            <select value={newForm.property_id} onChange={e => setNewForm({ ...newForm, property_id: e.target.value })}
-              className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none appearance-none">
-              <option value="">— Villa —</option>
-              {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <div className="col-span-2 flex gap-1.5">
-              <button onClick={submitAdd} className={cn('flex-1 py-2 rounded-xl text-white flex items-center justify-center', c.btn)}>
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => setAdding(false)} className="w-9 soft-button border border-white text-foreground/30"><X className="w-3.5 h-3.5" /></button>
+          <div className="overflow-x-auto -mx-2 px-2">
+            <div className="grid grid-cols-12 gap-2 min-w-[520px]">
+              <input type="text" value={newForm.label} onChange={e => setNewForm({ ...newForm, label: e.target.value })}
+                placeholder={addPlaceholder} className="col-span-4 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none" />
+              <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
+                <span className="text-[10px] font-bold text-foreground/40 mr-1">₹</span>
+                <input type="number" value={newForm.amount} onChange={e => setNewForm({ ...newForm, amount: e.target.value })}
+                  placeholder="0" className="w-full text-xs bg-transparent outline-none font-bold" />
+              </div>
+              <input type="date" value={newForm.date} onChange={e => setNewForm({ ...newForm, date: e.target.value })}
+                className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none font-bold" />
+              <select value={newForm.property_id} onChange={e => setNewForm({ ...newForm, property_id: e.target.value })}
+                className="col-span-2 soft-ui-in py-2 px-2 text-[10px] bg-white/60 border border-white outline-none appearance-none">
+                <option value="">— Villa —</option>
+                {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div className="col-span-2 flex gap-1.5">
+                <button onClick={submitAdd} className={cn('flex-1 py-2 rounded-xl text-white flex items-center justify-center', c.btn)}>
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setAdding(false)} className="w-9 soft-button border border-white text-foreground/30"><X className="w-3.5 h-3.5" /></button>
+              </div>
             </div>
           </div>
         </div>
@@ -752,7 +760,8 @@ function ExpenseRecordTable({ title, color, icon: Icon, emptyText, addPlaceholde
             return (
               <div key={exp.id} className={cn('group px-5 py-3 transition-all', c.hoverRow)}>
                 {editId === exp.id && editForm ? (
-                  <div className="grid grid-cols-12 gap-2 py-1">
+                  <div className="overflow-x-auto -mx-2 px-2">
+                  <div className="grid grid-cols-12 gap-2 py-1 min-w-[480px]">
                     <input type="text" value={editForm.label} onChange={e => setEditForm({ ...editForm, label: e.target.value })}
                       className="col-span-3 soft-ui-in py-2 px-3 text-xs bg-white/60 border border-white outline-none font-bold" />
                     <div className="col-span-2 flex items-center soft-ui-in border border-white bg-white/60 px-3">
@@ -771,6 +780,7 @@ function ExpenseRecordTable({ title, color, icon: Icon, emptyText, addPlaceholde
                       </button>
                       <button onClick={() => setEditId(null)} className="w-9 soft-button border border-white text-foreground/30"><X className="w-3.5 h-3.5" /></button>
                     </div>
+                  </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-3">
