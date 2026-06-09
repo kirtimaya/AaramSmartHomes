@@ -1,29 +1,17 @@
 /**
- * Alexa Custom Skill Webhook — Aaram Kitchen
+ * Alexa Custom Skill Webhook — Aaram Kitchen (AI-First)
  *
- * Locales supported: hi-IN (primary for cook), en-IN (admin mode)
+ * Alexa is used purely as voice I/O (STT + TTS). All natural-language
+ * understanding is handled by Gemini 2.5 Flash, which receives full
+ * kitchen context (menus, headcounts, pantry) and conversation history,
+ * then returns a Hindi reply + optional DB action.
  *
- * Cook intents (Hindi):
- *   LaunchRequest / ArrivalIntent  → time-based greeting            (all)
- *   MorningBriefingIntent          → today's Breakfast + Lunch      (cook)
- *   DinnerBriefingIntent           → today's Dinner + ingredient check (cook)
- *   TomorrowBriefingIntent         → next day's B+L + ingredient check (cook)
- *   WaitIntent                     → keep session open while cook checks (cook)
- *   ReplaceMenuItemIntent          → update menu_items in DB        (cook/admin)
- *   MissingItemsIntent             → Gemini extract → grocery_alerts (cook/admin)
- *   AMAZON.Yes/NoIntent            → inventory confirmation flow    (cook/admin)
- *
- * Admin intents (English):
- *   AdminModeIntent                → activate admin session         (admin)
- *   AdminBriefingIntent            → all 3 meals + supply alerts    (admin)
- *   SupplyCheckIntent              → pantry status summary          (admin)
- *   CreateGroceryAlertIntent       → direct grocery alert           (admin)
- *
- * Legacy intents (unchanged):
- *   QueryMenuIntent, FoodSuggestionIntent, DepartureIntent
+ * Intents:
+ *   ConversationIntent (AMAZON.SearchQuery) → handleFreeFormConversation()
+ *   AMAZON.YesIntent / AMAZON.NoIntent     → simple acknowledgement
+ *   AMAZON.HelpIntent / Stop / Cancel      → standard handlers
  *
  * Developer test mode: x-alexa-test-secret header + ALEXA_TEST_SECRET env
- *   x-alexa-force-block: Breakfast|Lunch|Dinner  → override IST time
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -32,6 +20,9 @@ import { createClient } from '@supabase/supabase-js';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
+
+type ConvTurn = { role: 'user' | 'model'; text: string };
+const MAX_HISTORY = 10; // 5 user+model pairs
 
 interface AlexaSlot {
   name: string;
@@ -77,6 +68,18 @@ interface PantryRow {
   unit: string | null;
 }
 
+interface MealCtx {
+  dishes: string[];
+  count: number | null;
+  id: string | null;
+}
+
+interface AiResponse {
+  reply: string;
+  action: 'none' | 'replace_menu_item' | 'log_missing_items' | 'create_grocery_alert';
+  params: Record<string, unknown>;
+}
+
 // ── Supabase (service role — bypasses RLS) ────────────────────────────────────
 
 const db = createClient(
@@ -120,21 +123,7 @@ function istDatePlusDays(days: number): string {
   return ist.toISOString().slice(0, 10);
 }
 
-function currentMealBlock(hour: number, minute: number): MealBlock {
-  const mins = hour * 60 + minute;
-  if (mins >= 5 * 60 + 30 && mins < 10 * 60 + 30) return 'Breakfast';
-  if (mins >= 10 * 60 + 30 && mins < 14 * 60 + 30) return 'Lunch';
-  if (mins >= 14 * 60 + 30) return 'Dinner';
-  return 'Breakfast'; // before 5:30 AM — pre-Breakfast prep
-}
-
-function nextMealBlock(current: MealBlock): { block: MealBlock; addDays: number } {
-  if (current === 'Breakfast') return { block: 'Lunch',     addDays: 0 };
-  if (current === 'Lunch')     return { block: 'Dinner',    addDays: 0 };
-  return                              { block: 'Breakfast', addDays: 1 };
-}
-
-// ── Alexa Response Builder ────────────────────────────────────────────────────
+// ── Alexa Response Builders ───────────────────────────────────────────────────
 
 function speak(
   ssml: string,
@@ -167,15 +156,10 @@ function speakHi(ssml: string, opts: Parameters<typeof speak>[1] = {}): NextResp
 // ── Alexa Signature Verification ──────────────────────────────────────────────
 
 async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<void> {
-  // Bypass: dev test secret
   const testSecret = process.env.ALEXA_TEST_SECRET;
   if (testSecret && req.headers.get('x-alexa-test-secret') === testSecret) return;
-
-  // Bypass: explicit skip flag (set SKIP_ALEXA_VERIFICATION=true on Vercel when
-  // alexa-verifier is incompatible with the Node.js runtime version)
   if (process.env.SKIP_ALEXA_VERIFICATION === 'true') return;
 
-  // HTTP/2 lowercases all header names; try both casings
   const certUrl =
     req.headers.get('signaturecertchainurl') ??
     req.headers.get('SignatureCertChainUrl') ?? '';
@@ -185,7 +169,6 @@ async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<
 
   if (!certUrl || !signature) throw new Error('Missing Alexa signature headers');
 
-  // Validate cert URL is from Amazon's echo.api domain (WHATWG URL API — no url.parse)
   const parsedUrl = new URL(certUrl);
   if (
     parsedUrl.protocol !== 'https:' ||
@@ -227,7 +210,6 @@ async function fetchMealCount(date: string, block: MealBlock): Promise<number | 
     .select('tenant_id')
     .eq(blockCol, true);
 
-  // Fallback: count tenants with food_opted = true
   if (!prefs?.length) {
     const { count } = await db
       .from('tenants')
@@ -262,141 +244,27 @@ async function fetchLowPantryItems(): Promise<PantryRow[]> {
     .from('pantry_items')
     .select('id, name, status, quantity, unit')
     .in('status', ['Low', 'Out of Stock'])
-    .order('status'); // Out of Stock first (alphabetically after Low)
+    .order('status');
   return (data ?? []) as PantryRow[];
 }
 
-// ── Gemini: Extract Ingredients (+ optional replacement) ─────────────────────
+async function fetchMenuContext(date: string): Promise<{ b: MealCtx; l: MealCtx; d: MealCtx }> {
+  const [bMenu, bCount, lMenu, lCount, dMenu, dCount] = await Promise.all([
+    fetchMenu(date, 'Breakfast'), fetchMealCount(date, 'Breakfast'),
+    fetchMenu(date, 'Lunch'),     fetchMealCount(date, 'Lunch'),
+    fetchMenu(date, 'Dinner'),    fetchMealCount(date, 'Dinner'),
+  ]);
 
-interface GeminiExtraction {
-  missing: string[];
-  replacement: { old: string; new: string; certain: boolean } | null;
+  const toCtx = (menu: MenuRow | null, count: number | null): MealCtx => ({
+    dishes: menu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [],
+    count,
+    id: menu?.id ?? null,
+  });
+
+  return { b: toCtx(bMenu, bCount), l: toCtx(lMenu, lCount), d: toCtx(dMenu, dCount) };
 }
 
-async function extractWithGemini(utterance: string): Promise<GeminiExtraction> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { missing: [utterance], replacement: null };
-
-  const prompt = `A kitchen cook said (in Hindi or English): "${utterance}"
-
-Your job is to extract:
-1. "missing": array of grocery/ingredient names they said are NOT available (lowercase singular).
-2. "replacement": if they suggest replacing one dish with another, extract { "old": "<dish being replaced>", "new": "<replacement dish>", "certain": true/false }.
-   - "certain" is true only if they clearly commit to the change (e.g. "bana lete hain", "kar do", "replace karo").
-   - "certain" is false if they are just suggesting (e.g. "shayad", "soch rahe hain").
-   - Return null if no replacement is mentioned.
-
-Return ONLY valid JSON, no markdown, no explanation.
-Example 1: {"missing": ["rajma"], "replacement": {"old": "rajma", "new": "bhindi curry", "certain": true}}
-Example 2: {"missing": ["tomatoes", "onions"], "replacement": null}`;
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
-      }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) return { missing: [utterance], replacement: null };
-
-    const data = await res.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return { missing: [utterance], replacement: null };
-    const parsed = JSON.parse(match[0]) as GeminiExtraction;
-    return {
-      missing:     Array.isArray(parsed.missing) ? parsed.missing : [utterance],
-      replacement: parsed.replacement ?? null,
-    };
-  } catch {
-    return { missing: [utterance], replacement: null };
-  }
-}
-
-async function extractIngredients(utterance: string): Promise<string[]> {
-  const result = await extractWithGemini(utterance);
-  return result.missing;
-}
-
-// ── Gemini: Extract old+new dish from a single replacement utterance ──────────
-
-async function parseReplacementFromUtterance(
-  utterance: string
-): Promise<{ old: string; new: string } | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-
-  const prompt = `A cook said they want to replace a menu dish. Extract the dish being replaced ("old") and the new dish ("new").
-Utterance: "${utterance}"
-Return ONLY JSON like: {"old": "Rajma", "new": "Chole"}
-If you cannot identify both dishes, return: null`;
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 512 },
-      }),
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
-    if (text === 'null' || !text) return null;
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    if (!parsed?.old || !parsed?.new) return null;
-    return { old: String(parsed.old), new: String(parsed.new) };
-  } catch {
-    return null;
-  }
-}
-
-// ── Gemini: Parse replacement slot values ─────────────────────────────────────
-
-async function parseReplacementSlots(
-  oldRaw: string,
-  newRaw: string
-): Promise<{ old: string; new: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { old: oldRaw.trim(), new: newRaw.trim() };
-
-  const prompt = `Clean up these two dish names from a voice utterance. Return ONLY JSON with "old" and "new" keys.
-Old dish (raw): "${oldRaw}"
-New dish (raw): "${newRaw}"
-Example: {"old": "Rajma", "new": "Bhindi Curry"}`;
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 512 },
-      }),
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!res.ok) return { old: oldRaw.trim(), new: newRaw.trim() };
-    const data = await res.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return { old: oldRaw.trim(), new: newRaw.trim() };
-    return JSON.parse(match[0]);
-  } catch {
-    return { old: oldRaw.trim(), new: newRaw.trim() };
-  }
-}
-
-// ── Tenant Notifications for Menu Change ─────────────────────────────────────
+// ── Tenant Notifications ──────────────────────────────────────────────────────
 
 async function notifyTenantsMenuChange(
   oldItem: string,
@@ -404,7 +272,6 @@ async function notifyTenantsMenuChange(
   block: string,
   date: string
 ): Promise<void> {
-  // Get tenants with food opted in, fetch their auth user ID via profiles
   const { data: tenants } = await db
     .from('tenants')
     .select('email')
@@ -414,8 +281,6 @@ async function notifyTenantsMenuChange(
   if (!tenants?.length) return;
 
   const emails = tenants.map((t: { email: string }) => t.email);
-
-  // Look up auth user IDs from profiles table
   const { data: profiles } = await db
     .from('profiles')
     .select('id, email')
@@ -438,591 +303,279 @@ async function notifyTenantsMenuChange(
   await db.from('notifications').insert(notifications);
 }
 
-// ── Intent Handlers ───────────────────────────────────────────────────────────
+// ── Gemini: Free-Form Conversation ────────────────────────────────────────────
 
-interface HandlerResult { response: NextResponse; reply: string; mealBlock?: string; }
-
-function resolveBlock(forceBlock: MealBlock | null, slotBlock?: string | null): MealBlock {
-  if (forceBlock) return forceBlock;
-  if (slotBlock === 'Breakfast' || slotBlock === 'Lunch' || slotBlock === 'Dinner') return slotBlock;
-  const { hour, minute } = getIST();
-  return currentMealBlock(hour, minute);
-}
-
-// ── LaunchRequest / ArrivalIntent (legacy — single block) ────────────────────
-
-async function handleArrival(
-  sessionAttrs: Record<string, unknown>,
-  forceBlock: MealBlock | null,
+function buildSystemPrompt(
+  menuCtx: { b: MealCtx; l: MealCtx; d: MealCtx },
+  pantry: PantryRow[],
+  date: string,
   adminMode: boolean
-): Promise<HandlerResult> {
-  if (adminMode) return handleAdminBriefing(sessionAttrs);
+): string {
+  const fmt = (ctx: MealCtx) =>
+    ctx.dishes.length
+      ? `${ctx.dishes.join(', ')} — ${ctx.count ?? '?'} log`
+      : 'set nahi hua';
 
-  const { date } = getIST();
-  const block = resolveBlock(forceBlock);
-  const [menu, count] = await Promise.all([fetchMenu(date, block), fetchMealCount(date, block)]);
+  const lowItems = pantry.map(p => `${p.name} (${p.status})`);
+  const pantryLine = lowItems.length ? lowItems.join(', ') : 'Sab kuch available hai';
 
-  if (!menu?.menu_items?.length) {
-    const reply = `Aaj ka ${block} menu abhi set nahi hua hai.`;
+  const lang = adminMode
+    ? 'English'
+    : 'simple conversational Hindi (Hinglish is fine for dish/ingredient names)';
+
+  return `You are Aaram Smart Homes' kitchen AI assistant for the ${adminMode ? 'admin' : 'cook'}.
+
+Today's kitchen status (IST date: ${date}):
+- Breakfast: ${fmt(menuCtx.b)}
+- Lunch: ${fmt(menuCtx.l)}
+- Dinner: ${fmt(menuCtx.d)}
+- Low or out of stock: ${pantryLine}
+
+Rules:
+1. Respond ONLY in ${lang}
+2. This is a VOICE interface — keep replies SHORT (2–3 sentences max)
+3. Be warm, helpful, and conversational
+4. Never use markdown, bullet points, or special characters in your reply
+
+When to use actions (detect these from the cook's words):
+- Item missing / unavailable / nahi hai / khatam → action "log_missing_items", params.items: [item names]
+- Dish change / replace / badal do / ki jagah → action "replace_menu_item", params: { "oldItem": "...", "newItem": "...", "block": "Breakfast|Lunch|Dinner", "date": "${date}" }
+- Order / buy / mangvao / grocery → action "create_grocery_alert", params.items: [item names]
+- Everything else → action "none", params: {}
+
+Return ONLY valid JSON — no markdown, no code blocks, nothing else:
+{"reply":"<your response here>","action":"none","params":{}}`;
+}
+
+function parseAiJson(text: string): AiResponse | null {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as Partial<AiResponse>;
+    if (!parsed.reply) return null;
     return {
-      reply, mealBlock: block,
-      response: speakHi(
-        `Aaram Smart Homes Kitchen mein aapka swagat hai! <break time="300ms"/>
-         Aaj ka <emphasis level="moderate">${block}</emphasis> menu abhi set nahi hua hai.
-         Supervisor se poochh lijiye.`,
-        { endSession: true, sessionAttributes: { currentBlock: block } }
-      ),
+      reply:  parsed.reply,
+      action: parsed.action || 'none',
+      params: parsed.params || {},
     };
+  } catch {
+    return null;
   }
-
-  const dishes = menu.menu_items.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name);
-  const countText = count != null ? ` ${count} logon ke liye` : '';
-  const reply = `Aaj ka ${block}: ${dishes.join(', ')}${countText}.`;
-
-  return {
-    reply, mealBlock: block,
-    response: speakHi(
-      `Aaram Smart Homes Kitchen mein aapka swagat hai!
-       <break time="400ms"/>
-       Aaj ke <emphasis level="moderate">${block}</emphasis> mein
-       <break time="300ms"/>
-       ${dishes.join(', <break time="200ms"/> ')}
-       ${count != null ? `<break time="300ms"/> <emphasis level="moderate">${count} logon</emphasis> ke liye` : ''}.
-       <break time="600ms"/>
-       Subah ka kaam shuru karo. Agar kuch chahiye ho to batao.`,
-      { endSession: false, sessionAttributes: { ...sessionAttrs, currentBlock: block, currentMenuId: menu.id } }
-    ),
-  };
 }
 
-// ── MorningBriefingIntent — Breakfast + Lunch for today ──────────────────────
+async function callGeminiConversation(
+  systemPrompt: string,
+  history: ConvTurn[],
+  utterance: string
+): Promise<AiResponse | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
 
-async function handleMorningBriefing(
-  sessionAttrs: Record<string, unknown>,
-  forceBlock: MealBlock | null
-): Promise<HandlerResult> {
-  const { date } = getIST();
-  const targetDate = forceBlock ? date : date; // always today for morning briefing
+  const contents = [
+    ...history.map(t => ({ role: t.role, parts: [{ text: t.text }] })),
+    { role: 'user', parts: [{ text: utterance }] },
+  ];
 
-  const [bMenu, bCount, lMenu, lCount] = await Promise.all([
-    fetchMenu(targetDate, 'Breakfast'),
-    fetchMealCount(targetDate, 'Breakfast'),
-    fetchMenu(targetDate, 'Lunch'),
-    fetchMealCount(targetDate, 'Lunch'),
-  ]);
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 256 },
+      }),
+      signal: AbortSignal.timeout(6_000),
+    });
 
-  const bDishes = bMenu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [];
-  const lDishes = lMenu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [];
-
-  const bText = bDishes.length ? bDishes.join(', ') : 'set nahi hua';
-  const lText = lDishes.length ? lDishes.join(', ') : 'set nahi hua';
-  const bCount_ = bCount != null ? ` — ${bCount} log` : '';
-  const lCount_ = lCount != null ? ` — ${lCount} log` : '';
-
-  const reply = `Aaj ke liye — Breakfast: ${bText}${bCount_}. Lunch: ${lText}${lCount_}.`;
-
-  return {
-    reply,
-    response: speakHi(
-      `Aaj ke liye suno. <break time="400ms"/>
-       Breakfast mein <emphasis level="moderate">${bText}</emphasis> hai
-       ${bCount != null ? `<break time="200ms"/> <emphasis level="moderate">${bCount} logon</emphasis> ke liye` : ''}.
-       <break time="600ms"/>
-       Lunch mein <emphasis level="moderate">${lText}</emphasis> hai
-       ${lCount != null ? `<break time="200ms"/> <emphasis level="moderate">${lCount} logon</emphasis> ke liye` : ''}.
-       <break time="800ms"/>
-       Kaam shuru karo! Dinner ke liye poochho jab tayaar ho.`,
-      { endSession: true, sessionAttributes: { ...sessionAttrs } }
-    ),
-  };
-}
-
-// ── DinnerBriefingIntent — today's Dinner + ingredient check ─────────────────
-
-async function handleDinnerBriefing(
-  sessionAttrs: Record<string, unknown>,
-  forceBlock: MealBlock | null
-): Promise<HandlerResult> {
-  const { date } = getIST();
-  const [menu, count] = await Promise.all([fetchMenu(date, 'Dinner'), fetchMealCount(date, 'Dinner')]);
-
-  if (!menu?.menu_items?.length) {
-    const reply = `Aaj ka Dinner menu set nahi hua hai.`;
-    return {
-      reply, mealBlock: 'Dinner',
-      response: speakHi(`Aaj ka Dinner menu abhi set nahi hua hai. Supervisor se poochh lijiye.`, { endSession: true }),
-    };
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    return parseAiJson(text) ?? { reply: text.trim() || 'Theek hai.', action: 'none', params: {} };
+  } catch {
+    return null;
   }
-
-  const dishes = menu.menu_items.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name);
-  const countText = count != null ? ` ${count} logon ke liye` : '';
-  const reply = `Aaj ka Dinner: ${dishes.join(', ')}${countText}.`;
-
-  return {
-    reply, mealBlock: 'Dinner',
-    response: speakHi(
-      `Aaj ke Dinner mein <emphasis level="moderate">${dishes.join(', <break time="200ms"/> ')}</emphasis> banana hai
-       ${count != null ? `<break time="200ms"/> <emphasis level="moderate">${count} logon</emphasis> ke liye` : ''}.
-       <break time="600ms"/>
-       Kya saari cheezein available hain? Agar kuch nahi hai to batao.`,
-      {
-        reprompt: 'Kya sab kuch available hai? Haan ya nahi mein batao.',
-        endSession: false,
-        sessionAttributes: {
-          ...sessionAttrs,
-          awaitingInventoryCheck: true,
-          nextMenuId: menu.id,
-          nextBlock:  'Dinner',
-          nextDate:   date,
-        },
-      }
-    ),
-  };
 }
 
-// ── TomorrowBriefingIntent — next day Breakfast + Lunch + ingredient check ────
+async function callGroqConversation(
+  systemPrompt: string,
+  history: ConvTurn[],
+  utterance: string
+): Promise<AiResponse | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
 
-async function handleTomorrowBriefing(
-  sessionAttrs: Record<string, unknown>
-): Promise<HandlerResult> {
-  const tomorrow = istDatePlusDays(1);
-  const [bMenu, bCount, lMenu, lCount] = await Promise.all([
-    fetchMenu(tomorrow, 'Breakfast'),
-    fetchMealCount(tomorrow, 'Breakfast'),
-    fetchMenu(tomorrow, 'Lunch'),
-    fetchMealCount(tomorrow, 'Lunch'),
-  ]);
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map(t => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text })),
+    { role: 'user', content: utterance },
+  ];
 
-  const bDishes = bMenu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [];
-  const lDishes = lMenu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [];
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages,
+        temperature: 0.7,
+        max_tokens: 256,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
 
-  const bText = bDishes.length ? bDishes.join(', ') : 'set nahi hua';
-  const lText = lDishes.length ? lDishes.join(', ') : 'set nahi hua';
-
-  const reply = `Kal ke liye — Breakfast: ${bText}. Lunch: ${lText}.`;
-
-  return {
-    reply,
-    response: speakHi(
-      `Kal ke liye suno. <break time="400ms"/>
-       Breakfast mein <emphasis level="moderate">${bText}</emphasis> hai
-       ${bCount != null ? `<break time="200ms"/> ${bCount} logon ke liye` : ''}.
-       <break time="600ms"/>
-       Lunch mein <emphasis level="moderate">${lText}</emphasis> hai
-       ${lCount != null ? `<break time="200ms"/> ${lCount} logon ke liye` : ''}.
-       <break time="800ms"/>
-       Kya kal ke liye saari cheezein available hain? Agar kuch nahi hai to abhi batao.`,
-      {
-        reprompt: 'Kal ke liye kya kuch cheez missing hai?',
-        endSession: false,
-        sessionAttributes: {
-          ...sessionAttrs,
-          awaitingInventoryCheck: true,
-          nextBlock:              'BreakfastLunch',
-          nextDate:               tomorrow,
-          nextMenuIdB:            bMenu?.id ?? null,
-          nextMenuIdL:            lMenu?.id ?? null,
-        },
-      }
-    ),
-  };
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text: string = data?.choices?.[0]?.message?.content ?? '';
+    return parseAiJson(text) ?? { reply: text.trim() || 'Theek hai.', action: 'none', params: {} };
+  } catch {
+    return null;
+  }
 }
 
-// ── WaitIntent — keep session open while cook checks inventory ────────────────
+async function callAIConversation(
+  systemPrompt: string,
+  history: ConvTurn[],
+  utterance: string
+): Promise<AiResponse> {
+  const geminiResult = await callGeminiConversation(systemPrompt, history, utterance);
+  if (geminiResult) return geminiResult;
 
-function handleWait(sessionAttrs: Record<string, unknown>): HandlerResult {
-  return {
-    reply: 'Ji bilkul, ruk jaati hoon. Jab check ho jaye, batao.',
-    response: speakHi(
-      'Ji bilkul, ruk jaati hoon. <break time="1000ms"/> Jab check kar lo, tab haan ya nahi mein batao. <break time="400ms"/> Agar aur time chahiye to dobara "ruko" bol dena.',
-      {
-        reprompt: 'Check ho gayi? Haan ya nahi bolo, ya "ruko" bol do agar aur time chahiye.',
-        endSession: false,
-        sessionAttributes: sessionAttrs,
-      }
-    ),
-  };
+  const groqResult = await callGroqConversation(systemPrompt, history, utterance);
+  if (groqResult) return groqResult;
+
+  return { reply: 'Abhi thodi problem hai. Thodi der mein try karo.', action: 'none', params: {} };
 }
 
-// ── ReplaceMenuItemIntent ─────────────────────────────────────────────────────
+// ── Execute DB Actions from AI ────────────────────────────────────────────────
 
-async function handleReplaceMenuItem(
+async function executeReplaceMenuItem(
+  params: Record<string, unknown>,
+  todayDate: string,
   sessionId: string,
-  sessionAttrs: Record<string, unknown>,
-  oldRaw: string,
-  newRaw: string,
   adminMode: boolean
-): Promise<HandlerResult> {
-  const { date } = getIST();
-  const { old: oldDish, new: newDish } = await parseReplacementSlots(oldRaw, newRaw);
+): Promise<string | null> {
+  const oldRaw = String(params.oldItem ?? '').trim();
+  const newRaw = String(params.newItem ?? '').trim();
+  if (!oldRaw || !newRaw) return null;
 
-  // Fetch all menu_items for today + tomorrow, then do a fuzzy name match
   const { data: allItems } = await db
     .from('menu_items')
     .select('id, menu_id, item_name, menus!inner(date, meal_block)')
-    .gte('menus.date', date)
+    .gte('menus.date', todayDate)
     .lte('menus.date', istDatePlusDays(1));
 
-  // Match by: exact → starts-with → word-contains → stem (first 4 chars of each word)
   const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
-  const needle = normalise(oldDish);
+  const needle      = normalise(oldRaw);
   const needleWords = needle.split(/\s+/).filter(w => w.length > 2);
-  // 3-char stems: "Idli" → "idl", "Idly" → "idl" (catches spelling variants)
-  const stem3 = (s: string) => normalise(s).split(/\s+/).map(w => w.slice(0, 3)).filter(w => w.length === 3);
+  const stem3       = (s: string) => normalise(s).split(/\s+/).map(w => w.slice(0, 3)).filter(w => w.length === 3);
 
   const scored = (allItems ?? []).map((item: any) => {
     const hay = normalise(item.item_name);
-    if (hay === needle) return { item, score: 4 };
+    if (hay === needle)                              return { item, score: 4 };
     if (hay.startsWith(needle) || needle.startsWith(hay)) return { item, score: 3 };
-    if (needleWords.some(w => hay.includes(w))) return { item, score: 2 };
-    // 3-char stem overlap catches Idli↔Idly, Palak↔Palak Paneer, etc.
-    const hayS = stem3(item.item_name);
-    if (stem3(oldDish).some(ns => hayS.includes(ns))) return { item, score: 1 };
+    if (needleWords.some(w => hay.includes(w)))     return { item, score: 2 };
+    if (stem3(oldRaw).some(ns => stem3(item.item_name).includes(ns))) return { item, score: 1 };
     return { item, score: 0 };
   }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
 
-  const matchingItems = scored.map(x => x.item);
+  if (!scored.length) return null;
 
-  if (!matchingItems?.length) {
-    const reply = `${oldDish} menu mein nahi mila. Kripya dobara check karein.`;
-    return {
-      reply,
-      response: speakHi(
-        `Mujhe <emphasis level="moderate">${oldDish}</emphasis> aaj ya kal ke menu mein nahi mila.
-         Kya aap naam dobara bata sakte ho?`,
-        { reprompt: 'Kaunsa dish replace karna hai?', endSession: false, sessionAttributes: sessionAttrs }
-      ),
-    };
-  }
-
-  const target = matchingItems[0] as any;
+  const target   = scored[0].item as any;
   const menuData = Array.isArray(target.menus) ? target.menus[0] : target.menus;
-  const block: string = menuData?.meal_block ?? 'Unknown';
-  const itemDate: string = menuData?.date ?? date;
+  const block    = menuData?.meal_block ?? 'Unknown';
+  const itemDate = menuData?.date ?? todayDate;
 
-  // Update menu_items
-  await db.from('menu_items').update({ item_name: newDish }).eq('id', target.id);
+  await db.from('menu_items').update({ item_name: newRaw }).eq('id', target.id);
+  await notifyTenantsMenuChange(oldRaw, newRaw, block, itemDate).catch(() => {});
 
-  // Notify tenants
-  await notifyTenantsMenuChange(oldDish, newDish, block, itemDate).catch(() => {});
-
-  // Log change
   logAsync({
     sessionId,
-    intent:    'ReplaceMenuItemIntent',
-    utterance: `${oldDish} → ${newDish}`,
-    reply:     `Replaced ${oldDish} with ${newDish} in ${block}`,
+    intent:    'ConversationIntent:replace_menu_item',
+    utterance: `${oldRaw} → ${newRaw}`,
+    reply:     `Replaced ${oldRaw} with ${newRaw} in ${block}`,
     mealBlock: block,
     adminMode,
   });
 
-  const reply = `${oldDish} ki jagah ${newDish} update kar diya ${block} mein.`;
-  return {
-    reply, mealBlock: block,
-    response: speakHi(
-      `<emphasis level="moderate">${oldDish}</emphasis> ki jagah
-       <emphasis level="moderate">${newDish}</emphasis> update kar diya gaya hai ${block} mein.
-       <break time="400ms"/>
-       Tenants ko notification bhej diya gaya hai.`,
-      { endSession: true }
-    ),
-  };
+  return block;
 }
 
-// ── MissingItemsIntent (enhanced — Gemini detects replacement too) ────────────
+// ── Main AI Handler ───────────────────────────────────────────────────────────
 
-async function handleMissingItems(
-  sessionId: string,
+interface HandlerResult { response: NextResponse; reply: string; }
+
+async function handleFreeFormConversation(
   utterance: string,
-  sessionAttrs: Record<string, unknown>
-): Promise<HandlerResult> {
-  const menuId    = sessionAttrs?.nextMenuId as string | undefined;
-  const mealBlock = sessionAttrs?.nextBlock  as string | undefined;
-
-  const { missing: extractedItems, replacement } = await extractWithGemini(utterance);
-
-  // If Gemini detected a definite replacement, ask for confirmation
-  if (replacement?.certain) {
-    return {
-      reply: `Kya ${replacement.old} ki jagah ${replacement.new} kar doon?`,
-      response: speakHi(
-        `Theek hai. Kya main <emphasis level="moderate">${replacement.old}</emphasis> ki jagah
-         <emphasis level="moderate">${replacement.new}</emphasis> update kar doon
-         aur grocery alert nahi banaoon?`,
-        {
-          reprompt: 'Haan ya nahi mein batao. Kya replacement confirm karna hai?',
-          endSession: false,
-          sessionAttributes: {
-            ...sessionAttrs,
-            pendingReplacement: replacement,
-            pendingMissingIfNo: extractedItems,
-          },
-        }
-      ),
-    };
-  }
-
-  // Standard missing item flow — create grocery alert
-  await db.from('grocery_alerts').insert({
-    menu_id:         menuId    ?? null,
-    meal_block:      mealBlock ?? null,
-    raw_utterance:   utterance,
-    extracted_items: extractedItems,
-    logged_at:       new Date().toISOString(),
-  });
-
-  logAsync({ sessionId, intent: 'MissingItemsIntent', utterance, reply: `Logged: ${extractedItems.join(', ')}`, mealBlock });
-
-  const reply = `Logged missing items: ${extractedItems.join(', ')}.`;
-  return {
-    reply, mealBlock: mealBlock ?? undefined,
-    response: speakHi(
-      `Samajh gaya! Maine ye cheezein note kar li hain:
-       <break time="400ms"/>
-       ${extractedItems.map(i => `<emphasis level="moderate">${i}</emphasis>`).join(', <break time="200ms"/> ')}.
-       <break time="600ms"/>
-       Admin ko notify kar diya gaya hai. Acha kaam karo!`,
-      { endSession: true }
-    ),
-  };
-}
-
-// ── Admin: Activate Admin Mode ────────────────────────────────────────────────
-
-function handleAdminMode(sessionAttrs: Record<string, unknown>): HandlerResult {
-  return {
-    reply: 'Admin mode activated.',
-    response: speak(
-      `Admin mode activated. <break time="300ms"/>
-       You can say: <emphasis level="moderate">today's briefing</emphasis> for full day overview,
-       <emphasis level="moderate">supply check</emphasis> for pantry status,
-       or <emphasis level="moderate">create alert</emphasis> for a grocery alert.`,
-      {
-        endSession: false,
-        sessionAttributes: { ...sessionAttrs, adminMode: true },
-      }
-    ),
-  };
-}
-
-// ── Admin: Full Day Briefing ──────────────────────────────────────────────────
-
-async function handleAdminBriefing(
-  sessionAttrs: Record<string, unknown>
+  sessionAttrs: Record<string, unknown>,
+  adminMode: boolean,
+  sessionId: string
 ): Promise<HandlerResult> {
   const { date } = getIST();
-  const [bMenu, bCount, lMenu, lCount, dMenu, dCount, alerts] = await Promise.all([
-    fetchMenu(date, 'Breakfast'),
-    fetchMealCount(date, 'Breakfast'),
-    fetchMenu(date, 'Lunch'),
-    fetchMealCount(date, 'Lunch'),
-    fetchMenu(date, 'Dinner'),
-    fetchMealCount(date, 'Dinner'),
+
+  // Fetch DB context and pantry in parallel
+  const [menuCtx, pantry] = await Promise.all([
+    fetchMenuContext(date),
     fetchLowPantryItems(),
   ]);
 
-  const fmt = (menu: MenuRow | null, count: number | null) => {
-    const dishes = menu?.menu_items?.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name) ?? [];
-    const text   = dishes.length ? dishes.join(', ') : 'not set';
-    const suffix = count != null ? ` for ${count} people` : '';
-    return `${text}${suffix}`;
-  };
+  const systemPrompt = buildSystemPrompt(menuCtx, pantry, date, adminMode);
 
-  const b = fmt(bMenu, bCount);
-  const l = fmt(lMenu, lCount);
-  const d = fmt(dMenu, dCount);
+  // Conversation history (trimmed to MAX_HISTORY)
+  const history = (sessionAttrs.conversationHistory as ConvTurn[] | undefined) ?? [];
 
-  let alertsText = '';
-  if (alerts.length > 0) {
-    const out = alerts.filter(a => a.status === 'Out of Stock').map(a => a.name);
-    const low = alerts.filter(a => a.status === 'Low').map(a => a.name);
-    const parts = [];
-    if (out.length) parts.push(`${out.join(', ')} ${out.length > 1 ? 'are' : 'is'} out of stock`);
-    if (low.length) parts.push(`${low.join(', ')} ${low.length > 1 ? 'are' : 'is'} low`);
-    alertsText = `Supply alerts: ${parts.join('. ')}.`;
-  } else {
-    alertsText = 'All supplies are in stock.';
-  }
+  // Call AI (Gemini with Groq fallback)
+  const ai = await callAIConversation(systemPrompt, history, utterance);
 
-  const reply = `Today — Breakfast: ${b}. Lunch: ${l}. Dinner: ${d}. ${alertsText}`;
-
-  return {
-    reply,
-    response: speak(
-      `Today's plan: <break time="400ms"/>
-       Breakfast — <emphasis level="moderate">${b}</emphasis>. <break time="500ms"/>
-       Lunch — <emphasis level="moderate">${l}</emphasis>. <break time="500ms"/>
-       Dinner — <emphasis level="moderate">${d}</emphasis>. <break time="700ms"/>
-       ${alertsText}`,
-      { endSession: true, sessionAttributes: { ...sessionAttrs, adminMode: true } }
-    ),
-  };
-}
-
-// ── Admin: Supply Check ───────────────────────────────────────────────────────
-
-async function handleSupplyCheck(sessionAttrs: Record<string, unknown>): Promise<HandlerResult> {
-  const alerts = await fetchLowPantryItems();
-
-  if (!alerts.length) {
-    return {
-      reply: 'All pantry items are in stock.',
-      response: speak('All pantry items are currently in stock. Great job!', { endSession: true }),
-    };
-  }
-
-  const out = alerts.filter(a => a.status === 'Out of Stock');
-  const low = alerts.filter(a => a.status === 'Low');
-
-  let ssml = '';
-  if (out.length) ssml += `Out of stock: <emphasis level="moderate">${out.map(a => a.name).join(', ')}</emphasis>. <break time="400ms"/>`;
-  if (low.length) ssml += `Running low: <emphasis level="moderate">${low.map(a => a.name).join(', ')}</emphasis>.`;
-
-  const reply = `Out of stock: ${out.map(a => a.name).join(', ') || 'none'}. Low: ${low.map(a => a.name).join(', ') || 'none'}.`;
-  return { reply, response: speak(ssml, { endSession: true }) };
-}
-
-// ── Admin: Create Grocery Alert Directly ─────────────────────────────────────
-
-async function handleCreateGroceryAlert(
-  utterance: string,
-  sessionAttrs: Record<string, unknown>
-): Promise<HandlerResult> {
-  // Admin is directly naming items to order — split on commas/and rather than extracting negations
-  const items = utterance
-    .split(/,|\band\b/i)
-    .map(s => s.trim())
-    .filter(Boolean);
-  const extracted = items.length ? items : [utterance];
-
-  await db.from('grocery_alerts').insert({
-    meal_block:      null,
-    raw_utterance:   utterance,
-    extracted_items: extracted,
-    logged_at:       new Date().toISOString(),
-  });
-  const reply = `Grocery alert created for: ${extracted.join(', ')}.`;
-  return {
-    reply,
-    response: speak(
-      `Grocery alert created for: <emphasis level="moderate">${extracted.join(', ')}</emphasis>.
-       This will appear on your admin dashboard.`,
-      { endSession: true }
-    ),
-  };
-}
-
-// ── Legacy: QueryMenuIntent ───────────────────────────────────────────────────
-
-async function handleQueryMenu(
-  sessionAttrs: Record<string, unknown>,
-  forceBlock: MealBlock | null,
-  slotBlock?: string | null
-): Promise<HandlerResult> {
-  const { date } = getIST();
-  const block = resolveBlock(forceBlock, slotBlock);
-  const [menu, count] = await Promise.all([fetchMenu(date, block), fetchMealCount(date, block)]);
-
-  if (!menu?.menu_items?.length) {
-    return {
-      reply: `No ${block} menu set for today.`,
-      mealBlock: block,
-      response: speakHi(`Aaj ka ${block} menu set nahi hua hai.`, { endSession: true }),
-    };
-  }
-
-  const dishes = menu.menu_items.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name);
-  const countText = count != null ? ` ${count} logon ke liye` : '';
-  const reply = `Today's ${block}: ${dishes.join(', ')}${countText}.`;
-
-  return {
-    reply, mealBlock: block,
-    response: speakHi(
-      `Aaj ke <emphasis level="moderate">${block}</emphasis> mein
-       ${dishes.join(', <break time="200ms"/> ')}
-       ${count != null ? `<break time="200ms"/> ${count} logon ke liye` : ''}.`,
-      { endSession: true }
-    ),
-  };
-}
-
-// ── Legacy: FoodSuggestionIntent ─────────────────────────────────────────────
-
-async function handleFoodSuggestion(suggestion: string): Promise<HandlerResult> {
-  if (!suggestion.trim()) {
-    return {
-      reply: 'No suggestion captured.',
-      response: speakHi(
-        "Aapki suggestion clear nahi aayi. " +
-        'Please dobara boliye, jaise: <emphasis level="moderate">mujhe biryani banana chahiye</emphasis>.',
-        { reprompt: 'Aapka suggestion kya hai?', endSession: false }
-      ),
-    };
-  }
-  await db.from('food_suggestions').insert({
-    suggestion: suggestion.trim(), source: 'alexa', tenant_id: null, status: 'pending',
-  });
-  return {
-    reply: `Logged suggestion: "${suggestion}".`,
-    response: speakHi(
-      `Shukriya! Aapka suggestion kitchen team ko bhej diya gaya:
-       <break time="300ms"/> <emphasis level="moderate">${suggestion}</emphasis>.
-       <break time="400ms"/> Goodbye!`,
-      { endSession: true }
-    ),
-  };
-}
-
-// ── Legacy: DepartureIntent ───────────────────────────────────────────────────
-
-async function handleDeparture(
-  sessionAttrs: Record<string, unknown>,
-  forceBlock: MealBlock | null
-): Promise<HandlerResult> {
-  const { date } = getIST();
-  const block = resolveBlock(forceBlock, sessionAttrs?.currentBlock as string | undefined);
-  const { block: nextBlock, addDays } = nextMealBlock(block);
-  const nextDate = addDays > 0 ? istDatePlusDays(addDays) : date;
-
-  const menu = await fetchMenu(nextDate, nextBlock);
-
-  if (!menu?.menu_ingredients?.length) {
-    return {
-      reply: `No ingredient list for ${nextBlock} yet.`,
-      mealBlock: block,
-      response: speakHi(
-        `Aaj ka kaam accha raha! ${nextBlock} ke liye ingredient list abhi set nahi hui hai.
-         Supervisor se poochh lijiye. Goodbye!`,
-        { endSession: true }
-      ),
-    };
-  }
-
-  const ingredientList = menu.menu_ingredients.map(i => {
-    if (i.quantity && i.unit) return `${i.quantity} ${i.unit} of ${i.ingredient_name}`;
-    if (i.quantity) return `${i.quantity} ${i.ingredient_name}`;
-    return i.ingredient_name;
-  });
-
-  const label = addDays > 0 ? `kal ke ${nextBlock}` : nextBlock;
-  const reply = `Ingredients for ${label}: ${ingredientList.join(', ')}.`;
-
-  return {
-    reply, mealBlock: block,
-    response: speakHi(
-      `Bahut accha kaam kiya! Jaane se pehle, <emphasis level="moderate">${label}</emphasis> ke liye
-       ye cheezein chahiye hongi:
-       <break time="500ms"/>
-       ${ingredientList.join(', <break time="200ms"/> ')}.
-       <break time="800ms"/>
-       Kya ye saari cheezein kitchen mein available hain?`,
-      {
-        reprompt: 'Haan ya nahi mein batao.',
-        endSession: false,
-        sessionAttributes: { ...sessionAttrs, awaitingInventoryCheck: true, nextMenuId: menu.id, nextBlock },
+  // Execute DB action
+  let actionNote = '';
+  try {
+    if (ai.action === 'replace_menu_item') {
+      const block = await executeReplaceMenuItem(ai.params, date, sessionId, adminMode);
+      if (!block) {
+        ai.reply += ' Lekin menu mein match nahi mila. Dish ka naam check karo.';
+      } else {
+        actionNote = `(replaced in ${block})`;
       }
-    ),
-  };
+    } else if (ai.action === 'log_missing_items' || ai.action === 'create_grocery_alert') {
+      const items = (ai.params.items as string[] | undefined) ?? [];
+      if (items.length) {
+        await db.from('grocery_alerts').insert({
+          meal_block:      null,
+          raw_utterance:   utterance,
+          extracted_items: items,
+          logged_at:       new Date().toISOString(),
+        });
+        actionNote = `(logged: ${items.join(', ')})`;
+      }
+    }
+  } catch {
+    // DB action failed — reply still goes through
+  }
+
+  // Update conversation history
+  const newHistory: ConvTurn[] = [
+    ...history,
+    { role: 'user'  as const, text: utterance },
+    { role: 'model' as const, text: ai.reply },
+  ].slice(-MAX_HISTORY);
+
+  const newAttrs = { ...sessionAttrs, conversationHistory: newHistory };
+
+  logAsync({
+    sessionId,
+    intent:    'ConversationIntent',
+    utterance: actionNote ? `${utterance} ${actionNote}` : utterance,
+    reply:     ai.reply,
+    adminMode,
+  });
+
+  const response = adminMode
+    ? speak(ai.reply, { endSession: false, sessionAttributes: newAttrs })
+    : speakHi(ai.reply, { endSession: false, sessionAttributes: newAttrs });
+
+  return { reply: ai.reply, response };
 }
 
 // ── Main Route Handler ────────────────────────────────────────────────────────
@@ -1036,7 +589,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Signature verification failed' }, { status: 403 });
   }
 
-  // Detect test mode early so we can skip strict validation checks
   const isTestMode = !!(
     process.env.ALEXA_TEST_SECRET &&
     req.headers.get('x-alexa-test-secret') === process.env.ALEXA_TEST_SECRET
@@ -1054,7 +606,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (skillId && body.session?.application?.applicationId !== skillId) {
       return NextResponse.json({ error: 'Application ID mismatch' }, { status: 403 });
     }
-
     if (!isTimestampFresh(body.request.timestamp)) {
       return NextResponse.json({ error: 'Request timestamp expired' }, { status: 400 });
     }
@@ -1065,206 +616,80 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const sessionAttrs = (session?.attributes ?? {}) as Record<string, unknown>;
   const adminMode    = !!(sessionAttrs?.adminMode);
 
-  const forceBlockRaw = isTestMode ? req.headers.get('x-alexa-force-block') : null;
-  const forceBlock: MealBlock | null =
-    forceBlockRaw === 'Breakfast' || forceBlockRaw === 'Lunch' || forceBlockRaw === 'Dinner'
-      ? forceBlockRaw : null;
-
-  const log = (result: HandlerResult, intent: string, utterance?: string | null) => {
-    logAsync({ sessionId, intent, utterance, reply: result.reply, mealBlock: result.mealBlock, adminMode });
-    return result.response;
-  };
-
   try {
     if (request.type === 'SessionEndedRequest') {
       return NextResponse.json({ version: '1.0', response: {} });
     }
 
-    // ── Launch / Arrival ──────────────────────────────────────────────────────
-    if (request.type === 'LaunchRequest' || request.intent?.name === 'ArrivalIntent') {
-      return log(await handleArrival(sessionAttrs, forceBlock, adminMode), 'ArrivalIntent');
+    // ── Launch → warm greeting, session stays open ──────────────────────────
+    if (request.type === 'LaunchRequest') {
+      const { hour } = getIST();
+      const greeting = hour < 12 ? 'Subah' : hour < 17 ? 'Dopahar' : 'Shaam';
+      logAsync({ sessionId, intent: 'LaunchRequest', reply: 'Greeted cook.' });
+      return speakHi(
+        `${greeting} ki namaste! Aaram Kitchen mein aapka swagat hai. <break time="300ms"/> Kya banana hai aaj? Ya poochho kuch bhi.`,
+        {
+          reprompt: 'Koi sawaal poochho ya kuch batao.',
+          endSession: false,
+          sessionAttributes: {},
+        }
+      );
     }
 
+    // ── Intent Requests ─────────────────────────────────────────────────────
     if (request.type === 'IntentRequest' && request.intent) {
       const { name: intent, slots } = request.intent;
 
       switch (intent) {
 
-        // ── Cook: Morning Briefing ──────────────────────────────────────────
-        case 'MorningBriefingIntent':
-          return log(await handleMorningBriefing(sessionAttrs, forceBlock), 'MorningBriefingIntent');
-
-        // ── Cook: Dinner Briefing ───────────────────────────────────────────
-        case 'DinnerBriefingIntent':
-          return log(await handleDinnerBriefing(sessionAttrs, forceBlock), 'DinnerBriefingIntent');
-
-        // ── Cook: Tomorrow Briefing ─────────────────────────────────────────
-        case 'TomorrowBriefingIntent':
-          return log(await handleTomorrowBriefing(sessionAttrs), 'TomorrowBriefingIntent');
-
-        // ── Cook: Wait (keep session open) ─────────────────────────────────
-        case 'WaitIntent':
-          // If cook is in the "name missing items" sub-state, their utterance
-          // was likely misrouted here by dialect variance (e.g. "nahi he" vs "nahi hai").
-          // Give them guidance to re-state instead of looping the wait message.
-          if (sessionAttrs?.awaitingMissingReport) {
-            return speakHi(
-              'Kaunsi cheez nahi hai? Seedha batao, jaise: <emphasis level="moderate">tomatoes nahi hai</emphasis> ya <emphasis level="moderate">pyaz khatam ho gayi</emphasis>.',
-              { reprompt: 'Kaunsi cheezein khatam hain?', endSession: false, sessionAttributes: sessionAttrs }
-            );
-          }
-          if (sessionAttrs?.awaitingInventoryCheck) {
-            return log(handleWait(sessionAttrs), 'WaitIntent');
-          }
-          return speakHi('Ji batao, main sun rahi hoon.', { endSession: false, sessionAttributes: sessionAttrs });
-
-        // ── Cook/Admin: Replace menu item ───────────────────────────────────
-        case 'ReplaceMenuItemIntent': {
-          // Single ReplacementRequest slot — Gemini extracts old+new dish names
-          const fullUtterance = slots?.ReplacementRequest?.value?.trim() ?? '';
-          if (!fullUtterance) {
-            return speakHi(
-              'Kripya batao kaunsa dish replace karna hai aur uski jagah kya banana hai.',
-              { reprompt: 'Kaunsa dish replace karna hai?', endSession: false, sessionAttributes: sessionAttrs }
-            );
-          }
-          const parsed = await parseReplacementFromUtterance(fullUtterance);
-          const oldRaw = parsed?.old ?? '';
-          const newRaw = parsed?.new ?? '';
-          if (!oldRaw || !newRaw) {
-            return speakHi(
-              'Samajh nahi aaya. Kripya batao — kaunsa dish replace karna hai aur uski jagah kya banana hai?',
-              { reprompt: 'Udaharan: "Rajma ki jagah Bhindi Curry banana hai"', endSession: false, sessionAttributes: sessionAttrs }
-            );
-          }
-          return log(
-            await handleReplaceMenuItem(sessionId, sessionAttrs, oldRaw, newRaw, adminMode),
-            'ReplaceMenuItemIntent', `${oldRaw} → ${newRaw}`
-          );
-        }
-
-        // ── Cook/Admin: Legacy query ────────────────────────────────────────
-        case 'QueryMenuIntent': {
-          const slotBlock = slots?.RequestedBlock?.value ?? null;
-          return log(await handleQueryMenu(sessionAttrs, forceBlock, slotBlock), 'QueryMenuIntent');
-        }
-
-        // ── All: Food suggestion ────────────────────────────────────────────
-        case 'FoodSuggestionIntent': {
-          const suggestion = slots?.SuggestionText?.value?.trim() ?? '';
-          return log(await handleFoodSuggestion(suggestion), 'FoodSuggestionIntent', suggestion);
-        }
-
-        // ── Cook/Admin: Legacy departure ────────────────────────────────────
-        case 'DepartureIntent':
-          return log(await handleDeparture(sessionAttrs, forceBlock), 'DepartureIntent');
-
-        // ── Cook/Admin: Missing items ───────────────────────────────────────
-        case 'MissingItemsIntent': {
-          const utterance = slots?.MissingItems?.value?.trim() ?? '';
+        // ── Free-form AI conversation (catches everything) ──────────────────
+        case 'ConversationIntent': {
+          const utterance = slots?.Query?.value?.trim() ?? '';
           if (!utterance) {
-            const r = speakHi(
-              'Kya nahi mila? Please batao, jaise: <emphasis level="moderate">tomatoes aur pyaz nahi hai</emphasis>.',
-              { reprompt: 'Kya khatam ho gaya?', endSession: false, sessionAttributes: sessionAttrs }
-            );
-            logAsync({ sessionId, intent: 'MissingItemsIntent', utterance: null, reply: 'Prompt: what is missing?' });
-            return r;
-          }
-          return log(await handleMissingItems(sessionId, utterance, sessionAttrs), 'MissingItemsIntent', utterance);
-        }
-
-        // ── Admin: Activate mode ────────────────────────────────────────────
-        case 'AdminModeIntent':
-          return log(handleAdminMode(sessionAttrs), 'AdminModeIntent');
-
-        // ── Admin: Full briefing ────────────────────────────────────────────
-        case 'AdminBriefingIntent':
-          return log(await handleAdminBriefing(sessionAttrs), 'AdminBriefingIntent');
-
-        // ── Admin: Supply check ─────────────────────────────────────────────
-        case 'SupplyCheckIntent':
-          return log(await handleSupplyCheck(sessionAttrs), 'SupplyCheckIntent');
-
-        // ── Admin: Create grocery alert ─────────────────────────────────────
-        case 'CreateGroceryAlertIntent': {
-          const utterance = slots?.AlertItem?.value?.trim() ?? '';
-          if (!utterance) {
-            return speakHi('Kaunsi cheez mangvani hai?', { reprompt: 'Grocery alert kiske liye?', endSession: false, sessionAttributes: sessionAttrs });
-          }
-          return log(await handleCreateGroceryAlert(utterance, sessionAttrs), 'CreateGroceryAlertIntent', utterance);
-        }
-
-        // ── Yes/No: inventory confirmation ─────────────────────────────────
-        case 'AMAZON.YesIntent': {
-          // If confirming a pending replacement (from combined missing+replace utterance)
-          if (sessionAttrs?.pendingReplacement) {
-            const rep = sessionAttrs.pendingReplacement as { old: string; new: string };
-            return log(
-              await handleReplaceMenuItem(sessionId, sessionAttrs, rep.old, rep.new, adminMode),
-              'AMAZON.YesIntent'
-            );
-          }
-          if (sessionAttrs?.awaitingInventoryCheck) {
-            logAsync({ sessionId, intent: 'AMAZON.YesIntent', reply: 'All ingredients available.' });
-            return speakHi('Bahut badhiya! Saari cheezein available hain. Mast khaana banao!', { endSession: true });
-          }
-          return speakHi('Achha! Goodbye!', { endSession: true });
-        }
-
-        case 'AMAZON.NoIntent': {
-          // If rejecting a pending replacement
-          if (sessionAttrs?.pendingReplacement) {
-            const missingItems = sessionAttrs.pendingMissingIfNo as string[] | undefined;
-            if (missingItems?.length) {
-              const menuId    = sessionAttrs?.nextMenuId as string | undefined;
-              const mealBlock = sessionAttrs?.nextBlock  as string | undefined;
-              await db.from('grocery_alerts').insert({
-                menu_id: menuId ?? null, meal_block: mealBlock ?? null,
-                raw_utterance: missingItems.join(', '), extracted_items: missingItems,
-                logged_at: new Date().toISOString(),
-              });
-              logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: `Grocery alert: ${missingItems.join(', ')}` });
-              return speakHi(
-                `Theek hai! Maine <emphasis level="moderate">${missingItems.join(', ')}</emphasis> ka grocery alert bana diya. Admin ko notify kar diya gaya. Goodbye!`,
-                { endSession: true }
-              );
-            }
-          }
-          if (sessionAttrs?.awaitingInventoryCheck) {
-            logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: 'Prompted for missing items.' });
             return speakHi(
-              'Koi baat nahi. Kya khatam ho gaya? Batao, jaise: <emphasis level="moderate">tomatoes aur pyaz nahi hai</emphasis>.',
-              {
-                reprompt: 'Kaunsi cheezein nahi hain? Jaise: "tomatoes nahi hai".',
-                endSession: false,
-                sessionAttributes: { ...sessionAttrs, awaitingMissingReport: true },
-              }
+              'Kuch sun nahi aaya. Dobara boliye.',
+              { reprompt: 'Koi sawaal poochho.', endSession: false, sessionAttributes: sessionAttrs }
             );
           }
-          return speakHi('Achha. Goodbye!', { endSession: true });
+          const result = await handleFreeFormConversation(utterance, sessionAttrs, adminMode, sessionId);
+          return result.response;
         }
 
-        case 'AMAZON.HelpIntent':
+        // ── Yes → simple acknowledgement, stay open ─────────────────────────
+        case 'AMAZON.YesIntent':
+          logAsync({ sessionId, intent: 'AMAZON.YesIntent', reply: 'Ji! Koi aur kaam?' });
           return speakHi(
-            `Main Aaram Kitchen Assistant hoon. <break time="300ms"/>
-             Cook ke liye: <emphasis level="moderate">Aaj ka menu batao</emphasis> boliye Breakfast aur Lunch ke liye.
-             <break time="300ms"/>
-             <emphasis level="moderate">Dinner mein kya banana hai</emphasis> boliye Dinner ke liye.
-             <break time="300ms"/>
-             <emphasis level="moderate">Kal ke liye kya banana hai</emphasis> boliye kal ki planning ke liye.
-             <break time="300ms"/>
-             Admin ke liye: <emphasis level="moderate">admin mode</emphasis> boliye.`,
-            { reprompt: "Kya poochha chahte ho?", endSession: false, sessionAttributes: sessionAttrs }
+            'Ji! Koi aur kaam?',
+            { reprompt: 'Koi sawaal ho to poochho.', endSession: false, sessionAttributes: sessionAttrs }
           );
 
+        // ── No → prompt for details, stay open ─────────────────────────────
+        case 'AMAZON.NoIntent':
+          logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: 'Kya khatam ho gaya?' });
+          return speakHi(
+            'Theek hai. Kya khatam ho gaya? Batao.',
+            { reprompt: 'Kaunsi cheez available nahi hai?', endSession: false, sessionAttributes: sessionAttrs }
+          );
+
+        // ── Help ────────────────────────────────────────────────────────────
+        case 'AMAZON.HelpIntent':
+          logAsync({ sessionId, intent: 'AMAZON.HelpIntent', reply: 'Help.' });
+          return speakHi(
+            'Main Aaram Kitchen AI hoon. Mujhse koi bhi kitchen sawaal poochho Hindi mein. <break time="200ms"/> Jaise: "aaj ka menu kya hai", "tomatoes khatam ho gaye", ya "lunch mein rajma ki jagah chole bana do".',
+            { reprompt: 'Koi sawaal poochho.', endSession: false, sessionAttributes: sessionAttrs }
+          );
+
+        // ── Stop / Cancel ───────────────────────────────────────────────────
         case 'AMAZON.StopIntent':
         case 'AMAZON.CancelIntent':
-          return speakHi('Goodbye! Achha kaam karo.', { endSession: true });
+          logAsync({ sessionId, intent, reply: 'Goodbye.' });
+          return speakHi('Alvida! Achha kaam karo.', { endSession: true });
 
+        // ── Default fallback ────────────────────────────────────────────────
         default:
           return speakHi(
-            'Samajh nahi aaya. <emphasis level="moderate">Aaj ka menu batao</emphasis> ya <emphasis level="moderate">Dinner mein kya banana hai</emphasis> boliye.',
-            { reprompt: "Kya poochha chahte ho?", endSession: false, sessionAttributes: sessionAttrs }
+            'Kuch samajh nahi aaya. Koi baat poochho Hindi mein.',
+            { reprompt: 'Koi sawaal ho to poochho.', endSession: false, sessionAttributes: sessionAttrs }
           );
       }
     }
