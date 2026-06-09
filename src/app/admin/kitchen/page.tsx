@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,13 +10,13 @@ import {
   Plus, Trash2, CheckCircle2, Loader2,
   Save, RefreshCw, UtensilsCrossed, Mic,
   AlertCircle, Package, Clock, Lightbulb, Edit3,
-  Users, Shield
+  Users, Shield, Send, Bot, RotateCcw, ChevronDown
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
-type Tab = 'weekly' | 'menu' | 'log' | 'reorder' | 'suggestions';
+type Tab = 'weekly' | 'menu' | 'log' | 'tester' | 'reorder' | 'suggestions';
 type DayName = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 
 const DAYS: DayName[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -63,6 +63,12 @@ interface FoodSuggestion {
   status: 'pending' | 'noted' | 'implemented';
   admin_note: string | null;
   created_at: string;
+}
+
+interface TesterMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -678,9 +684,11 @@ function MenuBuilderTab() {
 // ── Tab 2: Alexa Log ──────────────────────────────────────────────────────────
 
 function AlexaLogTab() {
-  const [logs, setLogs]       = useState<AlexaLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState<'today' | 'week' | 'all'>('today');
+  const [logs, setLogs]                       = useState<AlexaLog[]>([]);
+  const [loading, setLoading]                 = useState(true);
+  const [filter, setFilter]                   = useState<'today' | 'week' | 'all'>('today');
+  const [viewMode, setViewMode]               = useState<'sessions' | 'events'>('sessions');
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -699,22 +707,24 @@ function AlexaLogTab() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-  // Realtime: new Alexa interactions animate into the feed
   useEffect(() => {
     const channel = supabase
       .channel('kitchen-alexa-logs-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alexa_logs' }, (payload) => {
         const newLog = payload.new as AlexaLog;
-        setLogs(prev => {
-          if (prev.some(l => l.id === newLog.id)) return prev;
-          return [newLog, ...prev];
-        });
+        setLogs(prev => prev.some(l => l.id === newLog.id) ? prev : [newLog, ...prev]);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Group by date
+  const toggleSession = (sid: string) => setExpandedSessions(prev => {
+    const next = new Set(prev);
+    next.has(sid) ? next.delete(sid) : next.add(sid);
+    return next;
+  });
+
+  // Events view: group by date
   const grouped = logs.reduce<Record<string, AlexaLog[]>>((acc, log) => {
     const day = formatDate(log.logged_at);
     if (!acc[day]) acc[day] = [];
@@ -722,9 +732,21 @@ function AlexaLogTab() {
     return acc;
   }, {});
 
+  // Sessions view: group by session_id, most recent first
+  const sessionMap = logs.reduce<Record<string, AlexaLog[]>>((acc, log) => {
+    if (!acc[log.session_id]) acc[log.session_id] = [];
+    acc[log.session_id].push(log);
+    return acc;
+  }, {});
+  const sortedSessions = Object.entries(sessionMap).sort(([, a], [, b]) => {
+    const latestA = a.reduce((m, l) => Math.max(m, new Date(l.logged_at).getTime()), 0);
+    const latestB = b.reduce((m, l) => Math.max(m, new Date(l.logged_at).getTime()), 0);
+    return latestB - latestA;
+  });
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-1 bg-foreground/5 p-1 rounded-xl">
           {(['today', 'week', 'all'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
@@ -734,49 +756,140 @@ function AlexaLogTab() {
             </button>
           ))}
         </div>
-        <button onClick={fetchLogs} className="soft-button w-8 h-8 border border-white text-foreground/30 hover:text-primary">
-          <RefreshCw className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 bg-foreground/5 p-1 rounded-xl">
+            {(['sessions', 'events'] as const).map(v => (
+              <button key={v} onClick={() => setViewMode(v)}
+                className={cn('px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all',
+                  viewMode === v ? 'bg-white shadow-lg text-primary' : 'text-foreground/30 hover:text-foreground')}>
+                {v === 'sessions' ? 'Conversations' : 'Events'}
+              </button>
+            ))}
+          </div>
+          <button onClick={fetchLogs} className="soft-button w-8 h-8 border border-white text-foreground/30 hover:text-primary">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
       ) : logs.length === 0 ? (
         <EmptyState icon={MessageSquare} text="No Alexa conversations yet. Seed a menu and say 'Alexa, open Aaram Kitchen'." />
-      ) : (
-        Object.entries(grouped).map(([day, entries]) => (
-          <div key={day} className="space-y-2">
-            <p className="text-[10px] font-black text-foreground/30 uppercase tracking-widest px-1">{day}</p>
-            {entries.map(log => {
-              const meta = INTENT_META[log.intent] ?? { label: log.intent, icon: Mic, color: 'text-foreground/30' };
-              const Icon = meta.icon;
-              return (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                  className="soft-card p-4 border border-white bg-white/40 flex items-start gap-4"
-                >
-                  <div className={cn('w-8 h-8 rounded-xl bg-foreground/5 flex items-center justify-center shrink-0', meta.color)}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-black text-foreground uppercase tracking-tight">{meta.label}</span>
-                      {log.meal_block && <BlockPill block={log.meal_block} />}
-                      <span className="text-[10px] text-foreground/20 font-bold ml-auto">{formatTime(log.logged_at)}</span>
+      ) : viewMode === 'events' ? (
+        // ── Events view (flat log) ──
+        <>
+          {Object.entries(grouped).map(([day, entries]) => (
+            <div key={day} className="space-y-2">
+              <p className="text-[10px] font-black text-foreground/30 uppercase tracking-widest px-1">{day}</p>
+              {entries.map(log => {
+                const meta = INTENT_META[log.intent] ?? { label: log.intent, icon: Mic, color: 'text-foreground/30' };
+                const Icon = meta.icon;
+                return (
+                  <motion.div key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                    className="soft-card p-4 border border-white bg-white/40 flex items-start gap-4">
+                    <div className={cn('w-8 h-8 rounded-xl bg-foreground/5 flex items-center justify-center shrink-0', meta.color)}>
+                      <Icon className="w-4 h-4" />
                     </div>
-                    {log.utterance && (
-                      <p className="text-xs text-foreground/60 font-bold italic">"{log.utterance}"</p>
-                    )}
-                    {log.reply && (
-                      <p className="text-[11px] text-foreground/40 font-medium leading-relaxed">{log.reply}</p>
-                    )}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-black text-foreground uppercase tracking-tight">{meta.label}</span>
+                        {log.meal_block && <BlockPill block={log.meal_block} />}
+                        <span className="text-[10px] text-foreground/20 font-bold ml-auto">{formatTime(log.logged_at)}</span>
+                      </div>
+                      {log.utterance && <p className="text-xs text-foreground/60 font-bold italic">"{log.utterance}"</p>}
+                      {log.reply && <p className="text-[11px] text-foreground/40 font-medium leading-relaxed">{log.reply}</p>}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ))}
+        </>
+      ) : (
+        // ── Sessions / Conversations view ──
+        <div className="space-y-3">
+          {sortedSessions.map(([sid, turns]) => {
+            const sorted    = turns.slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at));
+            const first     = sorted[0];
+            const convCount = turns.filter(l => l.utterance).length;
+            const isExpanded      = expandedSessions.has(sid);
+            const isTestSession   = sid.startsWith('test-session-');
+            const shortId         = sid.length > 24 ? `…${sid.slice(-12)}` : sid;
+
+            return (
+              <div key={sid} className="soft-card border border-white bg-white/40 overflow-hidden">
+                {/* Session header — click to expand */}
+                <button onClick={() => toggleSession(sid)}
+                  className="w-full p-4 flex items-center justify-between gap-4 hover:bg-foreground/5 transition-all text-left">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center',
+                      isTestSession ? 'bg-blue-400/10' : 'bg-primary/10')}>
+                      <Mic className={cn('w-4 h-4', isTestSession ? 'text-blue-500' : 'text-primary')} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black text-foreground uppercase tracking-tight flex items-center gap-2">
+                        {convCount} turn{convCount !== 1 ? 's' : ''}
+                        {isTestSession && (
+                          <span className="text-[9px] bg-blue-400/10 text-blue-500 px-1.5 py-0.5 rounded-full uppercase tracking-widest font-black">
+                            Web Test
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[10px] text-foreground/30 font-mono">{shortId}</p>
+                    </div>
                   </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        ))
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <p className="text-[10px] text-foreground/40 font-bold">{formatDate(first.logged_at)}</p>
+                      <p className="text-[10px] text-foreground/20 font-bold">{formatTime(first.logged_at)}</p>
+                    </div>
+                    <ChevronDown className={cn('w-4 h-4 text-foreground/30 transition-transform duration-200', isExpanded && 'rotate-180')} />
+                  </div>
+                </button>
+
+                {/* Chat thread */}
+                {isExpanded && (
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      className="border-t border-foreground/5 px-4 pb-4 pt-3 space-y-2"
+                    >
+                      {sorted.map(log => (
+                        <div key={log.id} className="space-y-1.5">
+                          {/* Centred pill for pure-event entries (no utterance or reply) */}
+                          {!log.utterance && !log.reply && (
+                            <div className="flex justify-center py-0.5">
+                              <span className="text-[9px] text-foreground/30 font-black uppercase tracking-widest bg-foreground/5 px-3 py-1 rounded-full">
+                                {INTENT_META[log.intent]?.label ?? log.intent}
+                              </span>
+                            </div>
+                          )}
+                          {/* User utterance */}
+                          {log.utterance && (
+                            <div className="flex justify-end">
+                              <div className="max-w-[80%] bg-primary/10 text-primary px-3 py-2 rounded-2xl rounded-br-sm text-xs font-medium">
+                                {log.utterance}
+                              </div>
+                            </div>
+                          )}
+                          {/* AI reply */}
+                          {log.reply && (
+                            <div className="flex justify-start">
+                              <div className="max-w-[80%] bg-white border border-foreground/5 text-foreground/70 px-3 py-2 rounded-2xl rounded-bl-sm text-xs font-medium shadow-sm">
+                                {log.reply}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1105,6 +1218,180 @@ function SuggestionsTab() {
   );
 }
 
+// ── Tab: Alexa Tester ─────────────────────────────────────────────────────────
+
+function AlexaTesterTab() {
+  const [messages, setMessages]           = useState<TesterMessage[]>([]);
+  const [sessionId, setSessionId]         = useState('');
+  const [sessionAttrs, setSessionAttrs]   = useState<Record<string, unknown>>({});
+  const [input, setInput]                 = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const bottomRef                         = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const callAlexa = async (utterance?: string, isLaunch = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? '';
+
+      const res = await fetch('/api/kitchen/alexa-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ utterance, sessionId, sessionAttributes: sessionAttrs, isLaunch }),
+      });
+
+      const data = await res.json() as { reply?: string; sessionAttributes?: Record<string, unknown>; endSession?: boolean; error?: string };
+
+      if (!res.ok) {
+        setError(data.error ?? 'Something went wrong');
+        return;
+      }
+
+      const newMsgs: TesterMessage[] = [];
+      if (utterance && !isLaunch) newMsgs.push({ id: `u-${Date.now()}`, role: 'user',      text: utterance });
+      if (data.reply)              newMsgs.push({ id: `a-${Date.now()}`, role: 'assistant', text: data.reply });
+      setMessages(prev => [...prev, ...newMsgs]);
+      setSessionAttrs(data.sessionAttributes ?? {});
+      if (data.endSession) setSessionActive(false);
+    } catch {
+      setError('Network error. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startSession = async () => {
+    const id = `test-session-${Date.now()}`;
+    setSessionId(id);
+    setSessionAttrs({});
+    setMessages([]);
+    setSessionActive(true);
+    await callAlexa(undefined, true);
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading || !sessionActive) return;
+    const text = input.trim();
+    setInput('');
+    await callAlexa(text, false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="soft-card p-5 border border-white bg-white/40 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="font-black text-foreground text-sm flex items-center gap-2 uppercase tracking-tight">
+            <Bot className="w-4 h-4 text-primary" /> Alexa Kitchen Simulator
+          </h3>
+          <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest mt-0.5">
+            Test conversations live — no Alexa device needed
+          </p>
+        </div>
+        <button onClick={startSession} disabled={loading}
+          className="btn-terracotta px-4 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shrink-0 disabled:opacity-60">
+          <RotateCcw className="w-3.5 h-3.5" />
+          {sessionActive ? 'New Session' : 'Start Session'}
+        </button>
+      </div>
+
+      {/* Chat area */}
+      <div className="soft-card border border-white bg-white/20 h-[420px] overflow-y-auto p-5 space-y-3">
+        {messages.length === 0 && !loading && (
+          <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Mic className="w-7 h-7 text-primary/40" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-foreground/30 uppercase tracking-widest">Ready to test</p>
+              <p className="text-[11px] text-foreground/20 font-medium mt-1">Click "Start Session" to open Aaram Kitchen</p>
+            </div>
+          </div>
+        )}
+
+        {messages.map(msg => (
+          <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            className={cn('flex items-end gap-2.5', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
+            <div className={cn('w-7 h-7 rounded-xl flex items-center justify-center shrink-0',
+              msg.role === 'user' ? 'bg-primary/10' : 'bg-foreground/5')}>
+              {msg.role === 'user'
+                ? <span className="text-sm">👤</span>
+                : <Bot className="w-3.5 h-3.5 text-foreground/40" />}
+            </div>
+            <div className={cn('max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium leading-relaxed',
+              msg.role === 'user'
+                ? 'bg-primary text-white rounded-br-sm'
+                : 'bg-white/90 text-foreground/80 border border-foreground/5 rounded-bl-sm shadow-sm')}>
+              {msg.text}
+            </div>
+          </motion.div>
+        ))}
+
+        {loading && (
+          <div className="flex items-end gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-foreground/5 flex items-center justify-center shrink-0">
+              <Bot className="w-3.5 h-3.5 text-foreground/30" />
+            </div>
+            <div className="bg-white/90 border border-foreground/5 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+              <div className="flex gap-1.5 items-center h-4">
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground/25 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground/25 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground/25 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex justify-center">
+            <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-200 px-4 py-2 rounded-xl">{error}</p>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="soft-card p-3 border border-white bg-white/40 flex gap-3">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={!sessionActive || loading}
+          placeholder={sessionActive ? 'Kuch bolo… (e.g. "aaj lunch mein kya hai")' : 'Start a session first'}
+          className="soft-ui-in flex-1 px-4 py-3 text-sm focus:outline-none bg-white/70 border border-white disabled:opacity-40"
+        />
+        <button onClick={sendMessage}
+          disabled={!input.trim() || !sessionActive || loading}
+          className="btn-terracotta px-5 py-3 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+          <Send className="w-3.5 h-3.5" />
+          Send
+        </button>
+      </div>
+
+      {sessionActive && (
+        <p className="text-[10px] text-foreground/20 font-bold text-center uppercase tracking-widest font-mono">
+          Session · {sessionId}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function KitchenPage() {
@@ -1114,6 +1401,7 @@ export default function KitchenPage() {
     { id: 'weekly',      label: 'Weekly Plan',   icon: Edit3         },
     { id: 'menu',        label: 'Day Builder',   icon: ChefHat       },
     { id: 'log',         label: 'Alexa Log',     icon: MessageSquare },
+    { id: 'tester',      label: 'Tester',        icon: Bot           },
     { id: 'reorder',     label: 'Reorder List',  icon: ShoppingCart  },
     { id: 'suggestions', label: 'Suggestions',   icon: Lightbulb     },
   ];
@@ -1166,6 +1454,7 @@ export default function KitchenPage() {
             {tab === 'weekly'      && <WeeklyMenuTab />}
             {tab === 'menu'        && <MenuBuilderTab />}
             {tab === 'log'         && <AlexaLogTab />}
+            {tab === 'tester'      && <AlexaTesterTab />}
             {tab === 'reorder'     && <ReorderListTab />}
             {tab === 'suggestions' && <SuggestionsTab />}
           </motion.div>
