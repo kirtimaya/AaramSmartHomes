@@ -40,7 +40,6 @@
             }
           ],
           "samples": [
-            "{Query}",
             "batao {Query}",
             "sunao {Query}",
             "bolo {Query}",
@@ -49,7 +48,10 @@
             "main bolna chahta hoon {Query}",
             "mujhe pata karna hai {Query}",
             "bata do {Query}",
-            "sunao zara {Query}"
+            "sunao zara {Query}",
+            "update karo {Query}",
+            "check karo {Query}",
+            "baat karna hai {Query}"
           ]
         }
 
