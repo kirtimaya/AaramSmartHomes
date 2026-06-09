@@ -160,27 +160,26 @@ function speak(
 // ── Alexa Signature Verification ──────────────────────────────────────────────
 
 async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<void> {
-  if (process.env.NODE_ENV !== 'production') return;
-
   const testSecret = process.env.ALEXA_TEST_SECRET;
   if (testSecret && req.headers.get('x-alexa-test-secret') === testSecret) return;
 
-  const certUrl   = req.headers.get('SignatureCertChainUrl') ?? '';
-  const signature = req.headers.get('Signature') ?? '';
+  // HTTP/2 lowercases all header names; try both casings
+  const certUrl =
+    req.headers.get('signaturecertchainurl') ??
+    req.headers.get('SignatureCertChainUrl') ?? '';
+  const signature =
+    req.headers.get('signature') ??
+    req.headers.get('Signature') ?? '';
+
   if (!certUrl || !signature) throw new Error('Missing Alexa signature headers');
 
-  const url = new URL(certUrl);
-  if (
-    url.protocol !== 'https:' ||
-    url.hostname.toLowerCase() !== 's3.amazonaws.com' ||
-    !url.pathname.startsWith('/echo.api/')
-  ) throw new Error('Invalid certificate URL origin');
+  // Delegate full validation (cert URL, chain, signature) to alexa-verifier
+  const verifier = (await import('alexa-verifier')).default as (
+    certUrl: string, signature: string, body: string, cb: (err: Error | null) => void
+  ) => void;
 
-  const verifierMod = require('alexa-verifier') as { default: Function };
   await new Promise<void>((resolve, reject) =>
-    verifierMod.default(certUrl, signature, rawBody, (err: Error | null) =>
-      err ? reject(err) : resolve()
-    )
+    verifier(certUrl, signature, rawBody, (err) => (err ? reject(err) : resolve()))
   );
 }
 
