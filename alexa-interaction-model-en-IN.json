@@ -43,16 +43,38 @@
             "batao {Query}",
             "sunao {Query}",
             "bolo {Query}",
+            "bata do {Query}",
             "poochna hai {Query}",
             "main bolna chahti hoon {Query}",
             "main bolna chahta hoon {Query}",
             "mujhe pata karna hai {Query}",
+            "kya {Query}",
+            "aaj {Query}",
+            "kal {Query}",
+            "kitne {Query}",
             "tell me {Query}",
-            "what about {Query}",
-            "question hai {Query}",
-            "update karo {Query}",
-            "check karo {Query}"
+            "what {Query}",
+            "{Query} batao",
+            "{Query} bolo",
+            "{Query} sunao",
+            "{Query} bata",
+            "{Query} karo",
+            "{Query} hai",
+            "{Query} hain",
+            "{Query} tha",
+            "{Query} thi",
+            "{Query} chahiye",
+            "{Query} banana hai",
+            "{Query} nahi hai",
+            "{Query} nahi he",
+            "{Query} khatam ho gaya",
+            "{Query} khatam ho gayi"
           ]
+        },
+
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
         }
 
       ]

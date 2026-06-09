@@ -671,6 +671,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             { reprompt: 'Kaunsi cheez available nahi hai?', endSession: false, sessionAttributes: sessionAttrs }
           );
 
+        // ── Fallback — utterance didn't match any intent pattern ───────────
+        case 'AMAZON.FallbackIntent':
+          logAsync({ sessionId, intent: 'AMAZON.FallbackIntent', reply: 'Re-prompted.' });
+          return speakHi(
+            'Seedha boliye kya chahiye. <break time="200ms"/> Jaise: "batao aaj kya banana hai" ya "tomatoes khatam ho gaye".',
+            { reprompt: 'Koi baat poochho.', endSession: false, sessionAttributes: sessionAttrs }
+          );
+
         // ── Help ────────────────────────────────────────────────────────────
         case 'AMAZON.HelpIntent':
           logAsync({ sessionId, intent: 'AMAZON.HelpIntent', reply: 'Help.' });
