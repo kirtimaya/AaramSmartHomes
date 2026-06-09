@@ -321,7 +321,7 @@ function buildSystemPrompt(
 
   const lang = adminMode
     ? 'English'
-    : 'simple conversational Hindi (Hinglish is fine for dish/ingredient names)';
+    : 'Hindi written in Roman/Latin script only (called Hinglish). NEVER use Devanagari characters (क ख ग घ etc.). Write Hindi words using English letters only — like "Aaj breakfast mein poha hai" not "आज नाश्ते में पोहा है"';
 
   return `You are Aaram Smart Homes' kitchen AI assistant for the ${adminMode ? 'admin' : 'cook'}.
 
@@ -331,20 +331,26 @@ Today's kitchen status (IST date: ${date}):
 - Dinner: ${fmt(menuCtx.d)}
 - Low or out of stock: ${pantryLine}
 
-Rules:
+CRITICAL RULES:
 1. Respond ONLY in ${lang}
-2. This is a VOICE interface — keep replies SHORT (2–3 sentences max)
-3. Be warm, helpful, and conversational
-4. Never use markdown, bullet points, or special characters in your reply
+2. This is a VOICE interface — keep replies SHORT (2 sentences max)
+3. Be warm and helpful
+4. NEVER use Devanagari script. NEVER use markdown or bullet points.
 
-When to use actions (detect these from the cook's words):
-- Item missing / unavailable / nahi hai / khatam → action "log_missing_items", params.items: [item names]
-- Dish change / replace / badal do / ki jagah → action "replace_menu_item", params: { "oldItem": "...", "newItem": "...", "block": "Breakfast|Lunch|Dinner", "date": "${date}" }
-- Order / buy / mangvao / grocery → action "create_grocery_alert", params.items: [item names]
+When to use actions:
+- Item missing / nahi hai / khatam → action "log_missing_items", params.items: [item names in English]
+- Dish change / replace / ki jagah → action "replace_menu_item", params: { "oldItem": "...", "newItem": "...", "block": "Breakfast|Lunch|Dinner", "date": "${date}" }
+- Order / mangvao / grocery → action "create_grocery_alert", params.items: [item names]
 - Everything else → action "none", params: {}
 
-Return ONLY valid JSON — no markdown, no code blocks, nothing else:
-{"reply":"<your response here>","action":"none","params":{}}`;
+Return ONLY valid JSON, nothing else:
+{"reply":"<Hinglish response>","action":"none","params":{}}`;
+}
+
+function extractReplyFallback(text: string): AiResponse {
+  // If JSON is truncated, try to salvage just the "reply" field value
+  const m = text.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  return { reply: m?.[1] ?? 'Theek hai, main samajh nahi payi.', action: 'none', params: {} };
 }
 
 function parseAiJson(text: string): AiResponse | null {
@@ -384,7 +390,7 @@ async function callGeminiConversation(
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 256 },
+        generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
       }),
       signal: AbortSignal.timeout(6_000),
     });
@@ -392,7 +398,7 @@ async function callGeminiConversation(
     if (!res.ok) return null;
     const data = await res.json();
     const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    return parseAiJson(text) ?? { reply: text.trim() || 'Theek hai.', action: 'none', params: {} };
+    return parseAiJson(text) ?? extractReplyFallback(text);
   } catch {
     return null;
   }
@@ -420,7 +426,7 @@ async function callGroqConversation(
         model: 'llama-3.3-70b-versatile',
         messages,
         temperature: 0.7,
-        max_tokens: 256,
+        max_tokens: 512,
       }),
       signal: AbortSignal.timeout(8_000),
     });
@@ -428,7 +434,7 @@ async function callGroqConversation(
     if (!res.ok) return null;
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content ?? '';
-    return parseAiJson(text) ?? { reply: text.trim() || 'Theek hai.', action: 'none', params: {} };
+    return parseAiJson(text) ?? extractReplyFallback(text);
   } catch {
     return null;
   }
