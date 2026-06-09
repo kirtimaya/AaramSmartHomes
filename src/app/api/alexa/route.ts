@@ -160,8 +160,13 @@ function speak(
 // ── Alexa Signature Verification ──────────────────────────────────────────────
 
 async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<void> {
+  // Bypass: dev test secret
   const testSecret = process.env.ALEXA_TEST_SECRET;
   if (testSecret && req.headers.get('x-alexa-test-secret') === testSecret) return;
+
+  // Bypass: explicit skip flag (set SKIP_ALEXA_VERIFICATION=true on Vercel when
+  // alexa-verifier is incompatible with the Node.js runtime version)
+  if (process.env.SKIP_ALEXA_VERIFICATION === 'true') return;
 
   // HTTP/2 lowercases all header names; try both casings
   const certUrl =
@@ -173,7 +178,14 @@ async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<
 
   if (!certUrl || !signature) throw new Error('Missing Alexa signature headers');
 
-  // Delegate full validation (cert URL, chain, signature) to alexa-verifier
+  // Validate cert URL is from Amazon's echo.api domain (WHATWG URL API — no url.parse)
+  const parsedUrl = new URL(certUrl);
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    !parsedUrl.hostname.toLowerCase().endsWith('.amazonaws.com') ||
+    !parsedUrl.pathname.startsWith('/echo.api/')
+  ) throw new Error('Invalid certificate URL');
+
   const { default: verify } = await import('alexa-verifier');
   await new Promise<void>((resolve, reject) =>
     verify(certUrl, signature, rawBody, (err) => (err ? reject(err) : resolve()))
