@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   Building2, CheckCircle2, Zap, AlertCircle, Clock,
   Coffee, Utensils, Moon, CreditCard, Bell, Gift,
-  Ticket as TicketIcon, ArrowRight, Plus,
+  Ticket as TicketIcon, ArrowRight, Plus, UtensilsCrossed,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -74,7 +74,7 @@ interface Unit { room_number: string; status: string; property_name?: string }
 interface Bill  { total_amount: number; status: 'unpaid' | 'paid'; bill_month: string }
 interface Notice {
   id:   string;
-  type: 'dues' | 'ticket' | 'update';
+  type: 'dues' | 'ticket' | 'update' | 'menu_change';
   title: string;
   body:  string;
   time:  string;
@@ -167,16 +167,17 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
         });
       })(),
 
-      // Recent tickets for notification feed  — SELECT tickets
+      // Recent tickets + DB notifications for notification feed
       (async () => {
+        const feed: Notice[] = [];
+
+        // 1. Tickets
         const { data: tickets } = await supabase
           .from('tickets')
           .select('id, category, status, created_at, description')
           .eq('requester_id', tenantProfile.id)
           .order('created_at', { ascending: false })
           .limit(4);
-
-        const feed: Notice[] = [];
 
         if (tickets) {
           for (const t of tickets) {
@@ -191,8 +192,36 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
           }
         }
 
-        // Dues notice — inserted below once bill state is available
-        setNotices(feed);
+        // 2. DB notifications (menu_change and others from service)
+        const session = await supabase.auth.getSession();
+        const token   = session.data.session?.access_token;
+        if (token) {
+          const res = await fetch('/api/notifications', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const { notifications: dbNotifs } = await res.json() as {
+              notifications: Array<{ id: string; type: string; title: string; message: string; read: boolean; created_at: string }>;
+            };
+            for (const n of (dbNotifs ?? [])) {
+              feed.push({
+                id:    n.id,
+                type:  n.type as Notice['type'],
+                title: n.title,
+                body:  n.message,
+                time:  new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+                read:  n.read,
+              });
+            }
+          }
+        }
+
+        // Sort newest first, deduplicate by id
+        const seen = new Set<string>();
+        const deduped = feed.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
+        deduped.sort((a, b) => (a.read ? 1 : 0) - (b.read ? 1 : 0)); // unread first
+
+        setNotices(deduped);
       })(),
     ]);
 
@@ -200,6 +229,28 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
   }, [tenantProfile]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Realtime: push new DB notifications (menu_change etc.) into the feed live
+  useEffect(() => {
+    const channel = supabase
+      .channel('tenant-notifications-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
+        const n = payload.new as { id: string; type: string; title: string; message: string; read: boolean; created_at: string };
+        setNotices(prev => {
+          if (prev.some(p => p.id === n.id)) return prev;
+          return [{
+            id:    n.id,
+            type:  n.type as Notice['type'],
+            title: n.title,
+            body:  n.message,
+            time:  new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+            read:  false,
+          }, ...prev];
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   // Prepend dues notice once bill is known
   useEffect(() => {
@@ -319,21 +370,24 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
                   'p-4 rounded-2xl border transition-all',
                   n.read
                     ? 'bg-foreground/3 border-foreground/8 opacity-60'
-                    : n.type === 'dues'   ? 'bg-red-50    border-red-200/50'
-                    : n.type === 'ticket' ? 'bg-blue-50   border-blue-200/50'
-                    :                       'bg-emerald-50 border-emerald-200/50'
+                    : n.type === 'dues'        ? 'bg-red-50      border-red-200/50'
+                    : n.type === 'ticket'      ? 'bg-blue-50     border-blue-200/50'
+                    : n.type === 'menu_change' ? 'bg-orange-50   border-orange-200/50'
+                    :                            'bg-emerald-50  border-emerald-200/50'
                 )}
               >
                 <div className="flex items-start gap-3">
                   <div className={cn(
                     'w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
-                    n.type === 'dues'   ? 'bg-red-100    text-red-500'
-                    : n.type === 'ticket' ? 'bg-blue-100  text-blue-500'
-                    :                       'bg-emerald-100 text-emerald-500'
+                    n.type === 'dues'        ? 'bg-red-100    text-red-500'
+                    : n.type === 'ticket'    ? 'bg-blue-100   text-blue-500'
+                    : n.type === 'menu_change' ? 'bg-orange-100 text-orange-500'
+                    :                           'bg-emerald-100 text-emerald-500'
                   )}>
-                    {n.type === 'dues'   ? <CreditCard  className="w-3.5 h-3.5" /> :
-                     n.type === 'ticket' ? <TicketIcon  className="w-3.5 h-3.5" /> :
-                                          <Gift        className="w-3.5 h-3.5" />}
+                    {n.type === 'dues'         ? <CreditCard      className="w-3.5 h-3.5" /> :
+                     n.type === 'ticket'       ? <TicketIcon      className="w-3.5 h-3.5" /> :
+                     n.type === 'menu_change'  ? <UtensilsCrossed className="w-3.5 h-3.5" /> :
+                                                 <Gift            className="w-3.5 h-3.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-extrabold uppercase tracking-tight text-foreground leading-none">{n.title}</p>

@@ -10,7 +10,7 @@ import {
   Plus, Trash2, CheckCircle2, Loader2,
   Save, RefreshCw, UtensilsCrossed, Mic,
   AlertCircle, Package, Clock, Lightbulb, Edit3,
-  Users
+  Users, Shield
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -92,14 +92,25 @@ function timeAgo(iso: string) {
 }
 
 const INTENT_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  'ArrivalIntent':         { label: 'Arrived for shift',       icon: ChefHat,         color: 'text-emerald-500' },
-  'DepartureIntent':       { label: 'Leaving shift',           icon: UtensilsCrossed, color: 'text-amber-500'   },
-  'MissingItemsIntent':    { label: 'Reported missing items',  icon: ShoppingCart,    color: 'text-red-400'     },
-  'AMAZON.YesIntent':      { label: 'Confirmed all available', icon: CheckCircle2,    color: 'text-emerald-400' },
-  'AMAZON.NoIntent':       { label: 'Some items missing',      icon: AlertCircle,     color: 'text-orange-400'  },
-  'AMAZON.HelpIntent':     { label: 'Asked for help',          icon: MessageSquare,   color: 'text-blue-400'    },
-  'AMAZON.StopIntent':     { label: 'Ended session',           icon: Mic,             color: 'text-foreground/30'},
-  'AMAZON.CancelIntent':   { label: 'Cancelled',               icon: Mic,             color: 'text-foreground/30'},
+  'ArrivalIntent':            { label: 'Arrived for shift',         icon: ChefHat,         color: 'text-emerald-500' },
+  'DepartureIntent':          { label: 'Leaving shift',             icon: UtensilsCrossed, color: 'text-amber-500'   },
+  'MorningBriefingIntent':    { label: 'Morning briefing (B+L)',    icon: ChefHat,         color: 'text-amber-500'   },
+  'DinnerBriefingIntent':     { label: 'Dinner briefing',           icon: UtensilsCrossed, color: 'text-blue-500'    },
+  'TomorrowBriefingIntent':   { label: "Tomorrow's briefing",       icon: ChefHat,         color: 'text-purple-500'  },
+  'WaitIntent':               { label: 'Cook checking pantry…',     icon: Loader2,         color: 'text-foreground/40'},
+  'ReplaceMenuItemIntent':    { label: 'Menu item replaced',        icon: Edit3,           color: 'text-orange-500'  },
+  'AdminModeIntent':          { label: 'Admin mode activated',      icon: Shield,          color: 'text-primary'     },
+  'AdminBriefingIntent':      { label: 'Admin full briefing',       icon: ChefHat,         color: 'text-primary'     },
+  'SupplyCheckIntent':        { label: 'Supply check',              icon: Package,         color: 'text-secondary'   },
+  'CreateGroceryAlertIntent': { label: 'Admin grocery alert',       icon: ShoppingCart,    color: 'text-red-400'     },
+  'MissingItemsIntent':       { label: 'Reported missing items',    icon: ShoppingCart,    color: 'text-red-400'     },
+  'QueryMenuIntent':          { label: 'Menu query',                icon: MessageSquare,   color: 'text-blue-400'    },
+  'FoodSuggestionIntent':     { label: 'Food suggestion',           icon: Lightbulb,       color: 'text-yellow-500'  },
+  'AMAZON.YesIntent':         { label: 'Confirmed all available',   icon: CheckCircle2,    color: 'text-emerald-400' },
+  'AMAZON.NoIntent':          { label: 'Some items missing',        icon: AlertCircle,     color: 'text-orange-400'  },
+  'AMAZON.HelpIntent':        { label: 'Asked for help',            icon: MessageSquare,   color: 'text-blue-400'    },
+  'AMAZON.StopIntent':        { label: 'Ended session',             icon: Mic,             color: 'text-foreground/30'},
+  'AMAZON.CancelIntent':      { label: 'Cancelled',                 icon: Mic,             color: 'text-foreground/30'},
 };
 
 const BLOCK_COLORS: Record<string, string> = {
@@ -688,6 +699,21 @@ function AlexaLogTab() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
+  // Realtime: new Alexa interactions animate into the feed
+  useEffect(() => {
+    const channel = supabase
+      .channel('kitchen-alexa-logs-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alexa_logs' }, (payload) => {
+        const newLog = payload.new as AlexaLog;
+        setLogs(prev => {
+          if (prev.some(l => l.id === newLog.id)) return prev;
+          return [newLog, ...prev];
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   // Group by date
   const grouped = logs.reduce<Record<string, AlexaLog[]>>((acc, log) => {
     const day = formatDate(log.logged_at);
@@ -775,6 +801,21 @@ function ReorderListTab() {
   }, [filter]);
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  // Realtime: new grocery alerts from Alexa appear live
+  useEffect(() => {
+    const channel = supabase
+      .channel('kitchen-grocery-alerts-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'grocery_alerts' }, (payload) => {
+        const newAlert = payload.new as GroceryAlert;
+        setAlerts(prev => {
+          if (prev.some(a => a.id === newAlert.id)) return prev;
+          return [newAlert, ...prev];
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const markResolved = async (id: string) => {
     setResolving(id);
