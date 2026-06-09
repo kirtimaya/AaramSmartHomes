@@ -1,0 +1,313 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "aaram kitchen",
+      "intents": [
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": [
+            "band karo",
+            "rukо",
+            "bas",
+            "goodbye",
+            "theek hai band karo"
+          ]
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": [
+            "cancel karo",
+            "chhod do",
+            "koi baat nahi"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": [
+            "help chahiye",
+            "kya kar sakte ho",
+            "instructions do",
+            "guide karo"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": [
+            "haan",
+            "ji haan",
+            "sab hai",
+            "sab available hai",
+            "mil gaya sab",
+            "ha",
+            "haan sab kuch hai",
+            "available hai sab",
+            "yes",
+            "bilkul"
+          ]
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": [
+            "nahi",
+            "ji nahi",
+            "kuch nahi hai",
+            "nahi hai",
+            "no",
+            "nahi mil raha",
+            "kuch cheez missing hai",
+            "available nahi hai"
+          ]
+        },
+        {
+          "name": "ArrivalIntent",
+          "samples": [
+            "main aa gaya",
+            "main aa gayi",
+            "shift shuru kar rahi hoon",
+            "main kitchen mein aa gaya hoon",
+            "kaam shuru karte hain",
+            "namaste main aa gayi"
+          ]
+        },
+        {
+          "name": "MorningBriefingIntent",
+          "samples": [
+            "aaj ka menu batao",
+            "breakfast aur lunch mein kya hai",
+            "aaj kya banana hai",
+            "subah ka kaam batao",
+            "aaj ki planning kya hai",
+            "breakfast aur lunch ki list batao",
+            "aaj ke liye kya banana hai",
+            "morning briefing do",
+            "aaj ke khane ka plan batao",
+            "kya banana hai aaj"
+          ]
+        },
+        {
+          "name": "DinnerBriefingIntent",
+          "samples": [
+            "dinner mein kya banana hai",
+            "aaj ka dinner batao",
+            "shaam ko kya banana hai",
+            "raat ka khana kya hai",
+            "dinner kya bana rahi hoon",
+            "dinner menu batao",
+            "aaj ki raat kya hai",
+            "dinner ki list do",
+            "ab kya banana hai"
+          ]
+        },
+        {
+          "name": "TomorrowBriefingIntent",
+          "samples": [
+            "kal ke liye kya banana hai",
+            "kal ka menu batao",
+            "kal ke breakfast aur lunch ke liye kya",
+            "kal ki planning kya hai",
+            "kal ke liye kya taiyar karna hai",
+            "kal subah kya banana hai",
+            "kal ka breakfast aur lunch",
+            "kal ke liye kya chahiye",
+            "agle din ka menu batao"
+          ]
+        },
+        {
+          "name": "WaitIntent",
+          "samples": [
+            "ruko",
+            "ek minute",
+            "abhi dekhti hoon",
+            "abhi dekhta hoon",
+            "thodi der",
+            "wait karo",
+            "dekh rahi hoon",
+            "dekh raha hoon",
+            "main check karti hoon",
+            "main check karta hoon",
+            "ek second",
+            "just a minute",
+            "hold on"
+          ]
+        },
+        {
+          "name": "ReplaceMenuItemIntent",
+          "slots": [
+            {
+              "name": "ReplacementRequest",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "menu change karo {ReplacementRequest}",
+            "replace karo {ReplacementRequest}",
+            "update karo {ReplacementRequest}",
+            "badlo {ReplacementRequest}",
+            "aaj ki jagah {ReplacementRequest} banana hai",
+            "item change {ReplacementRequest}"
+          ]
+        },
+        {
+          "name": "MissingItemsIntent",
+          "slots": [
+            {
+              "name": "MissingItems",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{MissingItems} nahi hai",
+            "{MissingItems} khatam ho gaya",
+            "{MissingItems} available nahi hai",
+            "{MissingItems} nahi mila",
+            "missing hai {MissingItems}",
+            "{MissingItems} ki kami hai",
+            "hume {MissingItems} chahiye",
+            "{MissingItems} stock mein nahi hai"
+          ]
+        },
+        {
+          "name": "FoodSuggestionIntent",
+          "slots": [
+            {
+              "name": "SuggestionText",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{SuggestionText} banana chahiye",
+            "mujhe lagta hai {SuggestionText} banana chahiye",
+            "suggestion hai {SuggestionText}",
+            "main suggest karta hoon {SuggestionText}",
+            "main suggest karti hoon {SuggestionText}",
+            "agla baar {SuggestionText} banao",
+            "{SuggestionText} menu mein add karo"
+          ]
+        },
+        {
+          "name": "DepartureIntent",
+          "samples": [
+            "main ja raha hoon",
+            "main ja rahi hoon",
+            "shift khatam",
+            "kaam ho gaya",
+            "main nikal raha hoon",
+            "main nikal rahi hoon",
+            "bye main ja rahi hoon"
+          ]
+        },
+        {
+          "name": "QueryMenuIntent",
+          "slots": [
+            {
+              "name": "RequestedBlock",
+              "type": "MealBlockType"
+            }
+          ],
+          "samples": [
+            "{RequestedBlock} mein kya hai",
+            "aaj ka {RequestedBlock} kya hai",
+            "{RequestedBlock} ka menu batao",
+            "kya hai {RequestedBlock} mein aaj"
+          ]
+        },
+        {
+          "name": "AdminModeIntent",
+          "samples": [
+            "admin mode",
+            "switch to admin",
+            "admin mode activate karo",
+            "admin",
+            "admin access chahiye",
+            "admin mode on karo"
+          ]
+        },
+        {
+          "name": "AdminBriefingIntent",
+          "samples": [
+            "aaj ka poora plan batao",
+            "today's briefing",
+            "full briefing do",
+            "poora din ka plan",
+            "aaj kya kya hai",
+            "complete menu batao",
+            "saara plan batao",
+            "aaj ke saare meals batao"
+          ]
+        },
+        {
+          "name": "SupplyCheckIntent",
+          "samples": [
+            "supply check karo",
+            "kya khatam ho raha hai",
+            "stock ki status batao",
+            "pantry check karo",
+            "kya kya low hai",
+            "supply status",
+            "inventory check",
+            "kya khatam hua",
+            "stock batao"
+          ]
+        },
+        {
+          "name": "CreateGroceryAlertIntent",
+          "slots": [
+            {
+              "name": "AlertItem",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{AlertItem} mangvao",
+            "{AlertItem} order karo",
+            "{AlertItem} ka alert banao",
+            "{AlertItem} grocery list mein add karo",
+            "{AlertItem} lena hai",
+            "{AlertItem} khareedna hai"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "MealBlockType",
+          "values": [
+            {
+              "name": {
+                "value": "Breakfast",
+                "synonyms": [
+                  "breakfast",
+                  "subah ka",
+                  "subah ka khaana",
+                  "nashta"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Lunch",
+                "synonyms": [
+                  "lunch",
+                  "dopahar ka",
+                  "dopahar ka khaana",
+                  "dopahar"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Dinner",
+                "synonyms": [
+                  "dinner",
+                  "raat ka",
+                  "raat ka khaana",
+                  "raat",
+                  "shaam ka"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
