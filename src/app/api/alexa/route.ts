@@ -174,12 +174,9 @@ async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<
   if (!certUrl || !signature) throw new Error('Missing Alexa signature headers');
 
   // Delegate full validation (cert URL, chain, signature) to alexa-verifier
-  const verifier = (await import('alexa-verifier')).default as (
-    certUrl: string, signature: string, body: string, cb: (err: Error | null) => void
-  ) => void;
-
+  const { default: verify } = await import('alexa-verifier');
   await new Promise<void>((resolve, reject) =>
-    verifier(certUrl, signature, rawBody, (err) => (err ? reject(err) : resolve()))
+    verify(certUrl, signature, rawBody, (err) => (err ? reject(err) : resolve()))
   );
 }
 
