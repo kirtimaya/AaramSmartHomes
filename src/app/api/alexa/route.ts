@@ -1104,6 +1104,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         // ── Cook: Wait (keep session open) ─────────────────────────────────
         case 'WaitIntent':
+          // If cook is in the "name missing items" sub-state, their utterance
+          // was likely misrouted here by dialect variance (e.g. "nahi he" vs "nahi hai").
+          // Give them guidance to re-state instead of looping the wait message.
+          if (sessionAttrs?.awaitingMissingReport) {
+            return speakHi(
+              'Kaunsi cheez nahi hai? Seedha batao, jaise: <emphasis level="moderate">tomatoes nahi hai</emphasis> ya <emphasis level="moderate">pyaz khatam ho gayi</emphasis>.',
+              { reprompt: 'Kaunsi cheezein khatam hain?', endSession: false, sessionAttributes: sessionAttrs }
+            );
+          }
           if (sessionAttrs?.awaitingInventoryCheck) {
             return log(handleWait(sessionAttrs), 'WaitIntent');
           }
@@ -1226,9 +1235,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             return speakHi(
               'Koi baat nahi. Kya khatam ho gaya? Batao, jaise: <emphasis level="moderate">tomatoes aur pyaz nahi hai</emphasis>.',
               {
-                reprompt: 'Kaunsi cheezein nahi hain?',
+                reprompt: 'Kaunsi cheezein nahi hain? Jaise: "tomatoes nahi hai".',
                 endSession: false,
-                sessionAttributes: sessionAttrs,
+                sessionAttributes: { ...sessionAttrs, awaitingMissingReport: true },
               }
             );
           }

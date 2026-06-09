@@ -157,13 +157,22 @@
           ],
           "samples": [
             "{MissingItems} nahi hai",
+            "{MissingItems} nahi he",
+            "{MissingItems} nahi hain",
+            "{MissingItems} nahi tha",
+            "{MissingItems} nahi thi",
             "{MissingItems} khatam ho gaya",
+            "{MissingItems} khatam ho gayi",
+            "{MissingItems} khatam hai",
             "{MissingItems} available nahi hai",
+            "{MissingItems} available nahi he",
             "{MissingItems} nahi mila",
+            "{MissingItems} nahi mili",
             "missing hai {MissingItems}",
             "{MissingItems} ki kami hai",
             "hume {MissingItems} chahiye",
-            "{MissingItems} stock mein nahi hai"
+            "{MissingItems} stock mein nahi hai",
+            "{MissingItems} nahi mil raha"
           ]
         },
         {
