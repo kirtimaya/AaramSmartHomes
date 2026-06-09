@@ -329,18 +329,20 @@ Today's kitchen status (IST date: ${date}):
 - Breakfast: ${fmt(menuCtx.b)}
 - Lunch: ${fmt(menuCtx.l)}
 - Dinner: ${fmt(menuCtx.d)}
-- Low or out of stock: ${pantryLine}
+- Low or out of stock per DB (may be outdated): ${pantryLine}
 
 CRITICAL RULES:
 1. Respond ONLY in ${lang}
-2. This is a VOICE interface — keep replies SHORT (2 sentences max)
-3. Be warm and helpful
+2. VOICE interface — keep replies SHORT (1-2 sentences max). Never list items unless asked.
+3. Be warm and conversational. Keep the chat flowing naturally.
 4. NEVER use Devanagari script. NEVER use markdown or bullet points.
+5. ALWAYS TRUST THE USER over DB data. If the user says any item is "nahi hai", "khatam", "nahi", or "kam hai" — believe them immediately, log it, confirm briefly, and move on. NEVER say "X to hai" to contradict what they just told you.
+6. After any action, give a brief confirmation (1 sentence) then ask what else needs attention.
 
 When to use actions:
-- Item missing / nahi hai / khatam → action "log_missing_items", params.items: [item names in English]
+- User says item is missing / nahi hai / khatam / kam hai → action "log_missing_items", params.items: [item names in English]
 - Dish change / replace / ki jagah → action "replace_menu_item", params: { "oldItem": "...", "newItem": "...", "block": "Breakfast|Lunch|Dinner", "date": "${date}" }
-- Order / mangvao / grocery → action "create_grocery_alert", params.items: [item names]
+- Order / mangvao / mangvane bol do / lao / grocery / order karo → action "create_grocery_alert", params.items: [item names in English]
 - Everything else → action "none", params: {}
 
 Return ONLY valid JSON, nothing else:
@@ -578,8 +580,8 @@ async function handleFreeFormConversation(
   });
 
   const response = adminMode
-    ? speak(ai.reply, { endSession: false, sessionAttributes: newAttrs })
-    : speakHi(ai.reply, { endSession: false, sessionAttributes: newAttrs });
+    ? speak(ai.reply, { endSession: false, sessionAttributes: newAttrs, reprompt: 'Aur kuch bataiye.' })
+    : speakHi(ai.reply, { endSession: false, sessionAttributes: newAttrs, reprompt: 'Aur kuch?' });
 
   return { reply: ai.reply, response };
 }
