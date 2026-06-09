@@ -283,6 +283,7 @@ Example 2: {"missing": ["tomatoes", "onions"], "replacement": null}`;
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+        thinkingConfig: { thinkingBudget: 0 },
       }),
       signal: AbortSignal.timeout(8_000),
     });
@@ -307,6 +308,44 @@ async function extractIngredients(utterance: string): Promise<string[]> {
   return result.missing;
 }
 
+// ── Gemini: Extract old+new dish from a single replacement utterance ──────────
+
+async function parseReplacementFromUtterance(
+  utterance: string
+): Promise<{ old: string; new: string } | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `A cook said they want to replace a menu dish. Extract the dish being replaced ("old") and the new dish ("new").
+Utterance: "${utterance}"
+Return ONLY JSON like: {"old": "Rajma", "new": "Chole"}
+If you cannot identify both dishes, return: null`;
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 512 },
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    if (text === 'null' || !text) return null;
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (!parsed?.old || !parsed?.new) return null;
+    return { old: String(parsed.old), new: String(parsed.new) };
+  } catch {
+    return null;
+  }
+}
+
 // ── Gemini: Parse replacement slot values ─────────────────────────────────────
 
 async function parseReplacementSlots(
@@ -328,9 +367,9 @@ Example: {"old": "Rajma", "new": "Bhindi Curry"}`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 64 },
+        generationConfig: { temperature: 0, maxOutputTokens: 512 },
       }),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return { old: oldRaw.trim(), new: newRaw.trim() };
     const data = await res.json();
@@ -603,14 +642,32 @@ async function handleReplaceMenuItem(
   const { date } = getIST();
   const { old: oldDish, new: newDish } = await parseReplacementSlots(oldRaw, newRaw);
 
-  // Find matching menu_items for today (and tomorrow for cook post-dinner flow)
-  const { data: matchingItems } = await db
+  // Fetch all menu_items for today + tomorrow, then do a fuzzy name match
+  const { data: allItems } = await db
     .from('menu_items')
     .select('id, menu_id, item_name, menus!inner(date, meal_block)')
-    .ilike('item_name', `%${oldDish}%`)
     .gte('menus.date', date)
-    .lte('menus.date', istDatePlusDays(1))
-    .limit(5);
+    .lte('menus.date', istDatePlusDays(1));
+
+  // Match by: exact → starts-with → word-contains → stem (first 4 chars of each word)
+  const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  const needle = normalise(oldDish);
+  const needleWords = needle.split(/\s+/).filter(w => w.length > 2);
+  // 3-char stems: "Idli" → "idl", "Idly" → "idl" (catches spelling variants)
+  const stem3 = (s: string) => normalise(s).split(/\s+/).map(w => w.slice(0, 3)).filter(w => w.length === 3);
+
+  const scored = (allItems ?? []).map((item: any) => {
+    const hay = normalise(item.item_name);
+    if (hay === needle) return { item, score: 4 };
+    if (hay.startsWith(needle) || needle.startsWith(hay)) return { item, score: 3 };
+    if (needleWords.some(w => hay.includes(w))) return { item, score: 2 };
+    // 3-char stem overlap catches Idli↔Idly, Palak↔Palak Paneer, etc.
+    const hayS = stem3(item.item_name);
+    if (stem3(oldDish).some(ns => hayS.includes(ns))) return { item, score: 1 };
+    return { item, score: 0 };
+  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+  const matchingItems = scored.map(x => x.item);
 
   if (!matchingItems?.length) {
     const reply = `${oldDish} menu mein nahi mila. Kripya dobara check karein.`;
@@ -1040,12 +1097,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         // ── Cook/Admin: Replace menu item ───────────────────────────────────
         case 'ReplaceMenuItemIntent': {
-          const oldRaw = slots?.OldItem?.value?.trim() ?? '';
-          const newRaw = slots?.NewItem?.value?.trim() ?? '';
-          if (!oldRaw || !newRaw) {
+          // Single ReplacementRequest slot — Gemini extracts old+new dish names
+          const fullUtterance = slots?.ReplacementRequest?.value?.trim() ?? '';
+          if (!fullUtterance) {
             return speak(
               'Kripya batao kaunsa dish replace karna hai aur uski jagah kya banana hai.',
               { reprompt: 'Kaunsa dish replace karna hai?', endSession: false, sessionAttributes: sessionAttrs }
+            );
+          }
+          const parsed = await parseReplacementFromUtterance(fullUtterance);
+          const oldRaw = parsed?.old ?? '';
+          const newRaw = parsed?.new ?? '';
+          if (!oldRaw || !newRaw) {
+            return speak(
+              'Samajh nahi aaya. Kripya batao — kaunsa dish replace karna hai aur uski jagah kya banana hai?',
+              { reprompt: 'Udaharan: "Rajma ki jagah Bhindi Curry banana hai"', endSession: false, sessionAttributes: sessionAttrs }
             );
           }
           return log(

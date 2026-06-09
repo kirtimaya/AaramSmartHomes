@@ -109,24 +109,17 @@
           "name": "ReplaceMenuItemIntent",
           "slots": [
             {
-              "name": "OldItem",
-              "type": "AMAZON.SearchQuery"
-            },
-            {
-              "name": "NewItem",
+              "name": "ReplacementRequest",
               "type": "AMAZON.SearchQuery"
             }
           ],
           "samples": [
-            "{OldItem} ki jagah {NewItem} banana hai",
-            "{OldItem} ki jagah {NewItem} bana do",
-            "{OldItem} replace karo {NewItem} se",
-            "{OldItem} hata do aur {NewItem} lagao",
-            "{OldItem} nahi {NewItem} banana hai",
-            "{OldItem} ke badle {NewItem}",
-            "{OldItem} ko {NewItem} se replace karo",
-            "aaj {OldItem} ki jagah {NewItem} banaenge",
-            "{OldItem} nahi hai to {NewItem} bana lete hain"
+            "menu change karo {ReplacementRequest}",
+            "replace karo {ReplacementRequest}",
+            "update karo {ReplacementRequest}",
+            "badlo {ReplacementRequest}",
+            "aaj ki jagah {ReplacementRequest} banana hai",
+            "item change {ReplacementRequest}"
           ]
         },
 
@@ -145,7 +138,6 @@
             "{MissingItems} nahi mila",
             "missing hai {MissingItems}",
             "{MissingItems} ki kami hai",
-            "{MissingItems} nahi hai aur {MissingItems} bhi nahi",
             "hume {MissingItems} chahiye",
             "{MissingItems} stock mein nahi hai"
           ]
