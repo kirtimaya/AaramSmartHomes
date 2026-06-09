@@ -157,6 +157,13 @@ function speak(
   }, { headers: { 'Content-Type': 'application/json' } });
 }
 
+// Hindi TTS: wraps SSML + reprompt in <lang xml:lang="hi-IN"> for native Hindi pronunciation
+function speakHi(ssml: string, opts: Parameters<typeof speak>[1] = {}): NextResponse {
+  return speak(`<lang xml:lang="hi-IN">${ssml}</lang>`, opts.reprompt
+    ? { ...opts, reprompt: `<lang xml:lang="hi-IN">${opts.reprompt}</lang>` }
+    : opts);
+}
+
 // ── Alexa Signature Verification ──────────────────────────────────────────────
 
 async function verifyAlexaSignature(req: NextRequest, rawBody: string): Promise<void> {
@@ -291,7 +298,6 @@ Example 2: {"missing": ["tomatoes", "onions"], "replacement": null}`;
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
-        thinkingConfig: { thinkingBudget: 0 },
       }),
       signal: AbortSignal.timeout(8_000),
     });
@@ -460,7 +466,7 @@ async function handleArrival(
     const reply = `Aaj ka ${block} menu abhi set nahi hua hai.`;
     return {
       reply, mealBlock: block,
-      response: speak(
+      response: speakHi(
         `Aaram Smart Homes Kitchen mein aapka swagat hai! <break time="300ms"/>
          Aaj ka <emphasis level="moderate">${block}</emphasis> menu abhi set nahi hua hai.
          Supervisor se poochh lijiye.`,
@@ -475,7 +481,7 @@ async function handleArrival(
 
   return {
     reply, mealBlock: block,
-    response: speak(
+    response: speakHi(
       `Aaram Smart Homes Kitchen mein aapka swagat hai!
        <break time="400ms"/>
        Aaj ke <emphasis level="moderate">${block}</emphasis> mein
@@ -517,7 +523,7 @@ async function handleMorningBriefing(
 
   return {
     reply,
-    response: speak(
+    response: speakHi(
       `Aaj ke liye suno. <break time="400ms"/>
        Breakfast mein <emphasis level="moderate">${bText}</emphasis> hai
        ${bCount != null ? `<break time="200ms"/> <emphasis level="moderate">${bCount} logon</emphasis> ke liye` : ''}.
@@ -544,7 +550,7 @@ async function handleDinnerBriefing(
     const reply = `Aaj ka Dinner menu set nahi hua hai.`;
     return {
       reply, mealBlock: 'Dinner',
-      response: speak(`Aaj ka Dinner menu abhi set nahi hua hai. Supervisor se poochh lijiye.`, { endSession: true }),
+      response: speakHi(`Aaj ka Dinner menu abhi set nahi hua hai. Supervisor se poochh lijiye.`, { endSession: true }),
     };
   }
 
@@ -554,7 +560,7 @@ async function handleDinnerBriefing(
 
   return {
     reply, mealBlock: 'Dinner',
-    response: speak(
+    response: speakHi(
       `Aaj ke Dinner mein <emphasis level="moderate">${dishes.join(', <break time="200ms"/> ')}</emphasis> banana hai
        ${count != null ? `<break time="200ms"/> <emphasis level="moderate">${count} logon</emphasis> ke liye` : ''}.
        <break time="600ms"/>
@@ -597,7 +603,7 @@ async function handleTomorrowBriefing(
 
   return {
     reply,
-    response: speak(
+    response: speakHi(
       `Kal ke liye suno. <break time="400ms"/>
        Breakfast mein <emphasis level="moderate">${bText}</emphasis> hai
        ${bCount != null ? `<break time="200ms"/> ${bCount} logon ke liye` : ''}.
@@ -626,11 +632,11 @@ async function handleTomorrowBriefing(
 
 function handleWait(sessionAttrs: Record<string, unknown>): HandlerResult {
   return {
-    reply: 'Ji bilkul, wait kar rahi hoon.',
-    response: speak(
-      'Ji bilkul, main wait karti hoon. <break time="500ms"/> Jab ready ho jaao, tab batao.',
+    reply: 'Ji bilkul, ruk jaati hoon. Jab check ho jaye, batao.',
+    response: speakHi(
+      'Ji bilkul, ruk jaati hoon. <break time="1000ms"/> Jab check kar lo, tab haan ya nahi mein batao. <break time="400ms"/> Agar aur time chahiye to dobara "ruko" bol dena.',
       {
-        reprompt: 'Kya saari cheezein mil gayi? Haan ya nahi mein batao.',
+        reprompt: 'Check ho gayi? Haan ya nahi bolo, ya "ruko" bol do agar aur time chahiye.',
         endSession: false,
         sessionAttributes: sessionAttrs,
       }
@@ -681,7 +687,7 @@ async function handleReplaceMenuItem(
     const reply = `${oldDish} menu mein nahi mila. Kripya dobara check karein.`;
     return {
       reply,
-      response: speak(
+      response: speakHi(
         `Mujhe <emphasis level="moderate">${oldDish}</emphasis> aaj ya kal ke menu mein nahi mila.
          Kya aap naam dobara bata sakte ho?`,
         { reprompt: 'Kaunsa dish replace karna hai?', endSession: false, sessionAttributes: sessionAttrs }
@@ -713,7 +719,7 @@ async function handleReplaceMenuItem(
   const reply = `${oldDish} ki jagah ${newDish} update kar diya ${block} mein.`;
   return {
     reply, mealBlock: block,
-    response: speak(
+    response: speakHi(
       `<emphasis level="moderate">${oldDish}</emphasis> ki jagah
        <emphasis level="moderate">${newDish}</emphasis> update kar diya gaya hai ${block} mein.
        <break time="400ms"/>
@@ -739,12 +745,12 @@ async function handleMissingItems(
   if (replacement?.certain) {
     return {
       reply: `Kya ${replacement.old} ki jagah ${replacement.new} kar doon?`,
-      response: speak(
+      response: speakHi(
         `Theek hai. Kya main <emphasis level="moderate">${replacement.old}</emphasis> ki jagah
          <emphasis level="moderate">${replacement.new}</emphasis> update kar doon
          aur grocery alert nahi banaoon?`,
         {
-          reprompt: 'Haan ya nahi mein batao.',
+          reprompt: 'Haan ya nahi mein batao. Kya replacement confirm karna hai?',
           endSession: false,
           sessionAttributes: {
             ...sessionAttrs,
@@ -770,7 +776,7 @@ async function handleMissingItems(
   const reply = `Logged missing items: ${extractedItems.join(', ')}.`;
   return {
     reply, mealBlock: mealBlock ?? undefined,
-    response: speak(
+    response: speakHi(
       `Samajh gaya! Maine ye cheezein note kar li hain:
        <break time="400ms"/>
        ${extractedItems.map(i => `<emphasis level="moderate">${i}</emphasis>`).join(', <break time="200ms"/> ')}.
@@ -921,7 +927,7 @@ async function handleQueryMenu(
     return {
       reply: `No ${block} menu set for today.`,
       mealBlock: block,
-      response: speak(`Aaj ka ${block} menu set nahi hua hai.`, { endSession: true }),
+      response: speakHi(`Aaj ka ${block} menu set nahi hua hai.`, { endSession: true }),
     };
   }
 
@@ -931,7 +937,7 @@ async function handleQueryMenu(
 
   return {
     reply, mealBlock: block,
-    response: speak(
+    response: speakHi(
       `Aaj ke <emphasis level="moderate">${block}</emphasis> mein
        ${dishes.join(', <break time="200ms"/> ')}
        ${count != null ? `<break time="200ms"/> ${count} logon ke liye` : ''}.`,
@@ -946,7 +952,7 @@ async function handleFoodSuggestion(suggestion: string): Promise<HandlerResult> 
   if (!suggestion.trim()) {
     return {
       reply: 'No suggestion captured.',
-      response: speak(
+      response: speakHi(
         "Aapki suggestion clear nahi aayi. " +
         'Please dobara boliye, jaise: <emphasis level="moderate">mujhe biryani banana chahiye</emphasis>.',
         { reprompt: 'Aapka suggestion kya hai?', endSession: false }
@@ -958,7 +964,7 @@ async function handleFoodSuggestion(suggestion: string): Promise<HandlerResult> 
   });
   return {
     reply: `Logged suggestion: "${suggestion}".`,
-    response: speak(
+    response: speakHi(
       `Shukriya! Aapka suggestion kitchen team ko bhej diya gaya:
        <break time="300ms"/> <emphasis level="moderate">${suggestion}</emphasis>.
        <break time="400ms"/> Goodbye!`,
@@ -984,7 +990,7 @@ async function handleDeparture(
     return {
       reply: `No ingredient list for ${nextBlock} yet.`,
       mealBlock: block,
-      response: speak(
+      response: speakHi(
         `Aaj ka kaam accha raha! ${nextBlock} ke liye ingredient list abhi set nahi hui hai.
          Supervisor se poochh lijiye. Goodbye!`,
         { endSession: true }
@@ -1003,7 +1009,7 @@ async function handleDeparture(
 
   return {
     reply, mealBlock: block,
-    response: speak(
+    response: speakHi(
       `Bahut accha kaam kiya! Jaane se pehle, <emphasis level="moderate">${label}</emphasis> ke liye
        ye cheezein chahiye hongi:
        <break time="500ms"/>
@@ -1101,14 +1107,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           if (sessionAttrs?.awaitingInventoryCheck) {
             return log(handleWait(sessionAttrs), 'WaitIntent');
           }
-          return speak('Ji batao, main sun rahi hoon.', { endSession: false, sessionAttributes: sessionAttrs });
+          return speakHi('Ji batao, main sun rahi hoon.', { endSession: false, sessionAttributes: sessionAttrs });
 
         // ── Cook/Admin: Replace menu item ───────────────────────────────────
         case 'ReplaceMenuItemIntent': {
           // Single ReplacementRequest slot — Gemini extracts old+new dish names
           const fullUtterance = slots?.ReplacementRequest?.value?.trim() ?? '';
           if (!fullUtterance) {
-            return speak(
+            return speakHi(
               'Kripya batao kaunsa dish replace karna hai aur uski jagah kya banana hai.',
               { reprompt: 'Kaunsa dish replace karna hai?', endSession: false, sessionAttributes: sessionAttrs }
             );
@@ -1117,7 +1123,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const oldRaw = parsed?.old ?? '';
           const newRaw = parsed?.new ?? '';
           if (!oldRaw || !newRaw) {
-            return speak(
+            return speakHi(
               'Samajh nahi aaya. Kripya batao — kaunsa dish replace karna hai aur uski jagah kya banana hai?',
               { reprompt: 'Udaharan: "Rajma ki jagah Bhindi Curry banana hai"', endSession: false, sessionAttributes: sessionAttrs }
             );
@@ -1148,7 +1154,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         case 'MissingItemsIntent': {
           const utterance = slots?.MissingItems?.value?.trim() ?? '';
           if (!utterance) {
-            const r = speak(
+            const r = speakHi(
               'Kya nahi mila? Please batao, jaise: <emphasis level="moderate">tomatoes aur pyaz nahi hai</emphasis>.',
               { reprompt: 'Kya khatam ho gaya?', endSession: false, sessionAttributes: sessionAttrs }
             );
@@ -1174,7 +1180,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         case 'CreateGroceryAlertIntent': {
           const utterance = slots?.AlertItem?.value?.trim() ?? '';
           if (!utterance) {
-            return speak('Kaunsi cheez mangvani hai?', { reprompt: 'Grocery alert kiske liye?', endSession: false, sessionAttributes: sessionAttrs });
+            return speakHi('Kaunsi cheez mangvani hai?', { reprompt: 'Grocery alert kiske liye?', endSession: false, sessionAttributes: sessionAttrs });
           }
           return log(await handleCreateGroceryAlert(utterance, sessionAttrs), 'CreateGroceryAlertIntent', utterance);
         }
@@ -1191,9 +1197,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           }
           if (sessionAttrs?.awaitingInventoryCheck) {
             logAsync({ sessionId, intent: 'AMAZON.YesIntent', reply: 'All ingredients available.' });
-            return speak('Bahut badhiya! Saari cheezein available hain. Mast khaana banao!', { endSession: true });
+            return speakHi('Bahut badhiya! Saari cheezein available hain. Mast khaana banao!', { endSession: true });
           }
-          return speak('Achha! Goodbye!', { endSession: true });
+          return speakHi('Achha! Goodbye!', { endSession: true });
         }
 
         case 'AMAZON.NoIntent': {
@@ -1209,7 +1215,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                 logged_at: new Date().toISOString(),
               });
               logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: `Grocery alert: ${missingItems.join(', ')}` });
-              return speak(
+              return speakHi(
                 `Theek hai! Maine <emphasis level="moderate">${missingItems.join(', ')}</emphasis> ka grocery alert bana diya. Admin ko notify kar diya gaya. Goodbye!`,
                 { endSession: true }
               );
@@ -1217,7 +1223,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           }
           if (sessionAttrs?.awaitingInventoryCheck) {
             logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: 'Prompted for missing items.' });
-            return speak(
+            return speakHi(
               'Koi baat nahi. Kya khatam ho gaya? Batao, jaise: <emphasis level="moderate">tomatoes aur pyaz nahi hai</emphasis>.',
               {
                 reprompt: 'Kaunsi cheezein nahi hain?',
@@ -1226,11 +1232,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               }
             );
           }
-          return speak('Achha. Goodbye!', { endSession: true });
+          return speakHi('Achha. Goodbye!', { endSession: true });
         }
 
         case 'AMAZON.HelpIntent':
-          return speak(
+          return speakHi(
             `Main Aaram Kitchen Assistant hoon. <break time="300ms"/>
              Cook ke liye: <emphasis level="moderate">Aaj ka menu batao</emphasis> boliye Breakfast aur Lunch ke liye.
              <break time="300ms"/>
@@ -1244,20 +1250,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         case 'AMAZON.StopIntent':
         case 'AMAZON.CancelIntent':
-          return speak('Goodbye! Achha kaam karo.', { endSession: true });
+          return speakHi('Goodbye! Achha kaam karo.', { endSession: true });
 
         default:
-          return speak(
+          return speakHi(
             'Samajh nahi aaya. <emphasis level="moderate">Aaj ka menu batao</emphasis> ya <emphasis level="moderate">Dinner mein kya banana hai</emphasis> boliye.',
             { reprompt: "Kya poochha chahte ho?", endSession: false, sessionAttributes: sessionAttrs }
           );
       }
     }
 
-    return speak('Kuch gadbad ho gayi. Dobara try karo.', { endSession: true });
+    return speakHi('Kuch gadbad ho gayi. Dobara try karo.', { endSession: true });
 
   } catch (err) {
     console.error('[Alexa Webhook] Unhandled error:', err);
-    return speak('Abhi connection mein thodi problem hai. Thodi der mein try karo.', { endSession: true });
+    return speakHi('Abhi connection mein thodi problem hai. Thodi der mein try karo.', { endSession: true });
   }
 }
