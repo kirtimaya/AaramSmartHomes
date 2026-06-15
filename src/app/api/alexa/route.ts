@@ -663,21 +663,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           return result.response;
         }
 
-        // ── Yes → simple acknowledgement, stay open ─────────────────────────
-        case 'AMAZON.YesIntent':
-          logAsync({ sessionId, intent: 'AMAZON.YesIntent', reply: 'Ji! Koi aur kaam?' });
-          return speakHi(
-            'Ji! Koi aur kaam?',
-            { reprompt: 'Koi sawaal ho to poochho.', endSession: false, sessionAttributes: sessionAttrs }
-          );
+        // ── Yes/No → route through AI so Gemini can use conversation history ──
+        case 'AMAZON.YesIntent': {
+          const result = await handleFreeFormConversation('haan', sessionAttrs, adminMode, sessionId);
+          return result.response;
+        }
 
-        // ── No → prompt for details, stay open ─────────────────────────────
-        case 'AMAZON.NoIntent':
-          logAsync({ sessionId, intent: 'AMAZON.NoIntent', reply: 'Kya khatam ho gaya?' });
-          return speakHi(
-            'Theek hai. Kya khatam ho gaya? Batao.',
-            { reprompt: 'Kaunsi cheez available nahi hai?', endSession: false, sessionAttributes: sessionAttrs }
-          );
+        case 'AMAZON.NoIntent': {
+          const result = await handleFreeFormConversation('nahi', sessionAttrs, adminMode, sessionId);
+          return result.response;
+        }
 
         // ── Fallback — utterance didn't match any intent pattern ───────────
         case 'AMAZON.FallbackIntent':
