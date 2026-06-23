@@ -650,6 +650,69 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       switch (intent) {
 
+        // ── Explicit Intents (hi-IN) ─────────────────────────────────────────
+        case 'GetMenuIntent': {
+          const mealType = slots?.MealType?.value?.toLowerCase() ?? '';
+          let block: MealBlock | undefined = undefined;
+          if (mealType.includes('breakfast') || mealType.includes('nashta') || mealType.includes('subah') || mealType.includes('tiffin')) {
+            block = 'Breakfast';
+          } else if (mealType.includes('lunch') || mealType.includes('dopahar') || mealType.includes('dopehar')) {
+            block = 'Lunch';
+          } else if (mealType.includes('dinner') || mealType.includes('raat')) {
+            block = 'Dinner';
+          }
+          
+          if (!block) {
+            return speakHi('Aapne kaunsa khana poocha? Breakfast, lunch, ya dinner?', {
+              reprompt: 'Breakfast, lunch, ya dinner ka menu poocho.',
+              endSession: false,
+              sessionAttributes: sessionAttrs
+            });
+          }
+
+          const { date } = getIST();
+          const [menu, count] = await Promise.all([
+            fetchMenu(date, block),
+            fetchMealCount(date, block)
+          ]);
+
+          if (!menu || !menu.menu_items || menu.menu_items.length === 0) {
+            return speakHi(`Aaj ${block} ka menu abhi set nahi hua hai.`, { endSession: true });
+          }
+
+          const dishes = menu.menu_items.slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name).join(' aur ');
+          const logMsg = `Aaj ${block} mein ${dishes} banega. ${count ? `Total ${count} log hain.` : ''}`;
+          logAsync({ sessionId, intent: 'GetMenuIntent', utterance: `aaj ${mealType} mein kya hai`, reply: logMsg, mealBlock: block, adminMode });
+
+          return speakHi(logMsg, { endSession: true });
+        }
+
+        case 'ReportShortageIntent': {
+          const item = slots?.GroceryItem?.value?.trim();
+          if (!item) {
+            return speakHi('Kaunsa item khatam ho gaya? Dobara bataiye.', {
+              reprompt: 'Item ka naam batao.',
+              endSession: false,
+              sessionAttributes: sessionAttrs
+            });
+          }
+
+          await db.from('grocery_alerts').insert({
+            meal_block: null,
+            raw_utterance: `Kitchen mein ${item} nahi hai (ReportShortageIntent)`,
+            extracted_items: [item],
+            logged_at: new Date().toISOString(),
+          });
+
+          logAsync({ sessionId, intent: 'ReportShortageIntent', utterance: `${item} khatam ho gaya`, reply: `Logged shortage for ${item}`, adminMode });
+
+          return speakHi(`Theek hai, main yaad rakhungi ki ${item} khatam ho gaya hai. Aur kuch?`, {
+             reprompt: 'Aur koi cheez khatam hui hai?',
+             endSession: false,
+             sessionAttributes: sessionAttrs
+          });
+        }
+
         // ── Free-form AI conversation (catches everything) ──────────────────
         case 'ConversationIntent': {
           const utterance = slots?.Query?.value?.trim() ?? '';

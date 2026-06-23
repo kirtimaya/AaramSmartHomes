@@ -1,109 +1,114 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "aaram kitchen",
+      "invocationName": "meri kitchen",
       "intents": [
-
         {
           "name": "AMAZON.StopIntent",
-          "samples": ["band karo", "bas", "goodbye", "theek hai band karo", "ruko mat", "stop"]
+          "samples": [
+            "band karo",
+            "bas",
+            "stop",
+            "exit",
+            "theek hai band karo"
+          ]
         },
         {
           "name": "AMAZON.CancelIntent",
-          "samples": ["cancel karo", "chhod do", "koi baat nahi", "never mind"]
+          "samples": [
+            "cancel karo",
+            "chhod do",
+            "rehne do"
+          ]
         },
         {
           "name": "AMAZON.HelpIntent",
-          "samples": ["help chahiye", "kya kar sakte ho", "instructions do", "guide karo", "help me"]
-        },
-        {
-          "name": "AMAZON.YesIntent",
           "samples": [
-            "haan", "ji haan", "ha", "bilkul", "sahi hai", "theek hai",
-            "haan ji", "haan sab hai", "sab available hai", "mil gaya sab",
-            "yes", "correct", "okay"
+            "help chahiye",
+            "kya kar sakte ho",
+            "meri madad karo",
+            "kya bolun"
           ]
         },
         {
-          "name": "AMAZON.NoIntent",
-          "samples": [
-            "nahi", "ji nahi", "nahi hai", "nahi he", "nahi hain", "nahi tha", "nahi thi",
-            "available nahi", "nahi mil raha", "nahi mila", "no", "nope"
-          ]
-        },
-
-        {
-          "name": "ConversationIntent",
+          "name": "GetMenuIntent",
           "slots": [
             {
-              "name": "Query",
-              "type": "AMAZON.SearchQuery"
+              "name": "MealType",
+              "type": "MealTypeSlot"
             }
           ],
           "samples": [
-            "batao {Query}",
-            "sunao {Query}",
-            "bolo {Query}",
-            "bata do {Query}",
-            "poochna hai {Query}",
-            "main bolna chahti hoon {Query}",
-            "main bolna chahta hoon {Query}",
-            "mujhe pata karna hai {Query}",
-            "kya {Query}",
-            "aaj {Query}",
-            "kal {Query}",
-            "kitne {Query}",
-            "tell me {Query}",
-            "what {Query}",
-            "sun {Query}",
-            "suno {Query}",
-            "suno zara {Query}",
-            "sun zara {Query}",
-            "suno ji {Query}",
-            "dekho {Query}",
-            "dekh lo {Query}",
-            "waise {Query}",
-            "actually {Query}",
-            "abhi {Query}",
-            "jaldi {Query}",
-            "jaldi batao {Query}",
-            "ek kaam tha {Query}",
-            "ek cheez thi {Query}",
-            "ek minute {Query}",
-            "acha {Query}",
-            "update karo {Query}",
-            "check karo {Query}",
-            "baat karna hai {Query}",
-            "{Query} batao",
-            "{Query} bolo",
-            "{Query} sunao",
-            "{Query} bata",
-            "{Query} karo",
-            "{Query} hai",
-            "{Query} hain",
-            "{Query} tha",
-            "{Query} thi",
-            "{Query} chahiye",
-            "{Query} banana hai",
-            "{Query} nahi hai",
-            "{Query} nahi he",
-            "{Query} khatam ho gaya",
-            "{Query} khatam ho gayi",
-            "{Query} ho gaya",
-            "{Query} ho gayi",
-            "{Query} milega",
-            "{Query} milegi",
-            "{Query} hai kya",
-            "{Query} available hai kya",
-            "{Query} karo na"
+            "aaj {MealType} mein kya hai",
+            "{MealType} mein kya banau",
+            "aaj {MealType} kya banana hai",
+            "{MealType} ka menu batao",
+            "aaj ka menu kya hai",
+            "{MealType} mein kya banega"
           ]
         },
-
+        {
+          "name": "ReportShortageIntent",
+          "slots": [
+            {
+              "name": "GroceryItem",
+              "type": "AMAZON.Food"
+            }
+          ],
+          "samples": [
+            "{GroceryItem} khatam ho gaya",
+            "{GroceryItem} nahi hai",
+            "{GroceryItem} order kar do",
+            "{GroceryItem} laana hai",
+            "kitchen mein {GroceryItem} nahi he",
+            "{GroceryItem} mangwa lo",
+            "list mein {GroceryItem} daal do"
+          ]
+        },
         {
           "name": "AMAZON.FallbackIntent",
           "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
         }
-
+      ],
+      "types": [
+        {
+          "name": "MealTypeSlot",
+          "values": [
+            {
+              "name": {
+                "value": "breakfast",
+                "synonyms": [
+                  "nashta",
+                  "nashte",
+                  "subah ka khana",
+                  "tiffin"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "lunch",
+                "synonyms": [
+                  "dopehar ka khana",
+                  "dopahar"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "dinner",
+                "synonyms": [
+                  "raat ka khana",
+                  "raat ko"
+                ]
+              }
+            }
+          ]
+        }
       ]
     }
   }

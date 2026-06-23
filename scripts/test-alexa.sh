@@ -331,6 +331,22 @@ SLOTS='{"SuggestionText":{"name":"SuggestionText","confirmationStatus":"NONE"}}'
 RESP=$(alexa_post "$(make_intent "FoodSuggestionIntent" "{}" "$SLOTS")")
 show_response "$RESP"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10f: GetMenuIntent — explicit intent test
+# ─────────────────────────────────────────────────────────────────────────────
+header "10f / GetMenuIntent  (slot: MealType=breakfast)"
+SLOTS='{"MealType":{"name":"MealType","value":"breakfast","confirmationStatus":"NONE"}}'
+RESP=$(alexa_post "$(make_intent "GetMenuIntent" "{}" "$SLOTS")")
+show_response "$RESP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEST 10g: ReportShortageIntent — explicit intent test
+# ─────────────────────────────────────────────────────────────────────────────
+header "10g / ReportShortageIntent  (slot: GroceryItem=onions)"
+SLOTS='{"GroceryItem":{"name":"GroceryItem","value":"onions","confirmationStatus":"NONE"}}'
+RESP=$(alexa_post "$(make_intent "ReportShortageIntent" "{}" "$SLOTS")")
+show_response "$RESP"
+
 # TEST 10: Unknown intent (fallback path)
 # ─────────────────────────────────────────────────────────────────────────────
 header "10 / Unknown intent  (fallback path)"
