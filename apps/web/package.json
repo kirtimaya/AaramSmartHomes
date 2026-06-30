@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aaram/ui": "workspace:*",
+    "@aaram/config": "workspace:*",
+    "@aaram/types": "workspace:*",
     "@supabase/supabase-js": "^2.99.1",
     "alexa-verifier": "^4.0.0",
     "clsx": "^2.1.1",

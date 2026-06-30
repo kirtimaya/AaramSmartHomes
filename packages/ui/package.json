@@ -5,6 +5,22 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@aaram/types": "workspace:*"
+    "@aaram/types": "workspace:*",
+    "@aaram/config": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "react": "^19",
+    "react-native": "^0.85.3",
+    "typescript": "^5"
   }
 }
