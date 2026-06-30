@@ -1,4 +1,5 @@
 import { ScrollView, Text } from 'react-native';
+import { MotiView } from 'moti';
 import { NeoSurface } from '@aaram/ui';
 
 export default function DevUiTestScreen() {
@@ -13,6 +14,15 @@ export default function DevUiTestScreen() {
       <NeoSurface variant="in">
         <Text style={{ padding: 24 }}>in</Text>
       </NeoSurface>
+      <MotiView
+        from={{ opacity: 0, translateY: 12 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        transition={{ type: 'timing', duration: 300 }}
+      >
+        <NeoSurface variant="out">
+          <Text style={{ padding: 24 }}>moti fade-in</Text>
+        </NeoSurface>
+      </MotiView>
     </ScrollView>
   );
 }
