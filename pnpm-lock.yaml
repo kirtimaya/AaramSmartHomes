@@ -17,6 +17,9 @@ importers:
       '@aaram/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@aaram/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@aaram/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -90,6 +93,9 @@ importers:
       '@aaram/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@aaram/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@aaram/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -169,6 +175,22 @@ importers:
       '@aaram/types':
         specifier: workspace:*
         version: link:../types
+    devDependencies:
+      '@react-native-async-storage/async-storage':
+        specifier: ^3.1.1
+        version: 3.1.1(react-native@0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19
+        version: 19.2.14
+      react:
+        specifier: ^19
+        version: 19.2.3
+      react-native:
+        specifier: ^0.85.3
+        version: 0.85.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3)
+      typescript:
+        specifier: ^5
+        version: 5.9.3
 
   packages/types: {}
 

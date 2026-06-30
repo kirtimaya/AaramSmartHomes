@@ -1,8 +1,10 @@
 import { ScrollView, Text } from 'react-native';
 import { MotiView } from 'moti';
 import { NeoSurface } from '@aaram/ui';
+import { useSystemColorScheme } from '@aaram/core';
 
 export default function DevUiTestScreen() {
+  const scheme = useSystemColorScheme();
   return (
     <ScrollView contentContainerStyle={{ padding: 24, gap: 24 }}>
       <NeoSurface variant="out">
@@ -12,7 +14,7 @@ export default function DevUiTestScreen() {
         <Text style={{ padding: 24 }}>out-sm</Text>
       </NeoSurface>
       <NeoSurface variant="in">
-        <Text style={{ padding: 24 }}>in</Text>
+        <Text style={{ padding: 24 }}>in (scheme: {scheme})</Text>
       </NeoSurface>
       <MotiView
         from={{ opacity: 0, translateY: 12 }}
