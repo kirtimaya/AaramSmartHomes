@@ -6,19 +6,29 @@
   "types": "src/index.ts",
   "dependencies": {
     "@aaram/types": "workspace:*",
-    "@aaram/config": "workspace:*"
+    "@aaram/config": "workspace:*",
+    "@aaram/core": "workspace:*"
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "lucide-react": "*",
+    "lucide-react-native": "*",
+    "framer-motion": "*",
+    "moti": "*"
   },
   "peerDependenciesMeta": {
-    "react-native": {
-      "optional": true
-    }
+    "react-native": { "optional": true },
+    "lucide-react-native": { "optional": true },
+    "framer-motion": { "optional": true },
+    "moti": { "optional": true }
   },
   "devDependencies": {
     "@types/react": "^19",
+    "framer-motion": "*",
+    "lucide-react": "*",
+    "lucide-react-native": "*",
+    "moti": "*",
     "react": "^19",
     "react-native": "^0.85.3",
     "typescript": "^5"
