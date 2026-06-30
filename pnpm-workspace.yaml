@@ -1,6 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
 allowBuilds:
   sharp: true
-  tesseract.js: set this to true or false
+  tesseract.js: true
   unrs-resolver: true
 ignoredBuiltDependencies:
   - sharp
