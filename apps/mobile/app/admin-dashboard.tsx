@@ -12,6 +12,7 @@ export default function AdminDashboardRoute() {
       onNavigateFinancials={() => router.push('/admin/financials')}
       onNavigateOccupancy={() => router.push('/admin/occupancy')}
       onNavigateIoT={() => router.push('/admin/iot')}
+      onNavigateTenants={() => router.push('/admin/tenants')}
     />
   );
 }

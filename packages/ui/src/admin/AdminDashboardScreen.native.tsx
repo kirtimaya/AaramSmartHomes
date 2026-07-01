@@ -35,6 +35,7 @@ function formatRevenue(n: number): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface AdminDashboardScreenProps {
+  onNavigateTenants?: () => void;
   supabase: AdminSupabaseClient;
   onNotAuthenticated: () => void;
   onNavigateTickets?: () => void;
@@ -183,6 +184,7 @@ export function AdminDashboardScreen({
   onNavigateFinancials,
   onNavigateOccupancy,
   onNavigateIoT,
+  onNavigateTenants,
 }: AdminDashboardScreenProps) {
   const { data, loading, refreshing, error, refresh } = useAdminDashboard(supabase);
 
@@ -211,6 +213,7 @@ export function AdminDashboardScreen({
     { emoji: '💰', label: 'Revenue',      value: revenueDisplay,              trend: 'This month',                  trendVariant: 'good' as const,  onPress: onNavigateFinancials },
     { emoji: '🎫', label: 'Open Tickets', value: String(data.openTickets),    trend: `${data.tickets.length} total`, trendVariant: 'warn' as const, onPress: onNavigateTickets },
     { emoji: '💧', label: 'Water Level',  value: `${data.avgWaterLevel}%`,    trend: data.avgWaterLevel < 30 ? 'Low' : 'Stable', trendVariant: data.avgWaterLevel < 30 ? 'warn' as const : 'good' as const, onPress: onNavigateIoT },
+    { emoji: '👥', label: 'Tenants',      value: String(Object.keys(data.tenantNameMap).length), trend: `${data.noticeTenants} on notice`, trendVariant: 'warn' as const, onPress: onNavigateTenants },
   ];
 
   return (
