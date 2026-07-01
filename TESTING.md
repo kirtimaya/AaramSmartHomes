@@ -352,6 +352,68 @@ Run individually: `pnpm test -- useAdminTenants`
 
 ---
 
+### Phase 1.10 — Property Detail hook (`packages/core`)
+
+#### `packages/core/src/__tests__/properties/usePropertyDetail.test.ts`
+Tests `usePropertyDetail` (`packages/core/src/properties/usePropertyDetail.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, `property=null` before data arrives |
+| Loads property with rooms and benefits | Correct name, nested rooms/benefits present |
+| Sets activeRoom to first room on load | `activeRoom.id === rooms[0].id` |
+| setActiveRoom switches active room | Picker state change reflected |
+| Surfaces DB error | `error` set from `dbErr.message` |
+| Returns property-not-found error when data is null | `error="Property not found"` when `maybeSingle` returns `null` data |
+| Returns error when propertyId is null | `error="No property ID provided"` without any DB call |
+| Refresh re-fetches | `from()` called twice |
+| Property with no rooms sets activeRoom to null | `activeRoom` stays null when `rooms=[]` |
+
+Run individually: `pnpm test -- usePropertyDetail`
+
+---
+
+### Phase 1.11 — Guest Dashboard hook (`packages/core`)
+
+#### `packages/core/src/__tests__/guest/useGuestDashboard.test.ts`
+Tests `useGuestDashboard` (`packages/core/src/guest/useGuestDashboard.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, empty arrays on mount |
+| Loads properties, shortlist, and visit requests | All three parallel queries resolved; `property_name` from join |
+| Sets guestId from session | `guestId` matches session user id |
+| Returns not_authenticated when session is null | `error="not_authenticated"` |
+| Empty shortlist results in empty Set | `shortlisted.size === 0` |
+| toggleShortlist adds property when not shortlisted | `insert` called; Set updated |
+| toggleShortlist removes property when already shortlisted | `delete` called; Set updated |
+| Refresh re-fetches | `getSession` called twice; `refreshing` resets |
+| Empty properties and visits are valid | No error on empty data |
+
+Run individually: `pnpm test -- useGuestDashboard`
+
+---
+
+### Phase 1.11 — Visit Request Form hook (`packages/core`)
+
+#### `packages/core/src/__tests__/guest/useVisitRequestForm.test.ts`
+Tests `useVisitRequestForm` (`packages/core/src/guest/useVisitRequestForm.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Initialises with default empty values | All fields empty, `submitted=false` |
+| Blocks submit when propertyId is empty | Error set; `from()` not called |
+| Blocks submit when preferredDate is empty | Error set; `from()` not called |
+| Inserts with correct payload on valid submit | `insert` called with trimmed fields + `requester_type=guest` |
+| Stores null message when message is empty/whitespace | Blank message coerced to `null` in payload |
+| Surfaces DB error and keeps submitted=false | Error message shown; `submitted` stays false |
+| Loading resets to false after successful submit | Spinner clears |
+| Reset restores all fields to defaults | All fields back to empty; `submitted=false` |
+
+Run individually: `pnpm test -- useVisitRequestForm`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -360,7 +422,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **122 tests** across **17 test files**, all passing.
+Expected output: **148 tests** across **20 test files**, all passing.
 
 To see coverage:
 

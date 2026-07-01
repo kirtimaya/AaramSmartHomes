@@ -6,3 +6,5 @@ export * from "./tenant";
 export * from "./home";
 export * from "./aara";
 export * from "./admin";
+export * from "./properties";
+export * from "./guest";

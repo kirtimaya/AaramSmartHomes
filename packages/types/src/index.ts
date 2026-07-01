@@ -110,3 +110,20 @@ export type Guest = {
   last_login_at?: string;
   created_at: string;
 };
+
+// ── Visit Requests ────────────────────────────────────────────────────────────
+
+export type VisitRequestStatus = 'pending' | 'confirmed' | 'cancelled';
+
+export type VisitRequest = {
+  id: string;
+  requester_id: string;
+  requester_type: 'guest' | 'tenant';
+  property_id: string;
+  property_name?: string;
+  room_id?: string;
+  preferred_date?: string;
+  message?: string;
+  status: VisitRequestStatus;
+  created_at: string;
+};
