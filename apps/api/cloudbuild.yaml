@@ -1,0 +1,63 @@
+# Google Cloud Build — build Docker image and deploy to Cloud Run
+#
+# Trigger this via:
+#   gcloud builds submit --config apps/api/cloudbuild.yaml .
+#
+# Or connect your GitHub repo in Cloud Build triggers to auto-deploy on push
+# to the `mobile` branch.
+#
+# Required substitutions (set in Cloud Build trigger or --substitutions flag):
+#   _REGION          e.g. asia-south1
+#   _SERVICE         e.g. aaram-api
+#   _SUPABASE_URL    your Supabase project URL
+#   _CORS_ORIGINS    comma-separated allowed origins
+
+substitutions:
+  _REGION: asia-south1
+  _SERVICE: aaram-api
+  _IMAGE: gcr.io/$PROJECT_ID/$_SERVICE
+
+steps:
+  # 1. Build the Docker image from the api subdirectory
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - $_IMAGE:$SHORT_SHA
+      - -t
+      - $_IMAGE:latest
+      - -f
+      - apps/api/Dockerfile
+      - apps/api
+
+  # 2. Push both tags to Container Registry
+  - name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, $_IMAGE]
+
+  # 3. Deploy to Cloud Run
+  #    Secrets (DB password, service role key, Groq key) are stored in
+  #    Secret Manager and mounted as env vars — never passed as plain text.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_IMAGE:$SHORT_SHA
+      - --region=$_REGION
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=512Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=3
+      - --set-env-vars=SUPABASE_URL=$_SUPABASE_URL,CORS_ORIGINS=$_CORS_ORIGINS
+      # Secrets injected from Secret Manager (create these once with gcloud secrets create)
+      - --set-secrets=SUPABASE_DB_URL=aaram-db-url:latest,SUPABASE_DB_PASSWORD=aaram-db-password:latest,SUPABASE_SERVICE_ROLE_KEY=aaram-service-role-key:latest,GROQ_API_KEY=aaram-groq-key:latest
+
+images:
+  - $_IMAGE:$SHORT_SHA
+  - $_IMAGE:latest
+
+timeout: 600s
