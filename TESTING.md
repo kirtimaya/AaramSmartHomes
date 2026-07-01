@@ -414,6 +414,31 @@ Run individually: `pnpm test -- useVisitRequestForm`
 
 ---
 
+### Phase 1.12 — Admin Financials hook (`packages/core`)
+
+#### `packages/core/src/__tests__/admin/useAdminFinancials.test.ts`
+Tests `useAdminFinancials` (`packages/core/src/admin/useAdminFinancials.ts`).
+
+> Uses `react-native-gifted-charts` (SVG-based, works with Expo Go) for BarChart + PieChart.
+> Hook derives all chart data via `useMemo` — tests verify the derived values without needing a chart library.
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true` before data arrives |
+| Loads and computes all-time totals | `totalIncome`, `totalExpenses`, `netProfit` summed correctly |
+| Builds monthlyPoints for last 6 months | Array of 6 points with `month`, `income`, `expense` |
+| Builds categorySlices sorted by total descending | Top category first; `pct` values sum to 100 |
+| Builds recentTransactions sorted by date descending | Combined income+expense list, newest first |
+| Returns not_authenticated when session is null | `error="not_authenticated"` |
+| Surfaces expense DB error | Error from `expenses` table query propagated |
+| Handles empty data — zero totals, no crash | All zero, empty arrays, `error=null` |
+| Refresh re-fetches | `getSession` called twice; `refreshing` resets |
+| netProfit is negative when expenses exceed income | Negative net profit computed correctly |
+
+Run individually: `pnpm test -- useAdminFinancials`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -422,7 +447,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **148 tests** across **20 test files**, all passing.
+Expected output: **158 tests** across **21 test files**, all passing.
 
 To see coverage:
 

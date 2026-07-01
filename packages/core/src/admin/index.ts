@@ -23,3 +23,14 @@ export type {
   AdminTenantsState,
   AdminTenantsClient,
 } from './useAdminTenants';
+
+export { useAdminFinancials } from './useAdminFinancials';
+export type {
+  ExpenseItem,
+  ExpenseCategory,
+  IncomeRecord,
+  MonthlyPoint,
+  CategorySlice,
+  AdminFinancialsState,
+  AdminFinancialsClient,
+} from './useAdminFinancials';
