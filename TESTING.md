@@ -282,6 +282,32 @@ Run individually: `pnpm test -- useAaraChat`
 
 ---
 
+### Phase 1.9 — Admin dashboard hook (`packages/core`)
+
+#### `packages/core/src/__tests__/admin/useAdminDashboard.test.ts`
+Tests `useAdminDashboard` (`packages/core/src/admin/useAdminDashboard.ts`).
+
+> Supabase mock extends the thenable-chain pattern with `.order()`, `.limit()`,
+> `.gte()`, `.lt()`, `.in()`, and `{ count, head }` support for the notice-tenant
+> count query.
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, empty arrays on mount |
+| Loads all data | Properties, rooms, tickets, revenue, water logs |
+| Deduplicates water logs | Keeps latest-per-property; second p1 log discarded |
+| Occupancy rate | 3/4 rooms occupied/notice = 75% |
+| Open tickets | Excludes Resolved status |
+| Avg water level | `Math.round((75+20)/2) = 48` |
+| Tenant name map | requester_id → name lookup |
+| Not authenticated | `error="not_authenticated"` when session null |
+| Exception | Error message captured from catch block |
+| Refresh | `getSession` called twice; `refreshing` resets |
+
+Run individually: `pnpm test -- useAdminDashboard`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -290,7 +316,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **92 tests** across **14 test files**, all passing.
+Expected output: **102 tests** across **15 test files**, all passing.
 
 To see coverage:
 

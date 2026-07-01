@@ -5,3 +5,4 @@ export * from "./auth";
 export * from "./tenant";
 export * from "./properties";
 export * from "./aara";
+export * from "./admin";

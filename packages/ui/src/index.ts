@@ -5,3 +5,4 @@ export * from "./icons";
 export * from "./tenant";
 export * from "./home";
 export * from "./aara";
+export * from "./admin";
