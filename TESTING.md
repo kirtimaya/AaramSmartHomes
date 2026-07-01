@@ -203,6 +203,45 @@ Run individually: `pnpm test -- ResetPasswordScreen`
 
 ---
 
+### Phase 1.6 — Tenant portal hooks (`packages/core`)
+
+#### `packages/core/src/__tests__/tenant/useTenantDashboard.test.ts`
+Tests `useTenantDashboard` (`packages/core/src/tenant/useTenantDashboard.ts`).
+
+> Mock pattern: a thenable chain (`then`/`catch`/`finally` + `maybeSingle`) covers both
+> the `.maybeSingle()` path (tenants) and direct-await path (tickets, bill_splits).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, `tenant=null` before data arrives |
+| Loads tenant, tickets, and bills | All three fetched in parallel; correct values in state |
+| Not authenticated | `error="not_authenticated"` when session is null |
+| Throws on load | Error message surfaced from caught exception |
+| Null tenant row | `tenant=null`, `error=null` — missing profile is graceful |
+| Empty arrays | Zero tickets and bills handled without errors |
+| Refresh re-fetches | `refreshing` resets; `getSession` called twice (mount + refresh) |
+
+Run individually: `pnpm test -- useTenantDashboard`
+
+---
+
+#### `packages/core/src/__tests__/tenant/useTicketForm.test.ts`
+Tests `useTicketForm` (`packages/core/src/tenant/useTicketForm.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Initialises with defaults | `category=Maintenance`, `priority=Medium`, `description=""` |
+| Blocks empty description | Error set; `from()` not called |
+| Inserts correct payload | `insert` called with trimmed description + correct fields |
+| Surfaces DB error | Error message shown; `submitted` stays false |
+| loading=false after success | Spinner clears |
+| loading=false after error | Spinner clears |
+| reset restores defaults | All fields back to initial values; `submitted=false` |
+
+Run individually: `pnpm test -- useTicketForm`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -211,7 +250,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **62 tests** across **10 test files**, all passing.
+Expected output: **76 tests** across **12 test files**, all passing.
 
 To see coverage:
 
