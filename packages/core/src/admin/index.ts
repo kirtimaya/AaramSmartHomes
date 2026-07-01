@@ -7,3 +7,19 @@ export type {
   AdminRoom,
   WaterLog,
 } from './useAdminDashboard';
+
+export { useAdminTickets } from './useAdminTickets';
+export type {
+  AdminTicket,
+  AdminTicketsFilter,
+  AdminTicketsState,
+  AdminTicketsClient,
+} from './useAdminTickets';
+
+export { useAdminTenants } from './useAdminTenants';
+export type {
+  AdminTenantRow,
+  AdminTenantStatus,
+  AdminTenantsState,
+  AdminTenantsClient,
+} from './useAdminTenants';

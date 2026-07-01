@@ -308,6 +308,50 @@ Run individually: `pnpm test -- useAdminDashboard`
 
 ---
 
+### Phase 1.9 (cont) — Admin Tickets hook (`packages/core`)
+
+#### `packages/core/src/__tests__/admin/useAdminTickets.test.ts`
+Tests `useAdminTickets` (`packages/core/src/admin/useAdminTickets.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, empty array on mount |
+| Loads and maps tickets with requester names | Tenant join resolves to `name`; guest join resolves to `name` |
+| Returns not_authenticated | `error="not_authenticated"` when session is null |
+| Surfaces DB errors | `error` set from `dbErr.message` |
+| Filters by status | All/Pending/In-Progress/Resolved filter chip behavior |
+| updateTicket optimistic state update | Status + admin_note updated in local state after `update().eq()` |
+| Refresh re-fetches | `getSession` called twice; `refreshing` resets |
+| Falls back requester_name to id slice | When join row is null, first 8 chars of `requester_id` used |
+| Empty ticket list is valid | Zero tickets, `error=null` |
+
+Run individually: `pnpm test -- useAdminTickets`
+
+---
+
+### Phase 1.9 (cont) — Admin Tenants hook (`packages/core`)
+
+#### `packages/core/src/__tests__/admin/useAdminTenants.test.ts`
+Tests `useAdminTenants` (`packages/core/src/admin/useAdminTenants.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, empty array on mount |
+| Loads and maps tenants with room/property names | Nested join resolves `room_name` and `property_name`; null room handled |
+| Returns not_authenticated | `error="not_authenticated"` when session is null |
+| Surfaces DB errors | `error` set from `dbErr.message` |
+| Filters by status | all/active/notice/moved_out chip behavior |
+| Filters by query — name match | Case-insensitive substring search on `name` |
+| Filters by query — email match | Substring search on `email` |
+| Filters by query — phone match | Substring search on `phone` |
+| Combines status + query filters | Both predicates applied together |
+| Refresh re-fetches | `getSession` called twice; `refreshing` resets |
+| Empty array is valid | Zero tenants, `error=null` |
+
+Run individually: `pnpm test -- useAdminTenants`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -316,7 +360,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **102 tests** across **15 test files**, all passing.
+Expected output: **122 tests** across **17 test files**, all passing.
 
 To see coverage:
 
