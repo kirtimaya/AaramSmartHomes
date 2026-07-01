@@ -1,0 +1,47 @@
+spring:
+  datasource:
+    url: ${SUPABASE_DB_URL}
+    username: ${SUPABASE_DB_USER:postgres}
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        default_schema: public
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Supabase JWKS endpoint — tokens are RS256, JWKS is auto-fetched
+          jwk-set-uri: ${SUPABASE_URL}/auth/v1/.well-known/jwks.json
+          issuer-uri: ${SUPABASE_URL}/auth/v1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+server:
+  port: ${PORT:8080}
+
+app:
+  supabase-url: ${SUPABASE_URL}
+  supabase-service-role-key: ${SUPABASE_SERVICE_ROLE_KEY}
+  admin-email: ${ADMIN_EMAIL:admin@aaramsmarthomes.com}
+  groq-api-key: ${GROQ_API_KEY:}
+  groq-model: llama-3.3-70b-versatile
+  cors-origins: ${CORS_ORIGINS:http://localhost:3000}

@@ -1,0 +1,28 @@
+# Test stubs — real external systems are mocked; these values only satisfy
+# Spring's placeholder resolution and auto-configuration conditions.
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: https://test.supabase.co/auth/v1/.well-known/jwks.json
+          issuer-uri: https://test.supabase.co/auth/v1
+
+app:
+  supabase-url: https://test.supabase.co
+  supabase-service-role-key: test-service-role-key
+  admin-email: admin@test.com
+  groq-api-key: test-groq-key
+  cors-origins: http://localhost:3000
