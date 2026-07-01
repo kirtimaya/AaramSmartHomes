@@ -3,3 +3,4 @@ export type { NeoSurfaceProps, NeoSurfaceVariant } from "./NeoSurface.types";
 export * from "./auth";
 export * from "./icons";
 export * from "./tenant";
+export * from "./home";

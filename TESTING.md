@@ -242,6 +242,26 @@ Run individually: `pnpm test -- useTicketForm`
 
 ---
 
+### Phase 1.7 — Properties hook (`packages/core`)
+
+#### `packages/core/src/__tests__/properties/useProperties.test.ts`
+Tests `useProperties` (`packages/core/src/properties/useProperties.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Starts in loading state | `loading=true`, empty array before data arrives |
+| Loads properties on mount | Correct count, names, nested rooms/benefits |
+| Applies limit to query | `.limit(n)` called on the chain when `limit` prop given |
+| No limit when not given | `.limit()` not called when prop is absent |
+| DB error from Supabase | `error` set; properties stays empty |
+| Thrown exception | Error message captured from catch block |
+| Empty array | Zero properties is valid; `error=null` |
+| Refresh re-fetches | `from()` called twice (mount + refresh) |
+
+Run individually: `pnpm test -- useProperties`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -250,7 +270,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **76 tests** across **12 test files**, all passing.
+Expected output: **84 tests** across **13 test files**, all passing.
 
 To see coverage:
 
