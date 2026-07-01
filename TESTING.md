@@ -262,6 +262,26 @@ Run individually: `pnpm test -- useProperties`
 
 ---
 
+### Phase 1.8 — Aara chat hook (`packages/core`)
+
+#### `packages/core/src/__tests__/aara/useAaraChat.test.ts`
+Tests `useAaraChat` (`packages/core/src/aara/useAaraChat.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| Initialises with greeting | One assistant message present; `loading=false`, `error=null` |
+| Appends user + assistant | Both messages appended in order after `send()` |
+| Trims input before calling | `sendMessage` receives trimmed text |
+| Ignores empty/whitespace | `sendMessage` not called; no messages added |
+| loading flag lifecycle | `true` while awaiting, `false` after resolve |
+| Error recovery message | Error text in state; fallback assistant message appended |
+| clearHistory | Resets to just the greeting |
+| Multiple sends accumulate | All messages preserved across sequential sends |
+
+Run individually: `pnpm test -- useAaraChat`
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -270,7 +290,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **84 tests** across **13 test files**, all passing.
+Expected output: **92 tests** across **14 test files**, all passing.
 
 To see coverage:
 
