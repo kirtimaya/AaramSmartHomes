@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { HomeScreen } from '@aaram/ui';
+import { HomeScreen } from '@aaram/ui/home';
 import { supabase } from '../../lib/supabase';
 
 export default function HomeTab() {

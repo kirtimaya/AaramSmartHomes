@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { AdminFinancialsScreen } from '@aaram/ui';
+import { AdminFinancialsScreen } from '@aaram/ui/admin';
 import { supabase } from '../../lib/supabase';
 
 export default function AdminFinancialsRoute() {

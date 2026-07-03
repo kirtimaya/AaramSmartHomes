@@ -1,6 +1,6 @@
 import React from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { PropertyDetailScreen } from '@aaram/ui';
+import { PropertyDetailScreen } from '@aaram/ui/properties';
 import { supabase } from '../../lib/supabase';
 
 export default function PropertyDetailRoute() {

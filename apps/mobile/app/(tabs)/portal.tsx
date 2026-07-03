@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { TenantPortalScreen } from '@aaram/ui';
+import { TenantPortalScreen } from '@aaram/ui/tenant';
 import { supabase } from '../../lib/supabase';
 
 export default function PortalScreen() {

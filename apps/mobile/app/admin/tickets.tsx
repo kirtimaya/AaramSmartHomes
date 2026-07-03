@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { AdminTicketsScreen } from '@aaram/ui';
+import { AdminTicketsScreen } from '@aaram/ui/admin';
 import { supabase } from '../../lib/supabase';
 
 export default function AdminTicketsRoute() {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { GuestPortalScreen } from '@aaram/ui';
+import { GuestPortalScreen } from '@aaram/ui/guest';
 import { supabase } from '../lib/supabase';
 
 export default function GuestRoute() {

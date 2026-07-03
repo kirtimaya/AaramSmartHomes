@@ -20,7 +20,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Room has no property' }, { status: 404 });
   }
 
-  const formData = await request.formData();
+  // See apps/web/src/app/api/bills/upload/route.ts for why this cast is needed.
+  const formData = (await request.formData()) as unknown as {
+    get(name: string): string | File | null;
+  };
   const billMonth   = formData.get('bill_month') as string;        // YYYY-MM
   const totalAmount = Number(formData.get('total_amount') || 0);
   const totalUnits  = Number(formData.get('total_units')  || 0);

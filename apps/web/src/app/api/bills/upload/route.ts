@@ -13,7 +13,12 @@ export async function POST(request: NextRequest) {
 
   const uploadSource = 'admin';
 
-  const formData = await request.formData();
+  // The ambient global FormData type (from @types/node's web-globals/fetch.d.ts)
+  // resolves without its methods under this TS/lib combination. NextRequest.formData()
+  // is spec-compliant WHATWG FormData at runtime; this bypasses the broken ambient type.
+  const formData = (await request.formData()) as unknown as {
+    get(name: string): string | File | null;
+  };
   const propertyId  = formData.get('property_id') as string;
   const billMonth   = formData.get('bill_month') as string;   // YYYY-MM
   const uscNo       = formData.get('usc_no') as string | null;

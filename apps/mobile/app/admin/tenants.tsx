@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { AdminTenantsScreen } from '@aaram/ui';
+import { AdminTenantsScreen } from '@aaram/ui/admin';
 import { supabase } from '../../lib/supabase';
 
 export default function AdminTenantsRoute() {

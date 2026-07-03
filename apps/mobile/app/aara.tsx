@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { AaraChatScreen } from '@aaram/ui';
+import { AaraChatScreen } from '@aaram/ui/aara';
 import { supabase } from '../lib/supabase';
 
 async function callAaraApi(userText: string): Promise<string> {
