@@ -1,0 +1,49 @@
+# Cloud Build's `docker build` context for the API is scoped to apps/api/
+# (see apps/api/cloudbuild.yaml), but `gcloud builds submit --config ... .`
+# uploads this ENTIRE directory as source before the build even starts.
+# Without this file, that upload includes node_modules (~4GB across all
+# workspaces), apps/mobile's android/ios native project folders (~1.2GB),
+# .next build cache, .git history, etc. — none of which the API image needs
+# (it's a pure Java/Maven build, doesn't touch any of the TS workspaces).
+#
+# Explicit exclusions (not a blanket "ignore all + re-include" pattern —
+# that negation doesn't cascade to siblings the way you'd expect once a
+# parent directory is un-ignored, so it's more reliable to just list what
+# to drop).
+
+node_modules/
+.git/
+.next/
+.expo/
+.turbo/
+.vercel/
+coverage/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Other apps/packages — not part of the API's build context at all.
+apps/web/
+apps/mobile/
+packages/
+android/
+ios/
+
+# Misc large/irrelevant top-level content.
+docs/
+scripts/
+supabase/
+changelog/
+*.rtf
+*.jpg
+*.jpeg
+*.png
+
+# apps/api's own build output and secrets — recompiled fresh inside the
+# Docker build; never needed in the uploaded source archive.
+apps/api/target/
+apps/api/.mvn/wrapper/maven-wrapper.jar
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
