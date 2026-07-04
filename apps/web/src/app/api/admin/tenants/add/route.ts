@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient } = auth;
+  const { adminClient, email: actorEmail, userId: actorId } = auth;
 
   const { name, phone, email, roomId, moveInDate } = await request.json();
   if (!name || !roomId) {
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
   if (invErr || !invitation) {
     return NextResponse.json({ error: invErr?.message ?? 'Failed to create invitation' }, { status: 500 });
   }
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'tenant_invitation.create',
+    entityType: 'tenant_invitation', entityId: invitation.id,
+    before: null, after: { name, phone, email, roomId, moveInDate },
+  });
 
   const origin = request.headers.get('origin') ?? 'https://aaram.space';
   const joinUrl = `${origin}/join?token=${invitation.token}`;

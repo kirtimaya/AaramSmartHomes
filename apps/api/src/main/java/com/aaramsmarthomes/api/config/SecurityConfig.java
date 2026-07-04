@@ -37,6 +37,15 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health", "/actuator/**").permitAll()
+                // WhatsApp Cloud API webhook — verified via hub.verify_token (GET) and
+                // X-Hub-Signature-256 HMAC (POST) inside the controller, not JWT.
+                .requestMatchers("/api/webhooks/**").permitAll()
+                // Cloud Scheduler-invoked outbox/timer processing — guarded by a shared
+                // X-Tasks-Secret header inside the controller, not JWT.
+                .requestMatchers("/api/internal/tasks/**").permitAll()
+                // Defense-in-depth: admin surface is also required at the matcher level,
+                // not just via @PreAuthorize on individual controllers.
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

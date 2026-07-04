@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Utensils, Clock, Package, AlertCircle, Plus, Edit2, Trash2,
-  Calendar, Leaf, Coffee, CheckCircle2, X, Shield, PieChart as PieIcon,
+  Calendar, Leaf, Coffee, CheckCircle2, X, PieChart as PieIcon,
   ChefHat, Timer, Bell, RefreshCw, Wallet, ChevronDown, Zap,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -88,7 +88,6 @@ export default function FoodHub() {
   const todayDayName = DAYS[new Date(todayIST + 'T00:00:00Z').getUTCDay() === 0 ? 6 : new Date(todayIST + 'T00:00:00Z').getUTCDay() - 1];
 
   const [activeDay, setActiveDay] = useState<DayOfWeek>(todayDayName);
-  const [isAdminMode, setIsAdminMode] = useState(false);
   const [showTimings, setShowTimings] = useState(false);
   const [walletBalance] = useState(2450);
 
@@ -268,12 +267,6 @@ export default function FoodHub() {
             className="soft-button px-6 py-3 text-[11px] font-black uppercase tracking-[0.15em] text-secondary hover:text-secondary/80 flex items-center gap-2">
             <Leaf className="w-4 h-4" /> Nutrition
           </Link>
-          <button onClick={() => setIsAdminMode(!isAdminMode)}
-            className={cn('soft-button px-6 py-3 text-[11px] font-black uppercase tracking-[0.15em] transition-all relative overflow-hidden group',
-              isAdminMode ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'text-foreground/60')}>
-            <Shield className={cn('w-4 h-4 mr-2 transition-transform group-hover:scale-110', isAdminMode && 'text-white')} />
-            {isAdminMode ? 'Admin Active' : 'Admin Login'}
-          </button>
         </motion.div>
       </header>
 
@@ -405,7 +398,7 @@ export default function FoodHub() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {pantry.map((item, idx) => (
                   <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: idx * 0.04 }}
-                    key={item.id} className={cn('soft-well p-6 border border-white group relative overflow-hidden', !isAdminMode && 'opacity-90')}>
+                    key={item.id} className="soft-well p-6 border border-white group relative overflow-hidden">
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-1">{item.category}</p>
@@ -431,13 +424,6 @@ export default function FoodHub() {
                     )}
                   </motion.div>
                 ))}
-                {isAdminMode && (
-                  <motion.div whileHover={{ y: -2 }}
-                    className="soft-well p-6 border border-dashed border-primary/40 flex flex-col items-center justify-center gap-3 text-primary/60 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all cursor-pointer">
-                    <Plus className="w-8 h-8" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Add Item</span>
-                  </motion.div>
-                )}
               </div>
             )}
           </motion.section>

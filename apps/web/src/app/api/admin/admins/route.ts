@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin, makeAdminClient } from '@/lib/supabaseAdmin';
 import { ROOT_EMAIL } from '@/lib/constants';
+import { logAudit } from '@/lib/audit';
 
-type RootResult = { userId: string; adminClient: ReturnType<typeof makeAdminClient> };
+type RootResult = { userId: string; email: string; adminClient: ReturnType<typeof makeAdminClient> };
 
 async function requireRoot(req: NextRequest): Promise<RootResult | NextResponse> {
   const auth = await requireAdmin(req);
@@ -13,7 +14,7 @@ async function requireRoot(req: NextRequest): Promise<RootResult | NextResponse>
   if (!user || user.email?.toLowerCase() !== ROOT_EMAIL.toLowerCase()) {
     return NextResponse.json({ error: 'Root access required' }, { status: 403 });
   }
-  return { userId: user.id, adminClient: auth.adminClient };
+  return { userId: user.id, email: user.email!, adminClient: auth.adminClient };
 }
 
 export async function GET(req: NextRequest) {
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const result = await requireRoot(req);
   if (result instanceof NextResponse) return result;
-  const { adminClient: db } = result;
+  const { adminClient: db, email: actorEmail, userId: actorId } = result;
 
   const { email } = await req.json();
   if (!email || typeof email !== 'string') {
@@ -51,18 +52,32 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'admin.add',
+    entityType: 'admin', entityId: data.id, before: null, after: data,
+  });
+
   return NextResponse.json(data, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {
   const result = await requireRoot(req);
   if (result instanceof NextResponse) return result;
-  const { adminClient: db } = result;
+  const { adminClient: db, email: actorEmail, userId: actorId } = result;
 
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
+  const { data: before } = await db.from('admins').select().eq('id', id).single();
+
   const { error } = await db.from('admins').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'admin.remove',
+    entityType: 'admin', entityId: id, before: before ?? null, after: null,
+  });
+
   return NextResponse.json({ ok: true });
 }

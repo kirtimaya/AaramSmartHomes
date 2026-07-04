@@ -7,15 +7,25 @@
 # to the `mobile` branch.
 #
 # Required substitutions (set in Cloud Build trigger or --substitutions flag):
-#   _REGION          e.g. asia-south1
-#   _SERVICE         e.g. aaram-api
-#   _SUPABASE_URL    your Supabase project URL
-#   _CORS_ORIGINS    comma-separated allowed origins
+#   _REGION                    e.g. asia-south1
+#   _SERVICE                   e.g. aaram-api
+#   _SUPABASE_URL              your Supabase project URL
+#   _CORS_ORIGINS              comma-separated allowed origins
+#
+# Optional (defaulted below — only needed once WhatsApp goes live):
+#   _WHATSAPP_ENABLED          "true" to start sending; "false" keeps every send path a no-op
+#   _WHATSAPP_PHONE_NUMBER_ID  from Meta Business Manager > WhatsApp > API Setup
+#   _EMERGENCY_CONTACT_NUMBER  E.164 number the cook engine hands out when it escalates
+#   _PUBLIC_BASE_URL           this service's own public URL, e.g. https://aaram-api-xxxx.run.app
 
 substitutions:
   _REGION: asia-south1
   _SERVICE: aaram-api
   _IMAGE: gcr.io/$PROJECT_ID/$_SERVICE
+  _WHATSAPP_ENABLED: "false"
+  _WHATSAPP_PHONE_NUMBER_ID: ""
+  _EMERGENCY_CONTACT_NUMBER: ""
+  _PUBLIC_BASE_URL: ""
 
 steps:
   # 1. Build the Docker image from the api subdirectory
@@ -50,11 +60,17 @@ steps:
       - --port=8080
       - --memory=512Mi
       - --cpu=1
-      - --min-instances=0
+      # min-instances=1: the WhatsApp webhook (P2) needs to ack Meta's POST in <2s to
+      # avoid retry storms, and the outbox/timer processor needs a warm instance for
+      # Cloud Scheduler to hit. A cold Spring Boot start is ~10-20s, which would blow
+      # through Meta's timeout on every scale-from-zero request. Was 0 (~$10-15/mo cost
+      # tradeoff for a warm instance in asia-south1).
+      - --min-instances=1
       - --max-instances=3
-      - --set-env-vars=SUPABASE_URL=$_SUPABASE_URL,CORS_ORIGINS=$_CORS_ORIGINS
-      # Secrets injected from Secret Manager (create these once with gcloud secrets create)
-      - --set-secrets=SUPABASE_DB_URL=aaram-db-url:latest,SUPABASE_DB_PASSWORD=aaram-db-password:latest,SUPABASE_SERVICE_ROLE_KEY=aaram-service-role-key:latest,GROQ_API_KEY=aaram-groq-key:latest
+      - --set-env-vars=SUPABASE_URL=$_SUPABASE_URL,CORS_ORIGINS=$_CORS_ORIGINS,WHATSAPP_ENABLED=$_WHATSAPP_ENABLED,WHATSAPP_PHONE_NUMBER_ID=$_WHATSAPP_PHONE_NUMBER_ID,EMERGENCY_CONTACT_NUMBER=$_EMERGENCY_CONTACT_NUMBER,PUBLIC_BASE_URL=$_PUBLIC_BASE_URL
+      # Secrets injected from Secret Manager (create these once with gcloud secrets create —
+      # see the WhatsApp go-live checklist for exact commands)
+      - --set-secrets=SUPABASE_DB_URL=aaram-db-url:latest,SUPABASE_DB_PASSWORD=aaram-db-password:latest,SUPABASE_SERVICE_ROLE_KEY=aaram-service-role-key:latest,GROQ_API_KEY=aaram-groq-key:latest,WHATSAPP_TOKEN=aaram-whatsapp-token:latest,WHATSAPP_APP_SECRET=aaram-whatsapp-app-secret:latest,WHATSAPP_VERIFY_TOKEN=aaram-whatsapp-verify-token:latest,WHATSAPP_FEEDBACK_FLOW_ID=aaram-whatsapp-flow-id:latest,GOOGLE_TTS_API_KEY=aaram-google-tts-key:latest,TASKS_SECRET=aaram-tasks-secret:latest
 
 images:
   - $_IMAGE:$SHORT_SHA

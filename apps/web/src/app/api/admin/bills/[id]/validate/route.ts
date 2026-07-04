@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(
   request: NextRequest,
@@ -7,7 +8,7 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient: db } = auth;
+  const { adminClient: db, email: actorEmail, userId: actorId } = auth;
 
   const { id } = await params;
 
@@ -34,6 +35,10 @@ export async function POST(
       .from('electricity_bills')
       .update({ status: 'rejected', rejection_reason: 'USC No. mismatch', updated_at: now })
       .eq('id', id).select().single();
+    await logAudit({
+      actorId, actorEmail, actorRole: 'admin', action: 'bill.validate',
+      entityType: 'bill', entityId: id, before: { status: bill.status }, after: data,
+    });
     return NextResponse.json({ status: 'rejected', rejection_reason: 'USC No. mismatch', bill: data });
   }
 
@@ -53,6 +58,10 @@ export async function POST(
         .from('electricity_bills')
         .update({ status: 'rejected', rejection_reason: 'Period mismatch', updated_at: now })
         .eq('id', id).select().single();
+      await logAudit({
+        actorId, actorEmail, actorRole: 'admin', action: 'bill.validate',
+        entityType: 'bill', entityId: id, before: { status: bill.status }, after: data,
+      });
       return NextResponse.json({ status: 'rejected', rejection_reason: 'Period mismatch', bill: data });
     }
   }
@@ -65,6 +74,10 @@ export async function POST(
         .from('electricity_bills')
         .update({ status: 'rejected', rejection_reason: 'Unit count inconsistency', updated_at: now })
         .eq('id', id).select().single();
+      await logAudit({
+        actorId, actorEmail, actorRole: 'admin', action: 'bill.validate',
+        entityType: 'bill', entityId: id, before: { status: bill.status }, after: data,
+      });
       return NextResponse.json({ status: 'rejected', rejection_reason: 'Unit count inconsistency', bill: data });
     }
   }
@@ -74,6 +87,11 @@ export async function POST(
     .from('electricity_bills')
     .update({ status: 'validated', rejection_reason: null, updated_at: now })
     .eq('id', id).select().single();
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'bill.validate',
+    entityType: 'bill', entityId: id, before: { status: bill.status }, after: updated,
+  });
 
   return NextResponse.json({ status: 'validated', bill: updated });
 }

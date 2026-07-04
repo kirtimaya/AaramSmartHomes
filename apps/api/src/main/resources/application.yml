@@ -45,3 +45,16 @@ app:
   groq-api-key: ${GROQ_API_KEY:}
   groq-model: llama-3.3-70b-versatile
   cors-origins: ${CORS_ORIGINS:http://localhost:3000}
+  tasks-secret: ${TASKS_SECRET:}
+  public-base-url: ${PUBLIC_BASE_URL:}
+  google-tts-api-key: ${GOOGLE_TTS_API_KEY:}
+  google-tts-voice: ${GOOGLE_TTS_VOICE:hi-IN-Wavenet-D}
+  emergency-contact-number: ${EMERGENCY_CONTACT_NUMBER:}
+  whatsapp:
+    enabled: ${WHATSAPP_ENABLED:false}
+    token: ${WHATSAPP_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:}
+    app-secret: ${WHATSAPP_APP_SECRET:}
+    api-version: ${WHATSAPP_API_VERSION:v23.0}
+    feedback-flow-id: ${WHATSAPP_FEEDBACK_FLOW_ID:}

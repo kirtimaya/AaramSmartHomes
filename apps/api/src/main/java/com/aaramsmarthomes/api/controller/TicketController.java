@@ -32,10 +32,14 @@ public class TicketController {
 
         Ticket ticket = new Ticket();
         ticket.setRequesterId(principal.userId());
-        ticket.setTitle(req.title());
+        ticket.setRequesterType(principal.role() == UserPrincipal.Role.GUEST ? "guest" : "tenant");
         ticket.setDescription(req.description());
         ticket.setCategory(req.category());
         if (req.priority() != null) ticket.setPriority(req.priority());
+        ticket.setImageUrl(req.imageUrl());
+        ticket.setRoomId(req.roomId());
+        ticket.setBookingId(req.bookingId());
+        ticket.setPreferredMoveIn(req.preferredMoveIn());
 
         Ticket saved = ticketRepository.save(ticket);
         return ResponseEntity.status(HttpStatus.CREATED).body(TicketResponse.from(saved));

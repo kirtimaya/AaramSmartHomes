@@ -477,4 +477,128 @@ Coverage includes all `packages/*/src/**` except test files and `.native.*` over
 2. Name files `<hookOrComponent>.test.ts[x]`.
 3. For hooks: use `renderHook` + two separate `act` blocks (one for state setters, one for async actions) — see `useLoginForm.test.ts` for the pattern.
 4. For components with `required` inputs: use `fireEvent.submit(container.querySelector('form')!)` to test hook-level validation, bypassing HTML5 browser validation.
+
+---
+
+## Spring API tests (`apps/api`)
+
+The Spring Boot backend (WhatsApp ticketing/dispatch, FoodHub admin, cook
+voice engine) has its own JUnit 5 + Mockito suite, run via Maven — separate
+from the Vitest suite above.
+
+```bash
+cd apps/api
+./mvnw test
+```
+
+Expected: **113 tests**, all passing, 0 failures/errors.
+
+| Layer | Pattern | Example |
+|---|---|---|
+| Controller slices | `@WebMvcTest` + `@Import(SecurityConfig.class)` + `@MockBean RoleService/JwtDecoder` + `jwt()` post-processor | `TicketControllerTest`, every `AdminXController` gets a TENANT→403 / ADMIN→2xx pair |
+| Webhook auth | Same, plus a real HMAC computed in-test against a stubbed `WHATSAPP_APP_SECRET` | `WhatsAppWebhookControllerTest` |
+| Service/state-machine logic | Plain Mockito, no Spring context | `TicketDispatchServiceTest` (14 tests, full transition matrix), `CookEngineServiceTest` (7 tests, AGREE/REJECT/CONFUSED/menu-swap), `FeedbackAnonymizationServiceTest` (verifies no PII ends up in `external_service_feedback`) |
+
+Run one class: `./mvnw test -Dtest='TicketDispatchServiceTest'`
+
+### Known gap
+
+The outbox claim query (`OutboxProcessor.claimBatch`, `FOR UPDATE SKIP
+LOCKED`) is not integration-tested against H2 — H2's locking semantics
+don't reliably match Postgres here. Verify it once manually against the
+real Supabase DB (see the E2E section below) before relying on multi-instance
+Cloud Run concurrency.
+
+---
+
+## WhatsApp / cook engine manual E2E
+
+These exercise the full webhook → outbox → handler path against a local
+`./mvnw spring-boot:run` instance. Requires `WHATSAPP_APP_SECRET` and
+`TASKS_SECRET` set in your local env (any value — they just need to match
+what you sign with below; `WHATSAPP_ENABLED=false` is fine, sends will
+no-op and log instead of hitting Meta).
+
+### 1. Sign and send a webhook payload
+
+```bash
+export WHATSAPP_APP_SECRET=test-secret
+export TASKS_SECRET=test-tasks-secret
+BODY='{"object":"whatsapp_business_account","entry":[{"id":"waba-1","changes":[{"field":"messages","value":{"messaging_product":"whatsapp","messages":[{"from":"+919876543210","id":"wamid.TEST1","timestamp":"1","type":"text","text":{"body":"hi"}}]}}]}]}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$WHATSAPP_APP_SECRET" -r | cut -d' ' -f1)
+
+curl -i -X POST http://localhost:8080/api/webhooks/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=$SIG" \
+  -d "$BODY"
+```
+
+Expect `200 OK` immediately (the handler only verifies, dedupes by `wamid`,
+and enqueues — nothing is processed inline). Sending the exact same body
+again should still return `200` but must NOT create a second `wa_messages`
+row (dedupe check).
+
+### 2. Drain the outbox
+
+```bash
+curl -i -X POST http://localhost:8080/api/internal/tasks/process-outbox \
+  -H "X-Tasks-Secret: $TASKS_SECRET"
+```
+
+Response body reports how many events were processed; check application
+logs for the routed outcome (unknown-actor reply, cook engine turn, dispatch
+button handling, etc. depending on what you sent).
+
+### 3. Simulate a professional accepting a dispatch offer
+
+Same signing pattern as step 1, with a `button_reply` payload:
+
+```json
+{"messages":[{"from":"+91<pro-phone>","id":"wamid.TEST2","type":"interactive","interactive":{"type":"button_reply","button_reply":{"id":"offer:<offerId>:slot:s1","title":"Today 2-4 PM"}}}]}
+```
+
+Wrap it in the same `object`/`entry`/`changes`/`value` envelope as step 1,
+sign, POST, then drain the outbox. Verify in the DB: the matching
+`dispatch_offers` row is `ACCEPTED`, sibling offers `RESCINDED`, and
+`ticket_dispatches.status = 'PENDING_CONFIRMATION'`.
+
+### 4. Simulate a feedback Flow submission
+
+```json
+{"messages":[{"from":"+91<tenant-phone>","id":"wamid.TEST3","type":"interactive","interactive":{"type":"nfm_reply","nfm_reply":{"name":"feedback_form","body":"Submitted","response_json":"{\"flow_token\":\"<token>\",\"service_used\":\"Urban Company\",\"cost_score\":\"3\",\"speed_score\":\"2\",\"consent\":[\"granted\"]}"}}}]}
+```
+
+After draining the outbox, confirm anonymization: the new
+`external_service_feedback` row has no ticket/user/phone column at all
+(the table doesn't have one), and every `wa_messages` row for that ticket
+now has `payload IS NULL` and `phone_e164 IS NULL`:
+
+```sql
+SELECT payload, phone_e164, purged_at FROM wa_messages WHERE ticket_id = '<ticket-id>';
+-- expect: payload=NULL, phone_e164=NULL, purged_at set, for every row
+```
+
+### 5. Run the timer sweep (offer/confirmation/feedback-token expiry)
+
+```bash
+curl -i -X POST http://localhost:8080/api/internal/tasks/run-timers \
+  -H "X-Tasks-Secret: $TASKS_SECRET"
+```
+
+### Web ↔ local Spring
+
+```bash
+# terminal 1
+cd apps/api && ./mvnw spring-boot:run   # CORS_ORIGINS=http://localhost:3000
+
+# terminal 2
+NEXT_PUBLIC_API_URL=http://localhost:8080 pnpm --filter web dev
+```
+
+Sign in as the root admin, open **Kitchen Hub** — the Weekly Plan, Day
+Builder, Reorder List, Suggestions, Pantry, and Dish Catalog tabs should
+all hit `localhost:8080/api/admin/...` with a bearer token (check the
+Network tab). **Alexa Log** stays on direct Supabase reads by design (see
+plan). **Service Desk** (`/admin/tickets`) shows the ticket metrics strip,
+external-feedback metrics, and the Dispatch modal.
 5. Run `pnpm test` — new tests are picked up automatically.

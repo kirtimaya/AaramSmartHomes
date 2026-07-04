@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { logAudit } from '@/lib/audit';
 
 /**
  * Approve a TenantAccessRequest ticket.
@@ -12,6 +13,7 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
+  const { email: actorEmail, userId: actorId } = auth;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
@@ -117,6 +119,12 @@ export async function POST(
       `Hi ${guest.name}! 🎉 Your member access at Aaram Smart Homes has been approved. Log in at aaram.space/login to access your portal.`
     );
   }
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'ticket.approve_tenant_access',
+    entityType: 'ticket', entityId: id,
+    before: { status: ticket.status }, after: { status: 'Resolved', tenantId: guest.id, roomId, adminNote },
+  });
 
   return NextResponse.json({ success: true });
 }

@@ -17,6 +17,7 @@ import {
   User,
   ChefHat,
   Wrench,
+  ScrollText,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ const baseSidebarItems = [
   { icon: Wrench,        label: 'Roster',       href: '/admin/professionals' },
   { icon: Droplets,      label: 'Water Levels', href: '/admin/iot' },
   { icon: ChefHat,       label: 'Kitchen',      href: '/admin/kitchen' },
+  { icon: ScrollText,    label: 'Audit Trail',  href: '/admin/audit' },
 ];
 
 const rootOnlyItems = [

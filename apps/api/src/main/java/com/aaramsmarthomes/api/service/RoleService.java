@@ -32,14 +32,17 @@ public class RoleService {
             return Role.ADMIN;
         }
 
-        // Check admins table
+        // Check admins table (keyed by email — matches web's requireAdmin() and the
+        // auth_is_admin() SQL function; the admins table has no user_id column)
         Integer adminCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM admins WHERE user_id = ?", Integer.class, userId);
+            "SELECT COUNT(*) FROM admins WHERE lower(email) = lower(?)", Integer.class, email);
         if (adminCount != null && adminCount > 0) return Role.ADMIN;
 
-        // Check tenants table
+        // Check tenants table — tenants.id IS the Supabase auth user id (see comment
+        // "== auth.uid() / tenants.id" in 20260606_tenant_meal_preferences.sql and the
+        // tenant_profiles.tenant_id FK into tenants(id)); there is no separate user_id column
         Integer tenantCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM tenants WHERE user_id = ?", Integer.class, userId);
+            "SELECT COUNT(*) FROM tenants WHERE id = ?::uuid", Integer.class, userId);
         if (tenantCount != null && tenantCount > 0) return Role.TENANT;
 
         return Role.GUEST;

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient: db } = auth;
+  const { adminClient: db, email: actorEmail, userId: actorId } = auth;
 
   const { tenantId, roomId } = await request.json();
   if (!tenantId) return NextResponse.json({ error: 'tenantId required' }, { status: 400 });
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
       .update({ tenant_id: tenantId, tenant_name: tenant.name, occupancy_status: 'Occupied' })
       .eq('id', roomId);
   }
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'tenant.assign_room',
+    entityType: 'tenant', entityId: tenantId,
+    before: { roomId: oldRoomId ?? null }, after: { roomId: roomId ?? null },
+  });
 
   return NextResponse.json({ ok: true });
 }

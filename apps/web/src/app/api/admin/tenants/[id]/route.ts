@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 export async function PUT(request: NextRequest, { params }: Params) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient: db, email: adminEmail } = auth;
+  const { adminClient: db, email: adminEmail, userId: actorId } = auth;
 
   const { id } = await params;
   const body = await request.json();
@@ -75,6 +76,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
     changes,
   }).then(() => {});
 
+  await logAudit({
+    actorId, actorEmail: adminEmail, actorRole: 'admin', action: 'tenant.update',
+    entityType: 'tenant', entityId: id, before: current, after: updated,
+  });
+
   return NextResponse.json(updated);
 }
 
@@ -82,7 +88,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient: db, email: adminEmail } = auth;
+  const { adminClient: db, email: adminEmail, userId: actorId } = auth;
 
   const { id } = await params;
   const { status } = await request.json();
@@ -108,6 +114,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     changed_by_email: adminEmail,
     changes:          { status: { from: current?.status ?? null, to: status } },
   }).then(() => {});
+
+  await logAudit({
+    actorId, actorEmail: adminEmail, actorRole: 'admin', action: 'tenant.update_status',
+    entityType: 'tenant', entityId: id,
+    before: { status: current?.status ?? null }, after: { status },
+  });
 
   return NextResponse.json(data);
 }

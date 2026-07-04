@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/supabaseAdmin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(
   request: NextRequest,
@@ -8,7 +9,7 @@ export async function POST(
 ) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient: db } = auth;
+  const { adminClient: db, email: actorEmail, userId: actorId } = auth;
 
   const { id } = await params;
 
@@ -39,6 +40,11 @@ export async function POST(
     .eq('id', id);
 
   if (billErr) return NextResponse.json({ error: billErr.message }, { status: 500 });
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'bill.lock',
+    entityType: 'bill', entityId: id, before: { status: bill.status }, after: { status: 'locked' },
+  });
 
   const { data: splits } = await db
     .from('bill_splits')

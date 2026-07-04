@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth instanceof NextResponse) return auth;
-  const { adminClient } = auth;
+  const { adminClient, email: actorEmail, userId: actorId } = auth;
 
   const { data: { user } } = await supabaseAdmin.auth.getUser(
     request.headers.get('Authorization')!.replace('Bearer ', '')
@@ -96,6 +97,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAudit({
+    actorId, actorEmail, actorRole: 'admin', action: 'bill.upload',
+    entityType: 'bill', entityId: bill.id, before: null, after: bill,
+  });
 
   return NextResponse.json(bill, { status: 201 });
 }

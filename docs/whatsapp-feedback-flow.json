@@ -1,0 +1,91 @@
+{
+  "version": "6.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "FEEDBACK": []
+  },
+  "screens": [
+    {
+      "id": "FEEDBACK",
+      "title": "Quick Feedback",
+      "terminal": true,
+      "success": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "feedback_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Tell us how it went"
+              },
+              {
+                "type": "TextSubheading",
+                "text": "Anonymous — we never store your name, phone number, or exact address with this feedback."
+              },
+              {
+                "type": "Dropdown",
+                "name": "service_used",
+                "label": "Which service resolved your ticket?",
+                "required": true,
+                "data-source": [
+                  { "id": "Urban Company", "title": "Urban Company" },
+                  { "id": "NoBroker", "title": "NoBroker" },
+                  { "id": "Local vendor", "title": "Local vendor" },
+                  { "id": "Other", "title": "Other" }
+                ]
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "cost_score",
+                "label": "How was the cost?",
+                "required": true,
+                "data-source": [
+                  { "id": "1", "title": "Expensive" },
+                  { "id": "2", "title": "Fair" },
+                  { "id": "3", "title": "Great value" }
+                ]
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "speed_score",
+                "label": "How was the speed?",
+                "required": true,
+                "data-source": [
+                  { "id": "1", "title": "Slow" },
+                  { "id": "2", "title": "OK" },
+                  { "id": "3", "title": "Fast" }
+                ]
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "consent",
+                "label": "Consent",
+                "required": true,
+                "data-source": [
+                  { "id": "granted", "title": "I agree to share this feedback anonymously" }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Submit",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "service_used": "${form.service_used}",
+                    "cost_score": "${form.cost_score}",
+                    "speed_score": "${form.speed_score}",
+                    "consent": "${form.consent}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

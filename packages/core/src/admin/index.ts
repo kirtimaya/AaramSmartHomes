@@ -34,3 +34,11 @@ export type {
   AdminFinancialsState,
   AdminFinancialsClient,
 } from './useAdminFinancials';
+
+export { useAuditLog } from './useAuditLog';
+export type {
+  AuditLogEntry,
+  AuditLogFilters,
+  AuditLogState,
+  AuditLogClient,
+} from './useAuditLog';

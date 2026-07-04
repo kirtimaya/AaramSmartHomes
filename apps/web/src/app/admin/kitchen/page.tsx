@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { supabase } from '@/lib/supabase';
+import { apiGet, apiPut, apiPost, apiPatch, apiDelete } from '@/lib/apiClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import {
@@ -16,8 +17,30 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MealBlock = 'Breakfast' | 'Lunch' | 'Dinner';
-type Tab = 'weekly' | 'menu' | 'log' | 'tester' | 'reorder' | 'suggestions';
+type Tab = 'weekly' | 'menu' | 'log' | 'tester' | 'reorder' | 'suggestions' | 'pantry' | 'dishes';
 type DayName = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+// ── Spring API response shapes (apps/api AdminMenuController etc.) ─────────────
+
+interface ApiMenuItem { id: string; itemName: string; sortOrder: number; }
+interface ApiMenuIngredient { id: string; ingredientName: string; quantity: string | null; unit: string | null; notes: string | null; }
+interface ApiMenu {
+  id: string; date: string; mealBlock: MealBlock; notes: string | null;
+  items: ApiMenuItem[]; ingredients: ApiMenuIngredient[]; createdAt: string | null;
+}
+interface ApiGroceryAlert {
+  id: string; menuId: string | null; mealBlock: string | null; rawUtterance: string;
+  extractedItems: string[]; loggedAt: string; resolvedAt: string | null; resolvedBy: string | null;
+}
+interface ApiFoodSuggestion {
+  id: string; suggestion: string; source: 'alexa' | 'chat' | 'web'; tenantId: string | null;
+  status: 'pending' | 'noted' | 'implemented'; adminNote: string | null; createdAt: string;
+}
+interface ApiPantryItem {
+  id: string; name: string; category: string; quantity: string | null; unit: string | null;
+  status: 'In Stock' | 'Low' | 'Out of Stock'; minThreshold: string | null; minThresholdUnit: string | null;
+  lastUpdatedAt: string | null;
+}
 
 const DAYS: DayName[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS: MealBlock[] = ['Breakfast', 'Lunch', 'Dinner'];
@@ -212,6 +235,9 @@ function WeeklyMenuTab() {
   const [loading, setLoading]   = useState(false);
   const [saving, setSaving]     = useState(false);
   const [toast, setToast]       = useState<string | null>(null);
+  // Tracks which (date, meal) cells already have a saved menu, so saveWeek knows to clear
+  // (rather than skip) a cell the admin has emptied out — apiGet/apiPut only, no direct Supabase.
+  const existingMenuDaysRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
   const weekStart = getWeekStart(weekOffset);
@@ -220,28 +246,30 @@ function WeeklyMenuTab() {
   const loadWeek = useCallback(async () => {
     setLoading(true);
     const dates = DAYS.map((_, i) => addDays(weekStart, i));
-    const { data } = await supabase
-      .from('menus')
-      .select('date, meal_block, notes, menu_items(item_name, sort_order)')
-      .in('date', dates);
+    try {
+      const data = await apiGet<ApiMenu[]>(`/api/admin/menus?from=${dates[0]}&to=${dates[dates.length - 1]}`);
+      existingMenuDaysRef.current = new Set(data.map(row => `${row.date}|${row.mealBlock}`));
 
-    if (data?.length) {
-      const fresh: Record<DayName, Record<MealBlock, string>> = JSON.parse(JSON.stringify(DEFAULT_WEEKLY));
-      for (const row of data) {
-        const dayIdx = dates.indexOf(row.date);
-        if (dayIdx < 0) continue;
-        const dayName = DAYS[dayIdx];
-        const block = row.meal_block as MealBlock;
-        if (!MEALS.includes(block)) continue;
-        const items = (row.menu_items as { item_name: string; sort_order: number }[]) ?? [];
-        const text = items.length
-          ? items.sort((a, b) => a.sort_order - b.sort_order).map(i => i.item_name).join(' + ')
-          : (row.notes ?? '');
-        fresh[dayName][block] = text;
+      if (data.length) {
+        const fresh: Record<DayName, Record<MealBlock, string>> = JSON.parse(JSON.stringify(DEFAULT_WEEKLY));
+        for (const row of data) {
+          const dayIdx = dates.indexOf(row.date);
+          if (dayIdx < 0) continue;
+          const dayName = DAYS[dayIdx];
+          const block = row.mealBlock;
+          if (!MEALS.includes(block)) continue;
+          const text = row.items.length
+            ? row.items.slice().sort((a, b) => a.sortOrder - b.sortOrder).map(i => i.itemName).join(' + ')
+            : (row.notes ?? '');
+          fresh[dayName][block] = text;
+        }
+        setGrid(fresh);
+      } else {
+        // No saved data for this week — show default template
+        setGrid(JSON.parse(JSON.stringify(DEFAULT_WEEKLY)));
       }
-      setGrid(fresh);
-    } else {
-      // No saved data for this week — show default template
+    } catch {
+      existingMenuDaysRef.current = new Set();
       setGrid(JSON.parse(JSON.stringify(DEFAULT_WEEKLY)));
     }
     setLoading(false);
@@ -262,44 +290,23 @@ function WeeklyMenuTab() {
         const date = dates[d];
         for (const meal of MEALS) {
           const text = grid[dayName][meal].trim();
+          const hadExisting = existingMenuDaysRef.current.has(`${date}|${meal}`);
+          if (!text && !hadExisting) continue; // nothing to save, nothing to clear
 
-          // Find or create menu record
-          const { data: existing } = await supabase
-            .from('menus')
-            .select('id')
-            .eq('date', date)
-            .eq('meal_block', meal)
-            .maybeSingle();
-
-          let menuId: string;
-          if (existing?.id) {
-            menuId = existing.id;
-            await supabase.from('menus').update({ notes: text || null }).eq('id', menuId);
-          } else {
-            if (!text) continue; // skip empty cells for new weeks
-            const { data: created } = await supabase
-              .from('menus')
-              .insert({ date, meal_block: meal, notes: text || null })
-              .select('id')
-              .single();
-            if (!created) continue;
-            menuId = created.id;
-          }
-
-          // Replace menu_items with comma/plus-split items
-          await supabase.from('menu_items').delete().eq('menu_id', menuId);
-          if (text) {
-            const items = text.split(/\s*[+,]\s*/).map(s => s.trim()).filter(Boolean);
-            if (items.length) {
-              await supabase.from('menu_items').insert(
-                items.map((name, i) => ({ menu_id: menuId, item_name: name, sort_order: i }))
-              );
-            }
-          }
+          const items = text ? text.split(/\s*[+,]\s*/).map(s => s.trim()).filter(Boolean) : [];
+          // ingredients intentionally omitted — this grid never edits them, and the day
+          // builder's ingredients for the same meal must survive a weekly-grid save.
+          await apiPut('/api/admin/menus', {
+            date,
+            mealBlock: meal,
+            notes: text || null,
+            items: items.map((name, i) => ({ itemName: name, sortOrder: i })),
+          });
         }
       }
 
       showToast('Week saved!');
+      loadWeek();
     } catch {
       showToast('Save failed. Please try again.');
     }
@@ -424,29 +431,22 @@ function MenuBuilderTab() {
 
   const loadMenu = useCallback(async () => {
     setLoading(true);
-    const [menuRes, count] = await Promise.all([
-      supabase
-        .from('menus')
-        .select('id, notes, menu_items(id, item_name, sort_order), menu_ingredients(id, ingredient_name, quantity, unit)')
-        .eq('date', date)
-        .eq('meal_block', block)
-        .single(),
+    const [menus, count] = await Promise.all([
+      apiGet<ApiMenu[]>(`/api/admin/menus?from=${date}&to=${date}`).catch(() => [] as ApiMenu[]),
       getMealCount(date, block),
     ]);
 
     setMealCount(count);
 
-    const data = menuRes.data;
+    const data = menus.find(m => m.mealBlock === block);
     if (data) {
       setMenuId(data.id);
       setNotes(data.notes ?? '');
-      const items = (data.menu_items as any[]) ?? [];
-      setDishes(items.length
-        ? items.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any) => ({ id: i.id, name: i.item_name }))
+      setDishes(data.items.length
+        ? data.items.slice().sort((a, b) => a.sortOrder - b.sortOrder).map(i => ({ id: i.id, name: i.itemName }))
         : [{ name: '' }]);
-      const ings = (data.menu_ingredients as any[]) ?? [];
-      setIngredients(ings.length
-        ? ings.map((i: any) => ({ id: i.id, name: i.ingredient_name, quantity: i.quantity ?? '', unit: i.unit ?? '' }))
+      setIngredients(data.ingredients.length
+        ? data.ingredients.map(i => ({ id: i.id, name: i.ingredientName, quantity: i.quantity ?? '', unit: i.unit ?? '' }))
         : [{ name: '', quantity: '', unit: '' }]);
     } else {
       setMenuId(null);
@@ -466,36 +466,20 @@ function MenuBuilderTab() {
 
     setSaving(true);
     try {
-      let id = menuId;
-
-      if (!id) {
-        const { data: newMenu, error } = await supabase
-          .from('menus').insert({ date, meal_block: block, notes: notes || null }).select('id').single();
-        if (error || !newMenu) throw error;
-        id = newMenu.id;
-        setMenuId(id);
-      } else {
-        await supabase.from('menus').update({ notes: notes || null }).eq('id', id);
-      }
-
-      await supabase.from('menu_items').delete().eq('menu_id', id);
-      if (validDishes.length) {
-        await supabase.from('menu_items').insert(
-          validDishes.map((d, i) => ({ menu_id: id, item_name: d.name.trim(), sort_order: i }))
-        );
-      }
-
-      await supabase.from('menu_ingredients').delete().eq('menu_id', id);
-      if (validIngredients.length) {
-        await supabase.from('menu_ingredients').insert(
-          validIngredients.map(i => ({
-            menu_id: id,
-            ingredient_name: i.name.trim(),
-            quantity: i.quantity.trim() || null,
-            unit: i.unit || null,
-          }))
-        );
-      }
+      // Single upsert — Spring replaces items/ingredients wholesale server-side, since this
+      // tab (unlike the weekly grid) always manages both collections together.
+      const saved = await apiPut<ApiMenu>('/api/admin/menus', {
+        date,
+        mealBlock: block,
+        notes: notes || null,
+        items: validDishes.map((d, i) => ({ itemName: d.name.trim(), sortOrder: i })),
+        ingredients: validIngredients.map(i => ({
+          ingredientName: i.name.trim(),
+          quantity: i.quantity.trim() || null,
+          unit: i.unit || null,
+        })),
+      });
+      setMenuId(saved.id);
 
       showToast('Menu saved!');
       loadMenu();
@@ -507,9 +491,13 @@ function MenuBuilderTab() {
 
   const deleteMenu = async () => {
     if (!menuId || !confirm('Delete this menu and all its items?')) return;
-    await supabase.from('menus').delete().eq('id', menuId);
-    setMenuId(null); setNotes(''); setDishes([{ name: '' }]); setIngredients([{ name: '', quantity: '', unit: '' }]);
-    showToast('Menu deleted.');
+    try {
+      await apiDelete(`/api/admin/menus/${menuId}`);
+      setMenuId(null); setNotes(''); setDishes([{ name: '' }]); setIngredients([{ name: '', quantity: '', unit: '' }]);
+      showToast('Menu deleted.');
+    } catch {
+      showToast('Delete failed. Please try again.');
+    }
   };
 
   const updateDish = (i: number, val: string) => setDishes(p => { const n = [...p]; n[i] = { ...n[i], name: val }; return n; });
@@ -681,6 +669,83 @@ function MenuBuilderTab() {
   );
 }
 
+// ── WhatsApp Cook Sessions (within the Cook Log tab, alongside Alexa logs) ─────
+
+interface CookSession { id: string; phoneE164: string; state: string; active: boolean; createdAt: string; updatedAt: string; }
+interface CookSessionMessage { id: string; direction: 'inbound' | 'outbound'; text: string; createdAt: string; }
+
+function WhatsAppCookSessionsSection() {
+  const [sessions, setSessions] = useState<CookSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [messages, setMessages] = useState<CookSessionMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        setSessions(await apiGet<CookSession[]>('/api/admin/cook-sessions'));
+      } catch {
+        setSessions([]);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const toggle = async (id: string) => {
+    if (expanded === id) { setExpanded(null); return; }
+    setExpanded(id);
+    setLoadingMessages(true);
+    try {
+      setMessages(await apiGet<CookSessionMessage[]>(`/api/admin/cook-sessions/${id}/messages`));
+    } catch {
+      setMessages([]);
+    }
+    setLoadingMessages(false);
+  };
+
+  if (loading || sessions.length === 0) return null;
+
+  return (
+    <div className="soft-card border border-white bg-white/40 p-4 space-y-2">
+      <p className="text-[10px] font-black uppercase tracking-widest text-foreground/40 flex items-center gap-2">
+        <Bot className="w-3.5 h-3.5 text-primary" /> WhatsApp Cook Sessions
+      </p>
+      {sessions.map(s => (
+        <div key={s.id} className="soft-well border border-white overflow-hidden">
+          <button onClick={() => toggle(s.id)} className="w-full p-3 flex items-center justify-between text-left hover:bg-foreground/5 transition-all">
+            <div className="flex items-center gap-3">
+              <span className={cn('w-2 h-2 rounded-full', s.active ? 'bg-amber-400' : 'bg-emerald-400')} />
+              <span className="text-xs font-bold text-foreground">{s.phoneE164}</span>
+              <span className="text-[9px] text-foreground/30 uppercase tracking-widest">{s.state}</span>
+            </div>
+            <span className="text-[10px] text-foreground/30 font-bold">{formatDate(s.updatedAt)} {formatTime(s.updatedAt)}</span>
+          </button>
+          {expanded === s.id && (
+            <div className="border-t border-foreground/5 px-3 pb-3 pt-2 space-y-1.5">
+              {loadingMessages ? (
+                <Loader2 className="w-4 h-4 text-primary animate-spin mx-auto" />
+              ) : messages.length === 0 ? (
+                <p className="text-[10px] text-foreground/30 text-center py-2">No transcript.</p>
+              ) : (
+                messages.map(m => (
+                  <div key={m.id} className={cn('flex', m.direction === 'inbound' ? 'justify-end' : 'justify-start')}>
+                    <div className={cn('max-w-[80%] px-3 py-2 rounded-2xl text-xs font-medium',
+                      m.direction === 'inbound' ? 'bg-primary/10 text-primary rounded-br-sm' : 'bg-white border border-foreground/5 text-foreground/70 rounded-bl-sm')}>
+                      {m.text}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Tab 2: Alexa Log ──────────────────────────────────────────────────────────
 
 function AlexaLogTab() {
@@ -746,6 +811,8 @@ function AlexaLogTab() {
 
   return (
     <div className="space-y-4">
+      <WhatsAppCookSessionsSection />
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-1 bg-foreground/5 p-1 rounded-xl">
           {(['today', 'week', 'all'] as const).map(f => (
@@ -905,11 +972,21 @@ function ReorderListTab() {
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('grocery_alerts').select('*').order('logged_at', { ascending: false });
-    if (filter === 'pending')  query = query.is('resolved_at', null);
-    if (filter === 'resolved') query = query.not('resolved_at', 'is', null);
-    const { data } = await query;
-    setAlerts(data ?? []);
+    try {
+      const resolvedParam = filter === 'pending' ? 'false' : filter === 'resolved' ? 'true' : null;
+      const data = await apiGet<ApiGroceryAlert[]>(
+        `/api/admin/grocery-alerts${resolvedParam !== null ? `?resolved=${resolvedParam}` : ''}`);
+      setAlerts(data.map(a => ({
+        id: a.id,
+        meal_block: a.mealBlock,
+        raw_utterance: a.rawUtterance,
+        extracted_items: a.extractedItems,
+        logged_at: a.loggedAt,
+        resolved_at: a.resolvedAt,
+      })));
+    } catch {
+      setAlerts([]);
+    }
     setLoading(false);
   }, [filter]);
 
@@ -932,8 +1009,13 @@ function ReorderListTab() {
 
   const markResolved = async (id: string) => {
     setResolving(id);
-    await supabase.from('grocery_alerts').update({ resolved_at: new Date().toISOString(), resolved_by: 'admin' }).eq('id', id);
-    setAlerts(p => p.filter(a => a.id !== id));
+    try {
+      // resolved_by is set server-side from the authenticated admin's email.
+      await apiPost(`/api/admin/grocery-alerts/${id}/resolve`);
+      setAlerts(p => p.filter(a => a.id !== id));
+    } catch {
+      // leave the alert in the list so the admin can retry
+    }
     setResolving(null);
   };
 
@@ -1078,25 +1160,43 @@ function SuggestionsTab() {
 
   const fetchSuggestions = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('food_suggestions').select('*').order('created_at', { ascending: false });
-    if (filter !== 'all') query = query.eq('status', filter);
-    const { data } = await query;
-    setSuggestions(data ?? []);
+    try {
+      const data = await apiGet<ApiFoodSuggestion[]>(
+        `/api/admin/food-suggestions${filter !== 'all' ? `?status=${filter}` : ''}`);
+      setSuggestions(data.map(s => ({
+        id: s.id, suggestion: s.suggestion, source: s.source, status: s.status,
+        admin_note: s.adminNote, created_at: s.createdAt,
+      })));
+    } catch {
+      setSuggestions([]);
+    }
     setLoading(false);
   }, [filter]);
 
   useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
 
   const updateStatus = async (id: string, status: FoodSuggestion['status']) => {
-    await supabase.from('food_suggestions').update({ status }).eq('id', id);
-    setSuggestions(p => p.map(s => s.id === id ? { ...s, status } : s));
+    try {
+      await apiPatch(`/api/admin/food-suggestions/${id}`, { status });
+      setSuggestions(p => p.map(s => s.id === id ? { ...s, status } : s));
+    } catch {
+      // leave prior status displayed; admin can retry
+    }
   };
 
   const saveNote = async (id: string) => {
     setSaving(true);
-    await supabase.from('food_suggestions').update({ admin_note: noteText.trim() || null }).eq('id', id);
-    setSuggestions(p => p.map(s => s.id === id ? { ...s, admin_note: noteText.trim() || null } : s));
-    setEditingNote(null);
+    try {
+      const current = suggestions.find(s => s.id === id);
+      await apiPatch(`/api/admin/food-suggestions/${id}`, {
+        status: current?.status ?? 'pending',
+        adminNote: noteText.trim() || null,
+      });
+      setSuggestions(p => p.map(s => s.id === id ? { ...s, admin_note: noteText.trim() || null } : s));
+      setEditingNote(null);
+    } catch {
+      // leave the editor open so the admin can retry
+    }
     setSaving(false);
   };
 
@@ -1214,6 +1314,306 @@ function SuggestionsTab() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Tab: Pantry ───────────────────────────────────────────────────────────────
+
+interface PantryItemLocal {
+  id: string; name: string; category: string; quantity: string; unit: string;
+  status: 'In Stock' | 'Low' | 'Out of Stock'; minThreshold: string; minThresholdUnit: string;
+}
+
+const PANTRY_STATUSES: PantryItemLocal['status'][] = ['In Stock', 'Low', 'Out of Stock'];
+
+function PantryTab() {
+  const [items, setItems]     = useState<PantryItemLocal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState<string | null>(null);
+  const [adding, setAdding]   = useState(false);
+  const [toast, setToast]     = useState<string | null>(null);
+  const [newItem, setNewItem] = useState({ name: '', category: 'General', quantity: '', unit: '', status: 'In Stock' as PantryItemLocal['status'] });
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiGet<ApiPantryItem[]>('/api/admin/pantry');
+      setItems(data.map(p => ({
+        id: p.id, name: p.name, category: p.category, quantity: p.quantity ?? '', unit: p.unit ?? '',
+        status: p.status, minThreshold: p.minThreshold ?? '', minThresholdUnit: p.minThresholdUnit ?? '',
+      })));
+    } catch {
+      setItems([]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  const updateField = (id: string, field: 'name' | 'category' | 'quantity' | 'unit' | 'status', value: string) =>
+    setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
+
+  const saveItem = async (item: PantryItemLocal) => {
+    setSaving(item.id);
+    try {
+      await apiPut(`/api/admin/pantry/${item.id}`, {
+        name: item.name, category: item.category, quantity: item.quantity || null, unit: item.unit || null,
+        status: item.status, minThreshold: item.minThreshold || null, minThresholdUnit: item.minThresholdUnit || null,
+      });
+      showToast('Saved!');
+    } catch {
+      showToast('Save failed. Please try again.');
+    }
+    setSaving(null);
+  };
+
+  const deleteItem = async (id: string) => {
+    if (!confirm('Delete this pantry item?')) return;
+    try {
+      await apiDelete(`/api/admin/pantry/${id}`);
+      setItems(prev => prev.filter(i => i.id !== id));
+      showToast('Deleted.');
+    } catch {
+      showToast('Delete failed. Please try again.');
+    }
+  };
+
+  const addItem = async () => {
+    if (!newItem.name.trim()) return;
+    setAdding(true);
+    try {
+      const created = await apiPost<ApiPantryItem>('/api/admin/pantry', {
+        name: newItem.name.trim(), category: newItem.category || 'General',
+        quantity: newItem.quantity || null, unit: newItem.unit || null, status: newItem.status,
+      });
+      setItems(prev => [...prev, {
+        id: created.id, name: created.name, category: created.category,
+        quantity: created.quantity ?? '', unit: created.unit ?? '', status: created.status,
+        minThreshold: created.minThreshold ?? '', minThresholdUnit: created.minThresholdUnit ?? '',
+      }]);
+      setNewItem({ name: '', category: 'General', quantity: '', unit: '', status: 'In Stock' });
+      showToast('Item added!');
+    } catch {
+      showToast('Add failed. Please try again.');
+    }
+    setAdding(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="soft-card p-6 border border-white bg-white/40 space-y-4">
+        <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground/50 flex items-center gap-2">
+          <Package className="w-3.5 h-3.5 text-primary" /> Add Pantry Item
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          <input value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))}
+            placeholder="Item name" className="soft-ui-in flex-1 min-w-[140px] px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <input value={newItem.category} onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
+            placeholder="Category" className="soft-ui-in w-32 px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <input value={newItem.quantity} onChange={e => setNewItem(p => ({ ...p, quantity: e.target.value }))}
+            placeholder="Qty" className="soft-ui-in w-20 px-3 py-2.5 text-sm text-center focus:outline-none bg-white/70 border border-white" />
+          <input value={newItem.unit} onChange={e => setNewItem(p => ({ ...p, unit: e.target.value }))}
+            placeholder="Unit" className="soft-ui-in w-24 px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <select value={newItem.status} onChange={e => setNewItem(p => ({ ...p, status: e.target.value as PantryItemLocal['status'] }))}
+            className="soft-ui-in w-32 px-2 py-2.5 text-xs focus:outline-none bg-white/70 border border-white">
+            {PANTRY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={addItem} disabled={adding || !newItem.name.trim()}
+            className="btn-terracotta px-5 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-40">
+            {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Add
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
+      ) : items.length === 0 ? (
+        <EmptyState icon={Package} text="No pantry items yet." />
+      ) : (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={item.id} className="soft-card p-4 border border-white bg-white/40 flex flex-wrap items-center gap-2">
+              <input value={item.name} onChange={e => updateField(item.id, 'name', e.target.value)}
+                className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-sm font-bold focus:outline-none bg-white/70 border border-white" />
+              <input value={item.category} onChange={e => updateField(item.id, 'category', e.target.value)}
+                className="soft-ui-in w-28 px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+              <input value={item.quantity} onChange={e => updateField(item.id, 'quantity', e.target.value)}
+                placeholder="Qty" className="soft-ui-in w-16 px-2 py-2 text-xs text-center focus:outline-none bg-white/70 border border-white" />
+              <input value={item.unit} onChange={e => updateField(item.id, 'unit', e.target.value)}
+                placeholder="Unit" className="soft-ui-in w-20 px-2 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+              <select value={item.status} onChange={e => updateField(item.id, 'status', e.target.value)}
+                className="soft-ui-in w-32 px-2 py-2 text-xs focus:outline-none bg-white/70 border border-white">
+                {PANTRY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <button onClick={() => saveItem(item)} disabled={saving === item.id}
+                className="soft-button w-9 h-9 border border-white text-emerald-500 hover:bg-emerald-500 hover:text-white shrink-0">
+                {saving === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              </button>
+              <button onClick={() => deleteItem(item.id)}
+                className="soft-button w-9 h-9 border border-white text-foreground/20 hover:text-red-400 shrink-0">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-2xl z-50">
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Tab: Dish Catalog ─────────────────────────────────────────────────────────
+
+interface DishCatalogLocal { id: string; name: string; nameHi: string; imageUrl: string; isFallback: boolean; fallbackPriority: number; active: boolean; }
+
+function DishesTab() {
+  const [dishes, setDishes] = useState<DishCatalogLocal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [newDish, setNewDish] = useState({ name: '', nameHi: '', imageUrl: '', isFallback: false });
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  const fetchDishes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiGet<DishCatalogLocal[]>('/api/admin/dishes');
+      setDishes(data.map(d => ({ ...d, nameHi: d.nameHi ?? '', imageUrl: d.imageUrl ?? '' })));
+    } catch {
+      setDishes([]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchDishes(); }, [fetchDishes]);
+
+  const updateField = (id: string, field: 'name' | 'nameHi' | 'imageUrl', value: string) =>
+    setDishes(prev => prev.map(d => d.id === id ? { ...d, [field]: value } : d));
+
+  const toggleFallback = (id: string) =>
+    setDishes(prev => prev.map(d => d.id === id ? { ...d, isFallback: !d.isFallback } : d));
+
+  const saveDish = async (dish: DishCatalogLocal) => {
+    setSaving(dish.id);
+    try {
+      await apiPut(`/api/admin/dishes/${dish.id}`, {
+        name: dish.name, nameHi: dish.nameHi || null, imageUrl: dish.imageUrl || null,
+        isFallback: dish.isFallback, fallbackPriority: dish.fallbackPriority, active: dish.active,
+      });
+      showToast('Saved!');
+    } catch {
+      showToast('Save failed. Please try again.');
+    }
+    setSaving(null);
+  };
+
+  const deleteDish = async (id: string) => {
+    if (!confirm('Remove this dish from the catalog?')) return;
+    try {
+      await apiDelete(`/api/admin/dishes/${id}`);
+      setDishes(prev => prev.filter(d => d.id !== id));
+      showToast('Removed.');
+    } catch {
+      showToast('Delete failed. Please try again.');
+    }
+  };
+
+  const addDish = async () => {
+    if (!newDish.name.trim()) return;
+    setAdding(true);
+    try {
+      const created = await apiPost<DishCatalogLocal>('/api/admin/dishes', {
+        name: newDish.name.trim(), nameHi: newDish.nameHi.trim() || null, imageUrl: newDish.imageUrl.trim() || null,
+        isFallback: newDish.isFallback, fallbackPriority: dishes.filter(d => d.isFallback).length, active: true,
+      });
+      setDishes(prev => [...prev, { ...created, nameHi: created.nameHi ?? '', imageUrl: created.imageUrl ?? '' }]);
+      setNewDish({ name: '', nameHi: '', imageUrl: '', isFallback: false });
+      showToast('Dish added!');
+    } catch {
+      showToast('Add failed. Please try again.');
+    }
+    setAdding(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="soft-card p-6 border border-white bg-white/40 space-y-4">
+        <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground/50 flex items-center gap-2">
+          <Plus className="w-3.5 h-3.5 text-primary" /> Add Dish
+        </h3>
+        <p className="text-[10px] text-foreground/30 font-bold">
+          &ldquo;Fallback&rdquo; dishes are offered by the WhatsApp cook engine when a proposed dish is rejected.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input value={newDish.name} onChange={e => setNewDish(p => ({ ...p, name: e.target.value }))}
+            placeholder="Dish name" className="soft-ui-in flex-1 min-w-[140px] px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <input value={newDish.nameHi} onChange={e => setNewDish(p => ({ ...p, nameHi: e.target.value }))}
+            placeholder="Hindi name (for TTS)" className="soft-ui-in w-48 px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <input value={newDish.imageUrl} onChange={e => setNewDish(p => ({ ...p, imageUrl: e.target.value }))}
+            placeholder="Image URL" className="soft-ui-in flex-1 min-w-[140px] px-3 py-2.5 text-sm focus:outline-none bg-white/70 border border-white" />
+          <label className="flex items-center gap-1.5 text-[10px] font-bold text-foreground/40 px-2">
+            <input type="checkbox" checked={newDish.isFallback} onChange={e => setNewDish(p => ({ ...p, isFallback: e.target.checked }))} /> Fallback
+          </label>
+          <button onClick={addDish} disabled={adding || !newDish.name.trim()}
+            className="btn-terracotta px-5 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-40">
+            {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Add
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
+      ) : dishes.length === 0 ? (
+        <EmptyState icon={UtensilsCrossed} text="No dishes in the catalog yet." />
+      ) : (
+        <div className="space-y-2">
+          {dishes.map(dish => (
+            <div key={dish.id} className="soft-card p-4 border border-white bg-white/40 flex flex-wrap items-center gap-2">
+              <input value={dish.name} onChange={e => updateField(dish.id, 'name', e.target.value)}
+                className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-sm font-bold focus:outline-none bg-white/70 border border-white" />
+              <input value={dish.nameHi} onChange={e => updateField(dish.id, 'nameHi', e.target.value)}
+                placeholder="Hindi name" className="soft-ui-in w-36 px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+              <input value={dish.imageUrl} onChange={e => updateField(dish.id, 'imageUrl', e.target.value)}
+                placeholder="Image URL" className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-foreground/40">
+                <input type="checkbox" checked={dish.isFallback} onChange={() => toggleFallback(dish.id)} /> Fallback
+              </label>
+              <button onClick={() => saveDish(dish)} disabled={saving === dish.id}
+                className="soft-button w-9 h-9 border border-white text-emerald-500 hover:bg-emerald-500 hover:text-white shrink-0">
+                {saving === dish.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              </button>
+              <button onClick={() => deleteDish(dish.id)}
+                className="soft-button w-9 h-9 border border-white text-foreground/20 hover:text-red-400 shrink-0">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-2xl z-50">
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1400,10 +1800,12 @@ export default function KitchenPage() {
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'weekly',      label: 'Weekly Plan',   icon: Edit3         },
     { id: 'menu',        label: 'Day Builder',   icon: ChefHat       },
-    { id: 'log',         label: 'Alexa Log',     icon: MessageSquare },
+    { id: 'log',         label: 'Cook Log',      icon: MessageSquare },
     { id: 'tester',      label: 'Tester',        icon: Bot           },
     { id: 'reorder',     label: 'Reorder List',  icon: ShoppingCart  },
     { id: 'suggestions', label: 'Suggestions',   icon: Lightbulb     },
+    { id: 'pantry',      label: 'Pantry',        icon: Package       },
+    { id: 'dishes',      label: 'Dish Catalog',  icon: UtensilsCrossed },
   ];
 
   return (
@@ -1457,6 +1859,8 @@ export default function KitchenPage() {
             {tab === 'tester'      && <AlexaTesterTab />}
             {tab === 'reorder'     && <ReorderListTab />}
             {tab === 'suggestions' && <SuggestionsTab />}
+            {tab === 'pantry'      && <PantryTab />}
+            {tab === 'dishes'      && <DishesTab />}
           </motion.div>
         </AnimatePresence>
       </div>

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, requireTenant } from '@/lib/supabaseAdmin';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(request: NextRequest) {
   const auth = await requireTenant(request);
   if (auth instanceof NextResponse) return auth;
-  const { userId, roomId } = auth;
+  const { userId, email: actorEmail, roomId } = auth;
 
   if (!roomId) {
     return NextResponse.json({ error: 'You have no assigned room' }, { status: 403 });
@@ -90,6 +91,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAudit({
+    actorId: userId, actorEmail, actorRole: 'tenant', action: 'bill.upload',
+    entityType: 'bill', entityId: bill.id, before: null, after: bill,
+  });
 
   return NextResponse.json(bill, { status: 201 });
 }

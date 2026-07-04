@@ -6,8 +6,12 @@ import { ROOT_EMAIL } from '@/lib/constants';
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  // Optional ?next param — honors custom post-auth redirects (e.g. /join?token=...)
-  const next = requestUrl.searchParams.get('next');
+  // Optional ?next param — honors custom post-auth redirects (e.g. /join?token=...).
+  // Only same-origin relative paths are honored: a bare `startsWith('/')` check is not
+  // enough because `//evil.com` and `/\evil.com` are browser-parsed as protocol-relative
+  // URLs to an external host. Anything else falls back to the default per-role redirect.
+  const rawNext = requestUrl.searchParams.get('next');
+  const next = rawNext && /^\/(?!\/|\\)/.test(rawNext) ? rawNext : null;
 
   if (!code) {
     return NextResponse.redirect(new URL('/login', requestUrl.origin));
