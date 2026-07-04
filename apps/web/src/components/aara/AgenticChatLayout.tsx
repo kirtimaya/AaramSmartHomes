@@ -4,10 +4,13 @@
  * AgenticChatLayout — The AI chat panel for AaraWidget.
  *
  * ── Role split ──────────────────────────────────────────────────────────────
- *  guest / tenant : Standard RAG chatbot. Calls /api/chat, renders replies.
+ *  guest / tenant : Standard chatbot. Calls the streaming /api/chat, renders
+ *                   the reply as it arrives. Role and any data the model needs
+ *                   are resolved server-side from the verified JWT — never
+ *                   posted by this client.
  *  admin          : Agentic mode. Intercepts write-action responses, drives the
  *                   avatar through moveToElement → highlight → confirm before
- *                   executing the real DB operation via /api/chat (confirmed=true).
+ *                   re-calling /api/chat to actually execute the action.
  *
  * ── Memory ──────────────────────────────────────────────────────────────────
  *  Persistent per-user memory stored in localStorage via aaraMemory.ts.
@@ -202,14 +205,20 @@ function ActionBadge({ action, data }: { action?: string | null; data?: Record<s
 }
 
 // ─── Chat API call ────────────────────────────────────────────────────────────
+//
+// Role and any data the model needs (properties/rooms/tickets/bills/etc.) are
+// resolved server-side from the verified JWT inside role-scoped tools — the
+// client no longer prefetches and posts admin data with every message.
+// Consumes the SSE stream from /api/chat and reports incremental text via
+// onDelta, still resolving to the same {reply, action, data} shape the
+// write-action confirmation flow below expects.
 
 async function callChatAPI(
   message: string,
   history: { role: string; text: string }[],
-  context: Record<string, unknown>,
-  token?: string,
-  agentMode?: boolean,
-  memory?: string,
+  token: string | undefined,
+  memory: string | undefined,
+  onDelta?: (text: string) => void,
 ): Promise<{ reply: string; action: string | null; data: Record<string, unknown> | null }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -217,10 +226,41 @@ async function callChatAPI(
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, history, context, agent_mode: agentMode, memory }),
+    body: JSON.stringify({ message, history, memory, stream: true }),
   });
-  if (!res.ok) throw new Error(`Chat API error ${res.status}`);
-  return res.json();
+  if (!res.ok || !res.body) throw new Error(`Chat API error ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let reply = '';
+  let action: string | null = null;
+  let data: Record<string, unknown> | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+    for (const frame of frames) {
+      const dataLine = frame.split('\n').find(l => l.startsWith('data: '));
+      if (!dataLine) continue;
+      let event: any;
+      try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+
+      if (event.type === 'text-delta' || event.type === 'done') {
+        reply = event.text || reply;
+        onDelta?.(reply);
+      } else if (event.type === 'client-action') {
+        action = event.name;
+        data = event.args;
+      }
+    }
+  }
+
+  return { reply: reply || 'Got it!', action, data };
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -266,7 +306,6 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [adminContext, setAdminContext] = useState<Record<string, unknown>>({});
   const [isPinned, setIsPinned] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
 
@@ -279,22 +318,6 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
     action: string;
     data: Record<string, unknown>;
   } | null>(null);
-
-  // ── Load admin context on mount ──────────────────────────────────────────
-  useEffect(() => {
-    if (!isAdmin) return;
-    Promise.all([
-      supabase.from('properties').select('id, name, location'),
-      supabase.from('rooms').select('id, room_number, name, status, occupancy_status, property_id'),
-      supabase.from('tickets').select('id, category, status, description').eq('status', 'Pending'),
-    ]).then(([propsRes, roomsRes, ticketsRes]) => {
-      setAdminContext({
-        properties: propsRes.data ?? [],
-        rooms: roomsRes.data ?? [],
-        tickets: ticketsRes.data ?? [],
-      });
-    });
-  }, [isAdmin]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
   useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 300); }, [isOpen]);
@@ -365,7 +388,8 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
     setInput('');
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: msg, timestamp: new Date() };
-    setMessages(prev => [...prev, userMsg]);
+    const pendingId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, userMsg, { id: pendingId, role: 'assistant', text: '', timestamp: new Date() }]);
     setLoading(true);
     setAaraState('thinking');
 
@@ -376,10 +400,10 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
         .slice(-8)
         .map(m => ({ role: m.role, text: m.text }));
 
-      const context: Record<string, unknown> = isAdmin ? { admin_data: adminContext } : {};
       const memory = formatMemoryForPrompt(userId);
 
-      const responseData = await callChatAPI(msg, history, context, session?.access_token, isAdmin, memory || undefined);
+      const responseData = await callChatAPI(msg, history, session?.access_token, memory || undefined,
+        (delta) => setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: delta } : m)));
 
       const { reply, action, data } = responseData;
       const isWriteAction = action && WRITE_ACTIONS.has(action);
@@ -393,13 +417,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
           refreshMemory();
         }
         setAaraState('open');
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          text: reply,
-          action: 'save_memory',
-          timestamp: new Date(),
-        }]);
+        setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: reply, action: 'save_memory' } : m));
         speak(reply);
         setLoading(false);
         return;
@@ -409,12 +427,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
         clearMemory(userId);
         refreshMemory();
         setAaraState('open');
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          text: reply,
-          timestamp: new Date(),
-        }]);
+        setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: reply } : m));
         speak(reply);
         setLoading(false);
         return;
@@ -422,12 +435,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
 
       // ── Admin + write action: trigger agentic flow ───────────────────────
       if (isAdmin && isWriteAction && data) {
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          text: reply,
-          timestamp: new Date(),
-        }]);
+        setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: reply } : m));
         speak(reply);
         setLoading(false);
 
@@ -466,7 +474,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
             setConfirmLoading(true);
             setAaraState('executing');
             try {
-              const execData = await callChatAPI(msg, history, context, session?.access_token, false, memory || undefined);
+              const execData = await callChatAPI(msg, history, session?.access_token, memory || undefined);
               setMessages(prev => [...prev, {
                 id: (Date.now() + 2).toString(),
                 role: 'assistant',
@@ -505,7 +513,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
             setConfirmLoading(true);
             setAaraState('executing');
             try {
-              const execData = await callChatAPI(msg, history, context, session?.access_token, false, memory || undefined);
+              const execData = await callChatAPI(msg, history, session?.access_token, memory || undefined);
               setMessages(prev => [...prev, {
                 id: (Date.now() + 3).toString(),
                 role: 'assistant',
@@ -529,14 +537,9 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
 
       // ── Standard flow ────────────────────────────────────────────────────
       setAaraState('open');
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        text: reply,
-        action: action ?? undefined,
-        actionData: data as any,
-        timestamp: new Date(),
-      }]);
+      setMessages(prev => prev.map(m => m.id === pendingId
+        ? { ...m, text: reply, action: action ?? undefined, actionData: data as any }
+        : m));
       speak(reply);
 
       if (action === 'navigate' || action === 'app_command') {
@@ -547,7 +550,9 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
       }
     } catch {
       setAaraState('error');
-      setMessages(prev => [...prev, { id: 'err', role: 'assistant', text: 'Connection lost. Please try again.', timestamp: new Date() }]);
+      setMessages(prev => prev.map(m => m.id === pendingId
+        ? { ...m, text: 'Connection lost. Please try again.' }
+        : m));
       setTimeout(() => setAaraState('open'), 2000);
     } finally {
       setLoading(false);
@@ -556,7 +561,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, loading, messages, isAdmin, adminContext, userId]);
+  }, [input, loading, messages, isAdmin, userId]);
 
   const { listening, supported, start, stop } = useSpeechRecognition(
     useCallback((t: string) => { setInput(t); setVoiceEnabled(true); setTimeout(() => sendMessage(t), 400); }, [sendMessage])

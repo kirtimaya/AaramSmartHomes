@@ -439,6 +439,51 @@ Run individually: `pnpm test -- useAdminFinancials`
 
 ---
 
+### Phase 6 — Aara agent core (`packages/core`)
+
+#### `packages/core/src/__tests__/aara/toolRegistry.test.ts`
+Tests role-based tool filtering (`packages/core/src/aara/toolRegistry.ts`).
+
+| Test | What it covers |
+|------|---------------|
+| guest only sees guest-scoped tools | `filterToolsForRole` excludes tenant/admin-only tools |
+| tenant never sees admin-only tools | `update_room_status` filtered out for tenant |
+| admin sees everything | All 3 tools returned |
+| toGeminiDeclarations strips internals | Only `name`/`description`/`parameters` survive |
+| findTool | Finds by name; returns undefined for a tool outside the (already filtered) list |
+
+Run individually: `pnpm test -- toolRegistry`
+
+---
+
+#### `packages/core/src/__tests__/aara/agentLoop.test.ts`
+Tests the Gemini function-calling loop (`packages/core/src/aara/agentLoop.ts`) with a mocked `generateContent` transport — no network calls.
+
+| Test | What it covers |
+|------|---------------|
+| plain text reply | Single `text-delta` + `done`, one model call |
+| server tool call → functionResponse round-trip | Tool executed, result fed back, second model call produces final text |
+| tenant can never trigger an admin-only tool | Even if the model calls it, loop rejects with an `error` event and never executes |
+| client-kind tool call | `navigate`/`app_command` stop the loop as `client-action` without executing |
+| tool execution error is caught | Rejected tool promise becomes a `{error}` functionResponse, not a thrown exception |
+| max iterations reached | Loop stops after `maxIterations`, surfaces `error` + graceful `done` |
+| transport error | A thrown `generateContent` yields a single `error` event |
+| onEvent fires in order | Live event callback receives the same sequence as the returned array |
+
+Run individually: `pnpm test -- agentLoop`
+
+This is the only place the agent's role-scoping and tool-calling contract is exercised without hitting the real Gemini API. The web-side wiring (`apps/web/src/lib/aara/{agent,tools,stream}.ts` and `api/chat/route.ts`) is Next.js server code outside the vitest include glob — verify it manually per the checklist below.
+
+**Manual verification — `/api/chat`:**
+1. As a guest (no auth header): ask "what properties do you have?" → should call `list_properties` and answer with real data, never mention admin tools.
+2. As a signed-in member: ask "what's for lunch today?" and "what tickets have I raised?" → `get_menu` / `get_my_tickets`, scoped to that member's own `requester_id`/`tenant_id` only.
+3. As an admin: ask "how many people are having dinner tonight?" → `get_meal_headcount`.
+4. Ask an admin-only question while signed in as a member (e.g. "find room 102") → the model should decline; confirm no `find_room` tool call appears server-side and no room data leaks into the reply.
+5. Confirm the response streams (Network tab shows `text/event-stream`, chunked) rather than arriving as one blocked JSON payload.
+6. Temporarily unset `GEMINI_API_KEY` → confirm the Groq text-only fallback still answers (no tool calls, but a coherent reply).
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -447,7 +492,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **216 tests** across **26 test files**, all passing.
+Expected output: **230 tests** across **28 test files**, all passing.
 
 To see coverage:
 

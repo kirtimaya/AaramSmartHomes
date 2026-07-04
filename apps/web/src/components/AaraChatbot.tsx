@@ -10,10 +10,11 @@ import {
   CheckCircle2, Plus, Navigation, Database
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { formatMemoryForPrompt } from '@/lib/aaraMemory';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type MessageRole = 'user' | 'assistant';
-type ActionType = 'ticket_created' | 'task_created' | 'navigate' | 'data_entry' | 'water_level' | null;
+type ActionType = 'ticket_created' | 'task_created' | 'navigate' | 'app_command' | 'data_entry' | 'water_level' | null;
 
 interface Message {
   id: string;
@@ -146,10 +147,7 @@ export function AaraChatbot() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [properties, setProperties] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminContext, setAdminContext] = useState<any>({ properties: [], rooms: [], tickets: [] });
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [isNearRight, setIsNearRight] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -224,61 +222,13 @@ export function AaraChatbot() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open, isPinned]);
 
-  const [authReady, setAuthReady] = useState(false);
-
-  // Derived role — always up-to-date
-  const currentRole = isAdmin ? 'admin' : (user ? 'tenant' : 'guest');
-
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUser(user);
-        checkAdminStatus().then(() => setAuthReady(true));
-      } else {
-        setAuthReady(true);
-      }
-    });
+    supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUser(user); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setUser(s?.user || null);
-      if (s?.user) checkAdminStatus().then(() => setAuthReady(true));
-      else { setIsAdmin(false); setAuthReady(true); }
     });
     return () => subscription.unsubscribe();
   }, []);
-
-  const checkAdminStatus = async (): Promise<void> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { setIsAdmin(false); return; }
-    try {
-      const res = await fetch('/api/admin/status', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
-      if (res.ok) {
-        const { isAdmin: adminStatus } = await res.json();
-        setIsAdmin(adminStatus);
-      }
-    } catch {
-      setIsAdmin(false);
-    }
-  };
-
-  useEffect(() => {
-    const fetchAdminData = async () => {
-      const [{ data: props }, { data: rms }, { data: tix }] = await Promise.all([
-        supabase.from('properties').select('id, name, location'),
-        supabase.from('rooms').select('id, room_number, status, property_id'),
-        supabase.from('tickets').select('id, category, status, description').eq('status', 'Pending')
-      ]);
-      setAdminContext({ properties: props || [], rooms: rms || [], tickets: tix || [] });
-      if (props) setProperties(props);
-    };
-
-    if (isAdmin) {
-      fetchAdminData();
-    } else {
-      supabase.from('properties').select('id,name,location,total_rooms').then(({ data }) => { if (data) setProperties(data); });
-    }
-  }, [isAdmin]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 300); }, [open]);
@@ -295,49 +245,73 @@ export function AaraChatbot() {
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
 
+    const assistantId = (Date.now() + 1).toString();
+    let finalAction: ActionType = null;
+    let finalActionData: any = null;
+
     try {
       const history = messages.filter(m => m.id !== '0').map(m => ({ role: m.role, text: m.text }));
       const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          message: msg, history,
-          context: {
-            properties,
-            admin_data: isAdmin ? adminContext : null,
-          }
-        })
+          message: msg, history, stream: true,
+          memory: formatMemoryForPrompt(user?.id ?? null),
+        }),
       });
-      const data = await res.json();
-      const cleanReply = data.reply || 'I heard you!';
-      
-      
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(), role: 'assistant', text: cleanReply, action: data.action, actionData: data.data, timestamp: new Date()
-      }]);
-      if (voiceEnabled) speak(cleanReply);
 
-      // ── Action Handlers ──
-      if (data.action === 'navigate' || data.action === 'app_command') {
-        const path = data.data?.path;
-        const cmd = data.data?.cmd;
-        const cmdData = data.data;
+      if (!res.body) throw new Error('No stream body');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedText = '';
+      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', text: '', timestamp: new Date() }]);
 
-        // Save command for post-navigation execution
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        for (const frame of frames) {
+          const dataLine = frame.split('\n').find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+          let event: any;
+          try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+
+          if (event.type === 'text-delta' || event.type === 'done') {
+            accumulatedText = event.text || accumulatedText;
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, text: accumulatedText || 'Got it!' } : m));
+          } else if (event.type === 'client-action') {
+            finalAction = event.name === 'app_command' ? 'app_command' as ActionType : 'navigate';
+            finalActionData = event.args;
+          }
+        }
+      }
+
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, action: finalAction, actionData: finalActionData } : m));
+      if (voiceEnabled && accumulatedText) speak(accumulatedText);
+
+      // ── Client-action handling (navigate / app_command) ──
+      if (finalAction && finalActionData) {
+        const path = finalActionData.path;
+        const cmd = finalActionData.cmd;
+
         if (cmd) {
-          sessionStorage.setItem('AARA_PENDING_COMMAND', JSON.stringify({ action: cmd, data: cmdData }));
-          if (!path) dispatchAaraCommand(cmd, cmdData);
+          sessionStorage.setItem('AARA_PENDING_COMMAND', JSON.stringify({ action: cmd, data: finalActionData }));
+          if (!path) dispatchAaraCommand(cmd, finalActionData);
         }
 
-        // Navigate — trust the AI's role-awareness rather than blocking here
         if (path) {
-          setTimeout(() => { 
+          setTimeout(() => {
             router.push(path);
             if (!isPinned) setOpen(false);
-            if (cmd) setTimeout(() => dispatchAaraCommand(cmd, cmdData), 800);
+            if (cmd) setTimeout(() => dispatchAaraCommand(cmd, finalActionData), 800);
           }, 900);
         }
       }
