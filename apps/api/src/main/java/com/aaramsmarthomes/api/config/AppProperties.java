@@ -17,6 +17,9 @@ public class AppProperties {
     /** This service's own public URL, e.g. https://aaram-api-xxxx.run.app — used to build
      *  absolute links (e.g. media URLs) where WhatsApp needs a reachable HTTPS URL. */
     private String publicBaseUrl;
+    /** The Next.js web app's own base URL — AaraService proxies /api/aara requests here
+     *  (Phase 6 moved the actual agent brain to the web app's /api/chat). */
+    private String webBaseUrl = "http://localhost:3000";
     private String googleTtsApiKey;
     private String googleTtsVoice = "hi-IN-Wavenet-D";
     /** WhatsApp number a cook is told to call when the menu-agreement loop is exhausted. */
@@ -45,6 +48,9 @@ public class AppProperties {
 
     public String getPublicBaseUrl() { return publicBaseUrl; }
     public void setPublicBaseUrl(String v) { this.publicBaseUrl = v; }
+
+    public String getWebBaseUrl() { return webBaseUrl; }
+    public void setWebBaseUrl(String v) { this.webBaseUrl = v; }
 
     public String getGoogleTtsApiKey() { return googleTtsApiKey; }
     public void setGoogleTtsApiKey(String v) { this.googleTtsApiKey = v; }

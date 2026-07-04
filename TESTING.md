@@ -484,6 +484,25 @@ This is the only place the agent's role-scoping and tool-calling contract is exe
 
 ---
 
+### Phase 7 — Aara mutating tools + audit + mobile proxy
+
+New tools in `apps/web/src/lib/aara/tools.ts` (`update_room_status`, `record_financials`, `resolve_ticket`, `mark_member_absent` — admin; `create_ticket`, `skip_meal` — member; `create_visit_request` — guest; `submit_food_suggestion` — all; `save_memory`/`clear_memory` — client-kind, all) are Next.js server code and Supabase writes, so — same as Phase 6's read-only tools — they're outside the vitest include glob. The role-filtering and tool-calling contract they run through is already covered by `toolRegistry.test.ts`/`agentLoop.test.ts`; what's new to verify manually is the actual writes and their audit trail.
+
+**Manual verification — mutating tools:**
+1. As admin, ask "mark room 102 as vacant" → confirm in chat before it executes (system-prompt rule) → check `rooms.occupancy_status` updated and a matching `audit_log` row with `source='aara'`, `action='room.status_update'`.
+2. As admin, ask "mark [member] absent for lunch tomorrow" → confirm → row appears in `meal_skip_requests` even though it's the same day's cutoff window that would normally block a member's own `skip_meal` (this bypass is intentional, mirroring the admin RLS bypass in the Phase 4 trigger).
+3. As a member, ask to skip today's dinner *after* its cutoff time (see `cutoffLabel('Dinner')`) → tool should return `MEAL_SKIP_CUTOFF_PASSED` and the model should relay that the window has passed, not silently succeed. This is enforced in TS (`isMealLocked`) rather than relying on the DB trigger, since `ctx.db` may be the service-role client.
+4. As a member, ask to raise a ticket → confirm → row in `tickets` with `requester_id` equal to that member's own id, never an arbitrary one from the conversation.
+5. As a guest, ask to request a property visit → row in `visit_requests` with `requester_type='guest'`.
+6. Ask "remember that I prefer email over calls" → confirms `save_memory` is a **client**-kind tool: no server write happens; the browser's `aaraMemory.addMemoryEntry` call is what persists it (check localStorage key `aara_mem_<userId>`), and it's injected into the next request's `memory` field.
+
+**Manual verification — mobile proxy (`POST /api/aara`, Spring):**
+1. Call `/api/aara` with a valid member JWT and `{"message": "what's for lunch today?"}` → response `{reply, role}` should reflect a real `get_menu` answer sourced from the web app's `/api/chat`, not a separate Groq-only response.
+2. Confirm the web app receives `X-Client-Source: mobile` on the proxied request (add a temporary log if needed) and that the member's own bearer token — not a service credential — is what's forwarded, so role/tool-scoping on the web side is identical to a browser-originated request.
+3. Stop the web app (or point `WEB_BASE_URL` somewhere unreachable) → `/api/aara` should surface a clean error rather than hanging past a few seconds.
+
+---
+
 ## Running regression tests
 
 Run the full suite before each phase merge to catch regressions:
@@ -536,7 +555,7 @@ cd apps/api
 ./mvnw test
 ```
 
-Expected: **124 tests**, all passing, 0 failures/errors.
+Expected: **128 tests**, all passing, 0 failures/errors.
 
 | Layer | Pattern | Example |
 |---|---|---|

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ToolDefinition } from '@aaram/core/aara/server';
+import { isMealLocked } from '@aaram/core/food/server';
+import { logAudit } from '@/lib/audit';
 
 export interface AaraToolContext {
   role: 'guest' | 'tenant' | 'admin';
@@ -225,6 +227,252 @@ const findRoom: ToolDefinition<{ query: string }, any, AaraToolContext> = {
   },
 };
 
+// ── Admin mutating tools (all write audit_log with source:'aara') ───────────
+
+const updateRoomStatus: ToolDefinition<{ room_id: string; status: string }, any, AaraToolContext> = {
+  name: 'update_room_status',
+  description: 'Updates a room’s occupancy status. Confirm with the user before calling this.',
+  parameters: {
+    type: 'object',
+    properties: {
+      room_id: { type: 'string', description: 'Room id, from find_room' },
+      status: { type: 'string', enum: ['Vacant', 'Occupied', 'Notice Period', 'Maintenance'] },
+    },
+    required: ['room_id', 'status'],
+  },
+  roles: ['admin'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    const { data: before } = await ctx.db.from('rooms').select('occupancy_status').eq('id', args.room_id).maybeSingle();
+    const { error } = await ctx.db.from('rooms').update({ occupancy_status: args.status }).eq('id', args.room_id);
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'admin', action: 'room.status_update',
+      entityType: 'room', entityId: args.room_id, before, after: { occupancy_status: args.status }, source: 'aara',
+    });
+    return { updated: true };
+  },
+};
+
+const recordFinancials: ToolDefinition<
+  { type: 'income' | 'expense'; category: string; amount: number; room_id?: string; property_id?: string; label?: string },
+  any, AaraToolContext
+> = {
+  name: 'record_financials',
+  description: 'Records an income or expense entry. Confirm the amount and category with the user before calling this.',
+  parameters: {
+    type: 'object',
+    properties: {
+      type: { type: 'string', enum: ['income', 'expense'] },
+      category: { type: 'string', description: 'expense: maintenance|utilities|furniture|organic_nature|smart_devices|other. income: rent|deposit|setup_cost|custom' },
+      amount: { type: 'number' },
+      room_id: { type: 'string' },
+      property_id: { type: 'string' },
+      label: { type: 'string' },
+    },
+    required: ['type', 'category', 'amount'],
+  },
+  roles: ['admin'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    if (args.type === 'expense') {
+      const { data, error } = await ctx.db.from('expenses').insert({
+        label: args.label ?? args.category, amount: args.amount, category: args.category,
+        property_id: args.property_id || null, expense_date: new Date().toISOString().split('T')[0],
+      }).select().maybeSingle();
+      if (error) return { error: error.message };
+      await logAudit({
+        actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'admin', action: 'expense.record',
+        entityType: 'expense', entityId: data?.id, before: null, after: data, source: 'aara',
+      });
+      return { recorded: true };
+    }
+    const { data, error } = await ctx.db.from('income_records').insert({
+      room_id: args.room_id || null, amount: args.amount, income_type: args.category || 'rent',
+      income_date: new Date().toISOString().split('T')[0],
+    }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'admin', action: 'income.record',
+      entityType: 'income_record', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { recorded: true };
+  },
+};
+
+const resolveTicket: ToolDefinition<{ ticket_id: string; resolution: string }, any, AaraToolContext> = {
+  name: 'resolve_ticket',
+  description: 'Marks a ticket resolved with a resolution note. Confirm with the user before calling this.',
+  parameters: {
+    type: 'object',
+    properties: { ticket_id: { type: 'string' }, resolution: { type: 'string' } },
+    required: ['ticket_id', 'resolution'],
+  },
+  roles: ['admin'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    const { data: before } = await ctx.db.from('tickets').select('status, resolution').eq('id', args.ticket_id).maybeSingle();
+    const { error } = await ctx.db.from('tickets')
+      .update({ status: 'Resolved', resolution: args.resolution, resolved_at: new Date().toISOString() })
+      .eq('id', args.ticket_id);
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'admin', action: 'ticket.resolve',
+      entityType: 'ticket', entityId: args.ticket_id, before, after: { status: 'Resolved', resolution: args.resolution }, source: 'aara',
+    });
+    return { resolved: true };
+  },
+};
+
+const markMemberAbsent: ToolDefinition<{ tenant_id: string; date: string; meal_block: string }, any, AaraToolContext> = {
+  name: 'mark_member_absent',
+  description: "Marks a member as skipping a meal on a given date, on the kitchen's behalf (bypasses the member's own cutoff window — admin override). Confirm with the user before calling this.",
+  parameters: {
+    type: 'object',
+    properties: {
+      tenant_id: { type: 'string', description: 'Member id, e.g. from find_room’s occupant' },
+      date: { type: 'string', description: 'YYYY-MM-DD' },
+      meal_block: { type: 'string', enum: ['Breakfast', 'Lunch', 'Dinner'] },
+    },
+    required: ['tenant_id', 'date', 'meal_block'],
+  },
+  roles: ['admin'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    const { data, error } = await ctx.db.from('meal_skip_requests').upsert({
+      tenant_id: args.tenant_id, skip_date: args.date, meal_block: args.meal_block, reason: 'Marked by Aara (kitchen)',
+    }, { onConflict: 'tenant_id,skip_date,meal_block' }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'admin', action: 'meal_skip.admin_mark',
+      entityType: 'meal_skip_request', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { marked: true };
+  },
+};
+
+// ── Member mutating tools ────────────────────────────────────────────────────
+
+const createTicket: ToolDefinition<{ description: string; category?: string; priority?: string }, any, AaraToolContext> = {
+  name: 'create_ticket',
+  description: "Raises a support/maintenance ticket for the signed-in member. Confirm the details with the user before calling this.",
+  parameters: {
+    type: 'object',
+    properties: {
+      description: { type: 'string' },
+      category: { type: 'string', enum: ['Maintenance', 'Electrical', 'Plumbing', 'Housekeeping', 'Other', 'Support'] },
+      priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
+    },
+    required: ['description'],
+  },
+  roles: ['tenant'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    if (!ctx.userId) return { error: 'not_authenticated' };
+    const { data, error } = await ctx.db.from('tickets').insert({
+      requester_id: ctx.userId, requester_type: 'tenant',
+      category: args.category || 'Other', priority: args.priority || 'Medium',
+      status: 'Pending', description: args.description,
+    }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'tenant', action: 'ticket.create',
+      entityType: 'ticket', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { created: true, ticket_id: data?.id };
+  },
+};
+
+const skipMeal: ToolDefinition<{ date: string; meal_block: string }, any, AaraToolContext> = {
+  name: 'skip_meal',
+  description: "Skips a meal for the signed-in member on a given date. Must be at least 8 hours before that meal's serving window starts.",
+  parameters: {
+    type: 'object',
+    properties: {
+      date: { type: 'string', description: 'YYYY-MM-DD' },
+      meal_block: { type: 'string', enum: ['Breakfast', 'Lunch', 'Dinner'] },
+    },
+    required: ['date', 'meal_block'],
+  },
+  roles: ['tenant'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    if (!ctx.userId) return { error: 'not_authenticated' };
+    // Re-checked here in TS rather than relying solely on the DB trigger: ctx.db may be the
+    // service-role client (bypasses RLS), and the meal-skip trigger explicitly treats a null
+    // auth.uid() as a trusted caller — the same bypass mark_member_absent relies on for admins.
+    // A member's own self-service skip must not get that bypass for free.
+    if (isMealLocked(args.meal_block as any, args.date)) {
+      return { error: 'MEAL_SKIP_CUTOFF_PASSED' };
+    }
+    const { data, error } = await ctx.db.from('meal_skip_requests').upsert({
+      tenant_id: ctx.userId, skip_date: args.date, meal_block: args.meal_block,
+    }, { onConflict: 'tenant_id,skip_date,meal_block' }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'tenant', action: 'meal_skip.create',
+      entityType: 'meal_skip_request', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { skipped: true };
+  },
+};
+
+// ── Guest mutating tool ───────────────────────────────────────────────────────
+
+const createVisitRequest: ToolDefinition<{ property_id: string; preferred_date?: string; message?: string }, any, AaraToolContext> = {
+  name: 'create_visit_request',
+  description: 'Requests a property visit for the signed-in guest. Confirm the property and date with the user before calling this.',
+  parameters: {
+    type: 'object',
+    properties: {
+      property_id: { type: 'string', description: 'Property id, from list_properties' },
+      preferred_date: { type: 'string', description: 'YYYY-MM-DD' },
+      message: { type: 'string' },
+    },
+    required: ['property_id'],
+  },
+  roles: ['guest'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    if (!ctx.userId) return { error: 'not_authenticated' };
+    const { data, error } = await ctx.db.from('visit_requests').insert({
+      requester_id: ctx.userId, requester_type: 'guest', property_id: args.property_id,
+      preferred_date: args.preferred_date || null, message: args.message || null, status: 'pending',
+    }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: 'guest', action: 'visit_request.create',
+      entityType: 'visit_request', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { created: true };
+  },
+};
+
+// ── All-roles mutating tool ───────────────────────────────────────────────────
+
+const submitFoodSuggestion: ToolDefinition<{ suggestion: string }, any, AaraToolContext> = {
+  name: 'submit_food_suggestion',
+  description: 'Submits a food/menu suggestion to the kitchen.',
+  parameters: {
+    type: 'object',
+    properties: { suggestion: { type: 'string' } },
+    required: ['suggestion'],
+  },
+  roles: ['guest', 'tenant', 'admin'],
+  kind: 'server',
+  execute: async (args, ctx) => {
+    const { data, error } = await ctx.db.from('food_suggestions').insert({
+      suggestion: args.suggestion, source: 'chat', tenant_id: ctx.userId, status: 'pending',
+    }).select().maybeSingle();
+    if (error) return { error: error.message };
+    await logAudit({
+      actorId: ctx.userId, actorEmail: ctx.email, actorRole: ctx.role, action: 'food_suggestion.submit',
+      entityType: 'food_suggestion', entityId: data?.id, before: null, after: data, source: 'aara',
+    });
+    return { submitted: true };
+  },
+};
+
 // ── Client-kind tools (executed in the browser, never touch the DB here) ────
 
 const navigate: ToolDefinition<{ path: string }, void, AaraToolContext> = {
@@ -258,9 +506,43 @@ const appCommand: ToolDefinition<{ cmd: string; [k: string]: any }, void, AaraTo
   execute: async () => {},
 };
 
+// save_memory/clear_memory are client-kind because memory is stored in the
+// browser's localStorage (see lib/aaraMemory.ts) — there is nothing for the
+// server to write. The client applies these the same way it already handles
+// navigate/app_command client-actions.
+
+const saveMemory: ToolDefinition<{ text: string; category?: string }, void, AaraToolContext> = {
+  name: 'save_memory',
+  description: 'Remembers a persistent instruction or preference the user wants followed in future conversations, e.g. "always call me by my first name" or "I prefer email over calls".',
+  parameters: {
+    type: 'object',
+    properties: {
+      text: { type: 'string' },
+      category: { type: 'string', enum: ['preference', 'rule', 'context', 'task'] },
+    },
+    required: ['text'],
+  },
+  roles: ['guest', 'tenant', 'admin'],
+  kind: 'client',
+  execute: async () => {},
+};
+
+const clearMemoryTool: ToolDefinition<{}, void, AaraToolContext> = {
+  name: 'clear_memory',
+  description: 'Clears everything remembered about the user. Only use when the user explicitly asks to forget everything.',
+  parameters: { type: 'object', properties: {} },
+  roles: ['guest', 'tenant', 'admin'],
+  kind: 'client',
+  execute: async () => {},
+};
+
 export const AARA_TOOLS: ToolDefinition[] = [
   listProperties, getMenu, getDishNutrition,
   getMyBills, getMyTickets, getMyMealPrefs, getMyNutrition,
   getMealHeadcount, findRoom,
-  navigate, appCommand,
+  updateRoomStatus, recordFinancials, resolveTicket, markMemberAbsent,
+  createTicket, skipMeal,
+  createVisitRequest,
+  submitFoodSuggestion,
+  navigate, appCommand, saveMemory, clearMemoryTool,
 ];

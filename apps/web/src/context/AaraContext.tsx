@@ -10,6 +10,7 @@ import React, {
 export type AaraState =
   | 'idle'          // floating in corner, speech bubble visible
   | 'open'          // chat panel is open, still at home position
+  | 'listening'     // voice input is actively being captured
   | 'thinking'      // AI is processing
   | 'moving'        // avatar flying across screen to a target element
   | 'interacting'   // avatar has arrived, glow ring on target element

@@ -107,6 +107,15 @@ function StatusRing({ state }: { state: string }) {
       />
     );
   }
+  if (state === 'listening') {
+    return (
+      <motion.div
+        animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.12, 1] }}
+        transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute -inset-2 rounded-full border-2 border-red-500 pointer-events-none"
+      />
+    );
+  }
   return null;
 }
 
@@ -209,18 +218,20 @@ export function AaraAvatar({ onToggleChat, isAdmin = false }: Props) {
 
   // ── Mood ──────────────────────────────────────────────────────────────────
   const mood: CharacterMood = (() => {
-    if (isTalking)               return 'talking';
-    if (aaraState === 'thinking') return 'thinking';
-    if (aaraState === 'moving')   return 'moving';
+    if (isTalking)                 return 'talking';
+    if (aaraState === 'listening') return 'thinking';
+    if (aaraState === 'thinking')  return 'thinking';
+    if (aaraState === 'moving')    return 'moving';
     if (aaraState === 'interacting' || aaraState === 'executing') return 'pointing';
-    if (aaraState === 'error')    return 'error';
-    if (isChatOpen)               return 'idle';
+    if (aaraState === 'error')     return 'error';
+    if (isChatOpen)                return 'idle';
     return 'idle';
   })();
 
   // ── Bubble text ───────────────────────────────────────────────────────────
   const bubbleText = (() => {
     if (actionTooltip)                return actionTooltip;
+    if (aaraState === 'listening')    return "I'm listening…";
     if (aaraState === 'thinking')     return 'On it…';
     if (aaraState === 'executing')    return 'Saving…';
     if (aaraState === 'interacting')  return 'Found it!';
@@ -235,6 +246,7 @@ export function AaraAvatar({ onToggleChat, isAdmin = false }: Props) {
     aaraState === 'interacting'          ||
     aaraState === 'confirming'           ||
     aaraState === 'thinking'             ||
+    aaraState === 'listening'            ||
     aaraState === 'executing';
 
   return (

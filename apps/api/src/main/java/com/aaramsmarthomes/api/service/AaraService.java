@@ -10,13 +10,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Thin HTTP proxy from the mobile-facing /api/aara contract to the web app's
+ * /api/chat — the actual Gemini function-calling agent (tools, role-scoped
+ * data access, audit writes) lives there as of Phase 6/7. This keeps mobile
+ * builds on the same stable {@link com.aaramsmarthomes.api.dto.AaraChatResponse}
+ * shape while avoiding a second, divergent implementation of the agent.
+ */
 @Service
 public class AaraService {
-
-    private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
     private final AppProperties props;
     private final HttpClient httpClient;
@@ -28,53 +33,44 @@ public class AaraService {
         this.httpClient = HttpClient.newHttpClient();
     }
 
-    public String chat(String userMessage, String context, UserPrincipal principal) throws Exception {
-        String systemPrompt = buildSystemPrompt(principal, context);
+    public String chat(String userMessage, String context, UserPrincipal principal, String bearerToken) throws Exception {
+        String combinedMessage = (context != null && !context.isBlank())
+            ? userMessage + "\n\nContext: " + context
+            : userMessage;
 
-        Map<String, Object> requestBody = Map.of(
-            "model", props.getGroqModel(),
-            "messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user",   "content", userMessage)
-            ),
-            "temperature", 0.7,
-            "max_tokens",  512
-        );
+        String requestJson = buildRequestJson(combinedMessage);
 
-        String requestJson = objectMapper.writeValueAsString(requestBody);
-
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(GROQ_API_URL))
-            .header("Authorization", "Bearer " + props.getGroqApiKey())
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+            .uri(URI.create(props.getWebBaseUrl() + "/api/chat"))
             .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(requestJson))
-            .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() != 200) {
-            throw new RuntimeException("Groq API error: " + response.statusCode() + " " + response.body());
+            .header("X-Client-Source", "mobile")
+            .POST(HttpRequest.BodyPublishers.ofString(requestJson));
+        if (bearerToken != null && !bearerToken.isBlank()) {
+            builder.header("Authorization", "Bearer " + bearerToken);
         }
 
-        JsonNode json = objectMapper.readTree(response.body());
-        return json.at("/choices/0/message/content").asText();
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("Aara proxy error: " + response.statusCode() + " " + response.body());
+        }
+
+        return parseReply(response.body());
     }
 
-    private String buildSystemPrompt(UserPrincipal principal, String context) {
-        String role = principal.role().name().toLowerCase();
-        String base = """
-            You are Aara, a friendly and helpful AI assistant for Aaram Smart Homes — a smart property management platform.
-            You help members, guests, and admins with property-related questions.
-            Always be concise, warm, and professional. Keep replies under 150 words unless more detail is necessary.
-            Current user role: %s.
-            """.formatted(role);
+    /** Builds the JSON body sent to /api/chat. `stream:false` so the response is one aggregate JSON payload. */
+    String buildRequestJson(String message) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", message);
+        body.put("history", java.util.List.of());
+        body.put("stream", false);
+        return objectMapper.writeValueAsString(body);
+    }
 
-        String rolePrompt = switch (principal.role()) {
-            case ADMIN -> base + "You are assisting an admin. Help with member management, financial summaries, maintenance tickets, and operational questions.";
-            case TENANT -> base + "You are assisting a member. Help with rent queries, maintenance requests, amenity information, and living tips.";
-            case GUEST -> base + "You are assisting a prospective guest. Help with property discovery, visit scheduling, and general enquiries.";
-        };
-
-        return rolePrompt + (context != null && !context.isBlank() ? "\nAdditional context:\n" + context : "");
+    /** Extracts the `reply` field from /api/chat's aggregate `{reply, action, data}` response. */
+    String parseReply(String responseBody) throws Exception {
+        JsonNode json = objectMapper.readTree(responseBody);
+        JsonNode reply = json.get("reply");
+        return reply != null && !reply.isNull() ? reply.asText() : "";
     }
 }

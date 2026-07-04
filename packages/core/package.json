@@ -6,7 +6,8 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./aara/server": "./src/aara/server.ts"
+    "./aara/server": "./src/aara/server.ts",
+    "./food/server": "./src/food/server.ts"
   },
   "dependencies": {
     "@aaram/types": "workspace:*"

@@ -47,6 +47,7 @@ app:
   cors-origins: ${CORS_ORIGINS:http://localhost:3000}
   tasks-secret: ${TASKS_SECRET:}
   public-base-url: ${PUBLIC_BASE_URL:}
+  web-base-url: ${WEB_BASE_URL:http://localhost:3000}
   google-tts-api-key: ${GOOGLE_TTS_API_KEY:}
   google-tts-voice: ${GOOGLE_TTS_VOICE:hi-IN-Wavenet-D}
   emergency-contact-number: ${EMERGENCY_CONTACT_NUMBER:}

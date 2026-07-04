@@ -8,6 +8,7 @@ import com.aaramsmarthomes.api.service.AaraService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -30,7 +31,13 @@ public class AaraController {
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("No UserPrincipal in context"));
 
-        String reply = aaraService.chat(req.message(), req.context(), principal);
+        // Forwarded to the web app's /api/chat so its own JWT-based role resolution and
+        // role-scoped tools apply — the proxy never re-derives or overrides the role itself.
+        String bearerToken = auth instanceof JwtAuthenticationToken jwtAuth
+            ? jwtAuth.getToken().getTokenValue()
+            : null;
+
+        String reply = aaraService.chat(req.message(), req.context(), principal, bearerToken);
         return ResponseEntity.ok(new AaraChatResponse(reply, principal.role().name().toLowerCase()));
     }
 }

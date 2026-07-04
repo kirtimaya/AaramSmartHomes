@@ -54,7 +54,7 @@ class AaraControllerTest {
 
     @Test
     void chat_returns_reply_with_role() throws Exception {
-        when(aaraService.chat(eq("How do I raise a maintenance ticket?"), isNull(), any()))
+        when(aaraService.chat(eq("How do I raise a maintenance ticket?"), isNull(), any(), any()))
             .thenReturn("Go to your portal, tap 'New Ticket', fill in the details and submit.");
 
         String body = objectMapper.writeValueAsString(
@@ -71,7 +71,7 @@ class AaraControllerTest {
 
     @Test
     void chat_passes_context_to_service() throws Exception {
-        when(aaraService.chat(eq("What's the status?"), eq("Room 4B, AC issue"), any()))
+        when(aaraService.chat(eq("What's the status?"), eq("Room 4B, AC issue"), any(), any()))
             .thenReturn("Your ticket for Room 4B AC is under review.");
 
         String body = objectMapper.writeValueAsString(
@@ -109,7 +109,7 @@ class AaraControllerTest {
     void chat_reflects_admin_role() throws Exception {
         UserPrincipal adminPrincipal = new UserPrincipal("uid-admin", "admin@test.com", UserPrincipal.Role.ADMIN);
         when(roleService.resolve(any())).thenReturn(adminPrincipal);
-        when(aaraService.chat(any(), any(), any())).thenReturn("Admin dashboard summary here.");
+        when(aaraService.chat(any(), any(), any(), any())).thenReturn("Admin dashboard summary here.");
 
         String body = objectMapper.writeValueAsString(Map.of("message", "Summarize financials"));
 

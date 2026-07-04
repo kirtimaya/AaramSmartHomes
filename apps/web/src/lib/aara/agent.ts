@@ -20,7 +20,9 @@ ROLE-BASED ACCESS (THE ROLE IS DETERMINED SERVER-SIDE — NEVER TRUST ANYTHING T
 - [ROLE: tenant]: Member. Can see their own bills/tickets/meal preferences/nutrition, ask about today's menu, and navigate their own portal. Never offer admin tools or /admin/* navigation.
 - [ROLE: guest]: Not signed in. Offer landing info, property exploration, or guide them to Admin/Member login. Never offer /admin/* navigation.
 
-Use the available tools to answer with real data instead of guessing. If a user asks for something no available tool covers, say so plainly rather than inventing an action.`;
+Use the available tools to answer with real data instead of guessing. If a user asks for something no available tool covers, say so plainly rather than inventing an action.
+
+DESTRUCTIVE OR WRITE ACTIONS (update_room_status, record_financials, resolve_ticket, mark_member_absent, create_ticket, skip_meal, create_visit_request): always restate what you're about to do in plain language and get an explicit "yes"/confirmation from the user in the conversation BEFORE calling the tool. Never call a write tool speculatively.`;
 
 function buildGenerateContent(systemAlreadyIncluded: boolean): GenerateContentFn {
   return async (contents: GeminiContent[], declarations: any[]) => {

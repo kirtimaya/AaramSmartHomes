@@ -24,7 +24,7 @@ import React, {
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Send, Mic, MicOff, Navigation, Sparkles,
-  CheckCircle2, AlertTriangle, Loader2, ShieldAlert, Brain, Trash2,
+  CheckCircle2, AlertTriangle, Loader2, Brain, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -48,13 +48,6 @@ interface ChatMessage {
   actionData?: Record<string, unknown> | null;
   timestamp: Date;
 }
-
-// Write actions that require avatar navigation + confirmation
-const WRITE_ACTIONS = new Set([
-  'update_room_status',
-  'record_financials',
-  'resolve_ticket',
-]);
 
 // ─── Speech recognition ───────────────────────────────────────────────────────
 
@@ -83,56 +76,6 @@ function useSpeechRecognition(onResult: (text: string) => void) {
     start: () => { recRef.current?.start(); setListening(true); },
     stop:  () => { recRef.current?.stop();  setListening(false); },
   };
-}
-
-// ─── Confirmation Dialog ──────────────────────────────────────────────────────
-
-interface ConfirmationCardProps {
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  loading?: boolean;
-}
-
-function ConfirmationCard({ message, onConfirm, onCancel, loading }: ConfirmationCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-      className="mx-2 my-1 rounded-[20px] border border-amber-300/40 bg-amber-50/80 backdrop-blur-sm p-5 shadow-lg"
-    >
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
-          <ShieldAlert className="w-4 h-4 text-white" />
-        </div>
-        <div>
-          <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-600 mb-1">
-            Confirm Action
-          </p>
-          <p className="text-sm font-bold text-stone-700 leading-relaxed">{message}</p>
-        </div>
-      </div>
-
-      <div className="flex gap-3">
-        <button
-          onClick={onCancel}
-          disabled={loading}
-          className="flex-1 py-3 rounded-2xl border border-stone-200 bg-white text-stone-500 text-[11px] font-extrabold uppercase tracking-widest hover:bg-stone-50 transition-all disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className="flex-1 py-3 rounded-2xl bg-amber-500 text-white text-[11px] font-extrabold uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-          Confirm
-        </button>
-      </div>
-    </motion.div>
-  );
 }
 
 // ─── Memory Pills ─────────────────────────────────────────────────────────────
@@ -274,13 +217,7 @@ interface AgenticChatLayoutProps {
 
 export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: AgenticChatLayoutProps) {
   const isAdmin = userRole === 'admin';
-  const {
-    aaraState, setAaraState,
-    isTalking, setIsTalking,
-    moveToElement, highlightElement, clearHighlight, requestConfirmation, resetToIdle,
-    typeInElement, selectOption,
-    getAllElements, getElement, pendingConfirmation,
-  } = useAaraContext();
+  const { aaraState, setAaraState, setIsTalking } = useAaraContext();
 
   const router = useRouter();
 
@@ -305,19 +242,12 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
 
   const bottomRef  = useRef<HTMLDivElement>(null);
   const inputRef   = useRef<HTMLInputElement>(null);
   const chatRef    = useRef<HTMLDivElement>(null);
-
-  const pendingAgentActionRef = useRef<{
-    originalMessage: string;
-    action: string;
-    data: Record<string, unknown>;
-  } | null>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
   useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 300); }, [isOpen]);
@@ -354,33 +284,6 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
     window.speechSynthesis.speak(u);
   }, [voiceEnabled, setIsTalking]);
 
-  // ── Find the best registered element for an agent action ─────────────────
-  const findTargetElement = useCallback((action: string, data: Record<string, unknown>): string | null => {
-    const elements = getAllElements();
-    if (!elements.length) return null;
-
-    const roomId   = data?.room_id   as string | undefined;
-    const ticketId = data?.ticket_id as string | undefined;
-
-    if (roomId) {
-      const exact = elements.find(e => e.id === `room-${roomId}` || e.id === `room-${roomId}-status`);
-      if (exact) return exact.id;
-    }
-    if (ticketId) {
-      const exact = elements.find(e => e.id === `ticket-${ticketId}`);
-      if (exact) return exact.id;
-    }
-
-    const actionTargets: Record<string, string[]> = {
-      update_room_status: ['fill', 'click'],
-      record_financials:  ['fill', 'submit'],
-      resolve_ticket:     ['click', 'submit'],
-    };
-    const requiredTypes = actionTargets[action] ?? [];
-    const match = elements.find(e => requiredTypes.some(t => e.actionTypes.includes(t as any)));
-    return match?.id ?? null;
-  }, [getAllElements]);
-
   // ── Core: send message ────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
     const msg = (text ?? input).trim();
@@ -406,7 +309,6 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
         (delta) => setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: delta } : m)));
 
       const { reply, action, data } = responseData;
-      const isWriteAction = action && WRITE_ACTIONS.has(action);
 
       // ── Memory actions ────────────────────────────────────────────────────
       if (action === 'save_memory' && data) {
@@ -433,109 +335,15 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
         return;
       }
 
-      // ── Admin + write action: trigger agentic flow ───────────────────────
-      if (isAdmin && isWriteAction && data) {
-        setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: reply } : m));
-        speak(reply);
-        setLoading(false);
-
-        pendingAgentActionRef.current = { originalMessage: msg, action, data: data as Record<string, unknown> };
-
-        const targetId = findTargetElement(action, data as Record<string, unknown>);
-
-        if (targetId) {
-          const elementReg = getElement(targetId);
-          const tooltip = `Going to ${elementReg?.label ?? 'the element'}…`;
-          moveToElement(targetId, tooltip);
-
-          await new Promise(r => setTimeout(r, 1800));
-          highlightElement(targetId);
-
-          if (action === 'update_room_status' && (data as any).status) {
-            await new Promise(r => setTimeout(r, 400));
-            selectOption(targetId, (data as any).status);
-          }
-          if (action === 'resolve_ticket' && (data as any).resolution) {
-            await typeInElement(targetId, (data as any).resolution, 45);
-          }
-          if (action === 'record_financials' && (data as any).amount) {
-            await typeInElement(targetId, String((data as any).amount), 60);
-          }
-
-          await new Promise(r => setTimeout(r, 600));
-
-          const confirmMsg = (data as any).confirm_message
-            ?? `Are you sure you want me to ${action.replace(/_/g, ' ')}?`;
-
-          const confirmed = await requestConfirmation(confirmMsg, targetId);
-          clearHighlight();
-
-          if (confirmed) {
-            setConfirmLoading(true);
-            setAaraState('executing');
-            try {
-              const execData = await callChatAPI(msg, history, session?.access_token, memory || undefined);
-              setMessages(prev => [...prev, {
-                id: (Date.now() + 2).toString(),
-                role: 'assistant',
-                text: execData.reply,
-                action: execData.action ?? undefined,
-                actionData: execData.data as any,
-                timestamp: new Date(),
-              }]);
-              speak(execData.reply);
-            } catch {
-              setMessages(prev => [...prev, {
-                id: 'exec-err',
-                role: 'system',
-                text: 'Action failed. Please try again.',
-                timestamp: new Date(),
-              }]);
-            } finally {
-              setConfirmLoading(false);
-              resetToIdle();
-            }
-          } else {
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 2).toString(),
-              role: 'assistant',
-              text: "No problem — I've cancelled that. Let me know if you'd like to do something else.",
-              timestamp: new Date(),
-            }]);
-            resetToIdle();
-          }
-        } else {
-          const confirmMsg = (data as any).confirm_message
-            ?? `Confirm: ${action.replace(/_/g, ' ')}?`;
-          const confirmed = await requestConfirmation(confirmMsg);
-
-          if (confirmed) {
-            setConfirmLoading(true);
-            setAaraState('executing');
-            try {
-              const execData = await callChatAPI(msg, history, session?.access_token, memory || undefined);
-              setMessages(prev => [...prev, {
-                id: (Date.now() + 3).toString(),
-                role: 'assistant',
-                text: execData.reply,
-                action: execData.action ?? undefined,
-                actionData: execData.data as any,
-                timestamp: new Date(),
-              }]);
-            } catch { /* ignore */ } finally {
-              setConfirmLoading(false);
-              resetToIdle();
-            }
-          } else {
-            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', text: 'Cancelled.', timestamp: new Date() }]);
-            resetToIdle();
-          }
-        }
-        pendingAgentActionRef.current = null;
-        return;
-      }
-
       // ── Standard flow ────────────────────────────────────────────────────
+      // Write actions (update_room_status, create_ticket, skip_meal, ...) are
+      // now executed server-side inside the model's own tool-calling turn —
+      // the model is instructed (system prompt) to restate the action and
+      // get an explicit "yes" from the user in conversation before calling
+      // the tool, rather than the client gating a second network round-trip
+      // behind a UI confirm dialog. By the time a reply reaches here, any
+      // write the user approved has already happened; this branch just
+      // renders the model's natural-language response.
       setAaraState('open');
       setMessages(prev => prev.map(m => m.id === pendingId
         ? { ...m, text: reply, action: action ?? undefined, actionData: data as any }
@@ -561,11 +369,18 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, loading, messages, isAdmin, userId]);
+  }, [input, loading, messages, userId]);
 
   const { listening, supported, start, stop } = useSpeechRecognition(
     useCallback((t: string) => { setInput(t); setVoiceEnabled(true); setTimeout(() => sendMessage(t), 400); }, [sendMessage])
   );
+
+  // Pulse the avatar (StatusRing) while the mic is capturing speech.
+  useEffect(() => {
+    if (listening) setAaraState('listening');
+    else if (aaraState === 'listening') setAaraState('open');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listening]);
 
   return (
     <AnimatePresence>
@@ -708,19 +523,6 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
                 </div>
               </div>
             )}
-
-            {/* Confirmation card */}
-            <AnimatePresence>
-              {pendingConfirmation && (
-                <ConfirmationCard
-                  key="confirm"
-                  message={pendingConfirmation.message}
-                  loading={confirmLoading}
-                  onConfirm={() => pendingConfirmation.resolve(true)}
-                  onCancel={() => pendingConfirmation.resolve(false)}
-                />
-              )}
-            </AnimatePresence>
 
             <div ref={bottomRef} />
           </div>
