@@ -78,7 +78,7 @@ export function LoginScreen({
               Welcome <span className="text-primary italic">Back</span>
             </h1>
             <p className="text-foreground/40 text-[10px] font-bold uppercase tracking-widest mt-1 flex items-center justify-center gap-1.5">
-              <Leaf className="w-3 h-3 text-secondary" /> Secure Resident Node
+              <Leaf className="w-3 h-3 text-secondary" /> Secure Member Node
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export function LoginScreen({
           >
             <div className="space-y-2">
               <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground/30 ml-1">
-                Resident Email
+                Member Email
               </label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/20 group-focus-within:text-primary transition-colors" />

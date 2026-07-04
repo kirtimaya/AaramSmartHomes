@@ -218,7 +218,7 @@ export default function AdminDashboard() {
             <div className="p-6 border-b border-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-6 rounded-full bg-primary" />
-                <h3 className="font-bold text-lg text-foreground">Resident Support</h3>
+                <h3 className="font-bold text-lg text-foreground">Member Support</h3>
               </div>
               <Link href="/admin/tickets"
                 className="text-primary text-[10px] font-extrabold uppercase tracking-widest hover:translate-x-1 transition-transform flex items-center gap-1">
@@ -237,7 +237,7 @@ export default function AdminDashboard() {
                     <tr className="bg-white/40 text-foreground/30 text-[9px] uppercase tracking-[0.2em]">
                       <th className="px-6 py-4 font-extrabold">Category</th>
                       <th className="px-6 py-4 font-extrabold">Priority</th>
-                      <th className="px-6 py-4 font-extrabold">Resident</th>
+                      <th className="px-6 py-4 font-extrabold">Member</th>
                       <th className="px-6 py-4 font-extrabold">Status</th>
                       <th className="px-6 py-4 font-extrabold">Action</th>
                     </tr>

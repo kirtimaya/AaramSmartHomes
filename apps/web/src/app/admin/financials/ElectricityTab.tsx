@@ -351,7 +351,7 @@ function SplitSummaryDrawer({ billId, onClose, onRefresh }: SplitSummaryProps) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 border-b border-foreground/5">
-                      <th className="text-left pb-2 pr-4">Tenant</th>
+                      <th className="text-left pb-2 pr-4">Member</th>
                       <th className="text-left pb-2 pr-4">Room</th>
                       <th className="text-right pb-2 pr-4">AC Units</th>
                       <th className="text-right pb-2 pr-4">AC Charge</th>
@@ -647,7 +647,7 @@ function BillingProgressPanel() {
 
   const handleNotify = (room: ProgressRoom) => {
     const phone = room.tenant_phone?.replace(/\D/g, '');
-    const msg = encodeURIComponent(`Hi ${room.tenant_name}, please upload your AC meter reading for this month in the Aaram tenant portal: https://aaram.space/tenant`);
+    const msg = encodeURIComponent(`Hi ${room.tenant_name}, please upload your AC meter reading for this month in the Aaram member portal: https://aaram.space/tenant`);
     if (phone) {
       window.open(`https://wa.me/91${phone}?text=${msg}`, '_blank');
     } else {
@@ -820,7 +820,7 @@ function BillingProgressPanel() {
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30 border-b border-foreground/5">
-                                <th className="text-left pb-2 pr-4">Tenant</th>
+                                <th className="text-left pb-2 pr-4">Member</th>
                                 <th className="text-right pb-2 pr-4">AC Units</th>
                                 <th className="text-right pb-2 pr-4">AC Charge</th>
                                 <th className="text-right pb-2 pr-4">Common Share</th>

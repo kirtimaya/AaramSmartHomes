@@ -203,7 +203,7 @@ function JoinContent() {
             <motion.div key="claiming" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="soft-card border border-white bg-white/40 p-8 text-center space-y-3">
               <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
-              <p className="text-sm font-bold text-foreground">Activating your tenant portal…</p>
+              <p className="text-sm font-bold text-foreground">Activating your member portal…</p>
             </motion.div>
           )}
 
@@ -212,7 +212,7 @@ function JoinContent() {
               className="soft-card border border-secondary/20 bg-secondary/5 p-8 text-center space-y-3">
               <CheckCircle2 className="w-12 h-12 text-secondary mx-auto" />
               <p className="text-lg font-bold text-foreground">Portal Activated!</p>
-              <p className="text-xs text-foreground/50">Redirecting to your tenant portal…</p>
+              <p className="text-xs text-foreground/50">Redirecting to your member portal…</p>
             </motion.div>
           )}
 

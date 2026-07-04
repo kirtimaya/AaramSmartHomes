@@ -16,6 +16,7 @@ import {
   Shield,
   User,
   ChefHat,
+  Wrench,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,10 +28,11 @@ const baseSidebarItems = [
   { icon: Home,          label: 'Dashboard',    href: '/admin' },
   { icon: Shield,        label: 'Properties',   href: '/admin/properties/manage' },
   { icon: PieChart,      label: 'Occupancy',    href: '/admin/occupancy' },
-  { icon: Users,         label: 'Tenants',      href: '/admin/tenants' },
+  { icon: Users,         label: 'Members',      href: '/admin/tenants' },
   { icon: Calendar,      label: 'Move-Outs',    href: '/admin/calendar' },
   { icon: BarChart3,     label: 'Financials',   href: '/admin/financials' },
   { icon: ClipboardList, label: 'Tickets',      href: '/admin/tickets' },
+  { icon: Wrench,        label: 'Roster',       href: '/admin/professionals' },
   { icon: Droplets,      label: 'Water Levels', href: '/admin/iot' },
   { icon: ChefHat,       label: 'Kitchen',      href: '/admin/kitchen' },
 ];

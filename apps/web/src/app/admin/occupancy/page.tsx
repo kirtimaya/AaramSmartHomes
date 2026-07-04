@@ -596,11 +596,11 @@ export default function OccupancyPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Assigned Tenant</label>
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Assigned Member</label>
                   <select value={editingRoom.tenant_id || ''}
                     onChange={(e) => setEditingRoom({...editingRoom, tenant_id: e.target.value || undefined})}
                     className="soft-ui-in w-full py-4 px-6 text-xs bg-white/60 border border-white outline-none appearance-none">
-                    <option value="">— No Tenant —</option>
+                    <option value="">— No Member —</option>
                     {tenants.map(t => (
                       <option key={t.id} value={t.id}>{t.name} ({t.status})</option>
                     ))}
@@ -702,7 +702,7 @@ export default function OccupancyPage() {
               className="relative bg-background soft-card border border-white w-full max-w-md p-10 shadow-2xl">
               <div className="flex justify-between items-center mb-8">
                 <div>
-                  <h2 className="text-xl font-bold uppercase tracking-tight">Add Tenant</h2>
+                  <h2 className="text-xl font-bold uppercase tracking-tight">Add Member</h2>
                   <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest mt-1">
                     {inviteModal.roomName} · generates a portal access link
                   </p>

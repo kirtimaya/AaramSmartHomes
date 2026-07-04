@@ -109,7 +109,7 @@ function EditTenantModal({
         move_in_date:  moveIn  || null,
         move_out_date: moveOut || null,
       });
-      toast('Tenant updated');
+      toast('Member updated');
       onClose();
     } catch {
       toast('Failed to update tenant', false);
@@ -134,7 +134,7 @@ function EditTenantModal({
         className="soft-card border border-white bg-background w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl"
       >
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Edit Tenant</p>
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Edit Member</p>
           <button onClick={onClose} className="text-foreground/30 hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
         </div>
 
@@ -476,7 +476,7 @@ export default function TenantsPage() {
       throw new Error(error || 'Status update failed');
     }
     setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, status: newStatus } : t));
-    showToast(`Tenant marked ${newStatus}`);
+    showToast(`Member marked ${newStatus}`);
   };
 
   const handleUpdateTenant = async (tenantId: string, updates: Partial<Tenant>) => {
@@ -552,7 +552,7 @@ export default function TenantsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tighter text-foreground uppercase">Tenants</h1>
+            <h1 className="text-3xl font-bold tracking-tighter text-foreground uppercase">Members</h1>
             <p className="text-[11px] font-bold text-foreground/30 uppercase tracking-widest mt-0.5">
               {tenants.length} active · {invitations.length} pending invitations
             </p>
@@ -601,7 +601,7 @@ export default function TenantsPage() {
           filteredTenants.length === 0 ? (
             <div className="soft-well rounded-2xl p-12 text-center">
               <Users className="w-10 h-10 text-foreground/20 mx-auto mb-3" />
-              <p className="text-sm font-bold text-foreground/30">No tenants found</p>
+              <p className="text-sm font-bold text-foreground/30">No members found</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       user_type: 'tenant',
       type:      'tenant_approved',
       title:     'Welcome to Aaram Smart Homes!',
-      message:   `Your tenant portal for ${inv.name} is now active.`,
+      message:   `Your member portal for ${inv.name} is now active.`,
       read:      false,
     });
   } catch { /* non-fatal */ }

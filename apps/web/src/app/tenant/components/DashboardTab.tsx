@@ -322,7 +322,7 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
           <div className="flex flex-wrap gap-3 pt-1 border-t border-white/60">
             <div className="soft-well border border-white px-4 py-2.5 rounded-xl">
               <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Status</p>
-              <p className="text-sm font-black text-foreground mt-0.5">{tenantProfile.status === 'active' ? 'Active Resident' : tenantProfile.status}</p>
+              <p className="text-sm font-black text-foreground mt-0.5">{tenantProfile.status === 'active' ? 'Active Member' : tenantProfile.status}</p>
             </div>
             {tenantProfile.move_in_date && (
               <div className="soft-well border border-white px-4 py-2.5 rounded-xl">

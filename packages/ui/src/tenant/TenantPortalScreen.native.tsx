@@ -271,7 +271,7 @@ export function TenantPortalScreen({ supabase, onNotAuthenticated, onSignOut }: 
     );
   }
 
-  const firstName = tenant?.name?.split(' ')[0] ?? 'Resident';
+  const firstName = tenant?.name?.split(' ')[0] ?? 'Member';
 
   return (
     <View style={s.root}>

@@ -65,7 +65,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             onClick={() => router.push('/tenant')}
             className="btn-terracotta py-4 text-xs font-bold uppercase tracking-widest shadow-xl"
           >
-            Go to Resident Portal
+            Go to Member Portal
           </button>
           <button
             onClick={async () => { await signOut(); router.push('/adminLogin'); }}

@@ -102,7 +102,7 @@ function ContactModal({ tenant, onClose }: { tenant: TenantRow; onClose: () => v
         className="soft-card border border-white bg-background w-full max-w-xs rounded-2xl p-6 space-y-4 shadow-2xl"
       >
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Contact Tenant</p>
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Contact Member</p>
           <button onClick={onClose} className="text-foreground/30 hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
@@ -257,7 +257,7 @@ export default function MoveOutsPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
           <div className="space-y-1.5">
             <h1 className="text-3xl font-bold tracking-tighter text-foreground uppercase">Transition Management</h1>
-            <p className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.2em]">Tenant Move-Outs & Unit Prep</p>
+            <p className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.2em]">Member Move-Outs & Unit Prep</p>
           </div>
 
           <div className="flex items-center gap-4 soft-well p-1.5 border border-white bg-white/40">

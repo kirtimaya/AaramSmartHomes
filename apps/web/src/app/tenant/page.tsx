@@ -90,8 +90,8 @@ export default function TenantPortal() {
     );
   }
 
-  const firstName = (user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Resident').split(' ')[0];
-  const userName  = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Resident';
+  const firstName = (user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Member').split(' ')[0];
+  const userName  = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Member';
 
   const TAB_TITLES: Record<TenantTab, { sub: string; title: string }> = {
     dashboard: { sub: 'Overview',            title: `Namaste, ${firstName}` },

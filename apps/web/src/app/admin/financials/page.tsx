@@ -1226,14 +1226,14 @@ export default function FinancialHub() {
                 <div className="w-1.5 h-6 rounded-full bg-violet-500" />
                 <div>
                   <h2 className="text-xl font-bold uppercase tracking-tight">Security Deposits</h2>
-                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Held from tenants · Paid to villa owners</p>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Held from members · Paid to villa owners</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="soft-card border border-violet-200/60 bg-violet-50/40 p-5 space-y-1">
                   <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-violet-400">Deposits Received</p>
                   <p className="text-2xl font-black tracking-tighter text-violet-700">{fmt(lifeDepositsIn)}</p>
-                  <p className="text-[8px] font-bold text-violet-400/60 uppercase tracking-widest">From tenants · All time</p>
+                  <p className="text-[8px] font-bold text-violet-400/60 uppercase tracking-widest">From members · All time</p>
                 </div>
                 <div className="soft-card border border-rose-200/60 bg-rose-50/40 p-5 space-y-1">
                   <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-rose-400">Security Deposits Paid</p>
@@ -1273,14 +1273,14 @@ export default function FinancialHub() {
                 <div className="w-1.5 h-6 rounded-full bg-amber-500" />
                 <div>
                   <h2 className="text-xl font-bold uppercase tracking-tight">Setup Costs</h2>
-                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Collected from tenants · Expenses spent on setup</p>
+                  <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Collected from members · Expenses spent on setup</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="soft-card border border-amber-200/60 bg-amber-50/40 p-5 space-y-1">
                   <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-amber-500">Setup Costs Collected</p>
                   <p className="text-2xl font-black tracking-tighter text-amber-700">{fmt(lifeSetupCosts)}</p>
-                  <p className="text-[8px] font-bold text-amber-400/60 uppercase tracking-widest">From tenants · All time</p>
+                  <p className="text-[8px] font-bold text-amber-400/60 uppercase tracking-widest">From members · All time</p>
                 </div>
                 <div className="soft-card border border-orange-200/60 bg-orange-50/40 p-5 space-y-1">
                   <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-orange-500">Setup Expenses Spent</p>

@@ -63,7 +63,7 @@ export function LoginScreen({ supabase, onSuccess, onNavigateSignup, onNavigateH
           style={styles.card}
         >
           <Text style={styles.cardTitle}>Welcome back</Text>
-          <Text style={styles.cardSub}>Sign in to access your tenant portal</Text>
+          <Text style={styles.cardSub}>Sign in to access your member portal</Text>
 
           <Text style={styles.label}>Email</Text>
           <TextInput

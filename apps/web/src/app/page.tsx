@@ -80,7 +80,7 @@ export default function LandingPage() {
             className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 hover:text-primary transition-all"
           >
             <Home className="w-3.5 h-3.5" />
-            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Tenant Portal'}
+            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Member Portal'}
           </button>
           <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all">
             Sign In

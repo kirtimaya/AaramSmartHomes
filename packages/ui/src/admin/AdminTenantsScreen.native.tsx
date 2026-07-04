@@ -166,7 +166,7 @@ export function AdminTenantsScreen({ supabase, onNotAuthenticated, onBack }: Adm
             </Pressable>
           )}
           <View>
-            <Text style={s.headerTitle}>Tenants</Text>
+            <Text style={s.headerTitle}>Members</Text>
             <Text style={s.headerSub}>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</Text>
           </View>
         </View>

@@ -37,7 +37,7 @@ export function TenantSidebar({ activeTab, onTabChange, userName }: TenantNavPro
           </div>
           <div>
             <p className="font-black tracking-tighter text-base uppercase text-foreground leading-none">Aaram</p>
-            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-foreground/30 mt-0.5">Resident Portal</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-foreground/30 mt-0.5">Member Portal</p>
           </div>
         </div>
         <ThemeToggle />

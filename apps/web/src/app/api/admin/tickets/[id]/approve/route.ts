@@ -106,7 +106,7 @@ export async function POST(
     user_type: 'tenant',
     type:      'tenant_approved',
     title:     'Welcome to Aaram!',
-    message:   'Your tenant access has been approved. You can now log in to your tenant portal.',
+    message:   'Your member access has been approved. You can now log in to your member portal.',
     read:      false,
   });
 
@@ -114,7 +114,7 @@ export async function POST(
   if (guest.phone) {
     await sendWhatsAppMessage(
       guest.phone,
-      `Hi ${guest.name}! 🎉 Your tenant access at Aaram Smart Homes has been approved. Log in at aaram.space/login to access your portal.`
+      `Hi ${guest.name}! 🎉 Your member access at Aaram Smart Homes has been approved. Log in at aaram.space/login to access your portal.`
     );
   }
 

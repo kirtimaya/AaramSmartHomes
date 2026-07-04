@@ -263,7 +263,7 @@ function GuestPageInner() {
     setFormLoading(true);
     const result = await apiCall('/api/tickets', 'POST', {
       category: 'TenantAccessRequest',
-      description: 'Requesting tenant portal access after room booking.',
+      description: 'Requesting member portal access after room booking.',
       priority: 'High',
       bookingId,
     });
@@ -734,9 +734,9 @@ function GuestPageInner() {
                 <Home className="w-7 h-7 text-secondary" />
               </div>
               <div>
-                <h3 className="font-bold text-foreground text-lg">Request Tenant Access</h3>
+                <h3 className="font-bold text-foreground text-lg">Request Member Access</h3>
                 <p className="text-xs text-foreground/50 mt-2 leading-relaxed">
-                  Your request will be reviewed by our admin team. Once approved, you'll receive full access to the tenant portal.
+                  Your request will be reviewed by our admin team. Once approved, you'll receive full access to the member portal.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -783,7 +783,7 @@ function GuestPageInner() {
                 </div>
               </div>
               <p className="text-[9px] text-foreground/30 leading-relaxed">
-                Your request will be reviewed by the admin. Once approved, you'll get full tenant portal access.
+                Your request will be reviewed by the admin. Once approved, you'll get full member portal access.
               </p>
               <button onClick={submitRoomRequest} disabled={formLoading}
                 className="btn-terracotta w-full py-3 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">

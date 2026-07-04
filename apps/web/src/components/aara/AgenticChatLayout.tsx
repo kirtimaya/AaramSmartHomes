@@ -593,7 +593,7 @@ export function AgenticChatLayout({ userRole, userId, isOpen, onClose }: Agentic
                   )}
                 />
                 <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/40">
-                  {isAdmin ? 'Agent Mode' : userRole === 'tenant' ? 'Resident Mode' : 'Guest Mode'}
+                  {isAdmin ? 'Agent Mode' : userRole === 'tenant' ? 'Member Mode' : 'Guest Mode'}
                 </p>
               </div>
             </div>
