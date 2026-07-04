@@ -447,7 +447,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **158 tests** across **21 test files**, all passing.
+Expected output: **193 tests** across **24 test files**, all passing.
 
 To see coverage:
 
@@ -491,7 +491,7 @@ cd apps/api
 ./mvnw test
 ```
 
-Expected: **113 tests**, all passing, 0 failures/errors.
+Expected: **124 tests**, all passing, 0 failures/errors.
 
 | Layer | Pattern | Example |
 |---|---|---|
@@ -508,6 +508,41 @@ LOCKED`) is not integration-tested against H2 — H2's locking semantics
 don't reliably match Postgres here. Verify it once manually against the
 real Supabase DB (see the E2E section below) before relying on multi-instance
 Cloud Run concurrency.
+
+---
+
+## Manual verification: meal-skip cutoff trigger (Postgres, not unit-testable)
+
+`enforce_meal_skip_cutoff()` (supabase/migrations/20260709_meal_skip_cutoff.sql)
+runs as a Postgres trigger on `meal_skip_requests` — there's no local harness
+for it (H2 doesn't run Supabase triggers; MockMvc never touches this table).
+The exact cutoff math is unit-tested via its TS mirror
+(`packages/core/src/__tests__/food/mealCutoff.test.ts`), but the trigger
+itself should be smoke-tested once against the real Supabase DB after
+applying the migration:
+
+```sql
+-- As a signed-in member (RLS applies, auth.uid() is set) — should FAIL past cutoff:
+insert into meal_skip_requests (tenant_id, skip_date, meal_block)
+values (auth.uid(), current_date, 'Lunch');
+-- Expect: ERROR: MEAL_SKIP_CUTOFF_PASSED: ... (if run after 5:00 AM IST today)
+
+-- Same insert for TOMORROW's Lunch — should SUCCEED (cutoff hasn't arrived yet):
+insert into meal_skip_requests (tenant_id, skip_date, meal_block)
+values (auth.uid(), current_date + 1, 'Lunch');
+
+-- As service role (bypasses RLS, auth.uid() IS NULL) — should SUCCEED regardless of time:
+-- (run with the service-role key, e.g. via supabaseAdmin or Spring JDBC)
+insert into meal_skip_requests (tenant_id, skip_date, meal_block)
+values ('<any-tenant-uuid>', current_date, 'Lunch');
+
+-- As an admin (auth_is_admin() true) — should SUCCEED regardless of time.
+```
+
+Also confirm from the UI: attempt to skip a meal in `apps/web/src/app/tenant/components/MealsTab.tsx`
+after that meal's cutoff has passed (button should already be disabled
+client-side per `isMealLocked`, but the trigger is the real guarantee against
+a direct API call or a second tab with stale state).
 
 ---
 

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { isMealLocked, cutoffLabel } from '@aaram/core';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types & constants
@@ -44,12 +45,6 @@ function istDate(offsetDays = 0): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** IST decimal hours (e.g. 10.5 = 10:30 AM) */
-function istHour(): number {
-  const n = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  return n.getUTCHours() + n.getUTCMinutes() / 60;
-}
-
 /** Display helpers derived from an IST dateStr — timezone-safe via UTC noon parsing */
 function istDayInfo(dateStr: string): { day: number; weekday: string; label: string } {
   const d = new Date(`${dateStr}T12:00:00Z`); // noon UTC is safe for all zones
@@ -61,40 +56,12 @@ function istDayInfo(dateStr: string): { day: number; weekday: string; label: str
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Cutoff logic
-//
-//   Breakfast  →  8:00 AM same day
-//   Lunch      → 10:00 AM same day
-//   Dinner     →  5:00 PM same day
-//   Breakfast (tomorrow) → 9:00 PM tonight
-// ────────────────────────────────────────────────────────────────────────────
-
-function isMealLocked(block: MealBlock, targetDateStr: string): boolean {
-  const todayStr    = istDate(0);
-  const tomorrowStr = istDate(1);
-  const t           = istHour();
-
-  if (targetDateStr < todayStr) return true;
-
-  if (targetDateStr === todayStr) {
-    if (block === 'Breakfast') return t >= 8;
-    if (block === 'Lunch')     return t >= 10;
-    if (block === 'Dinner')    return t >= 17;
-  }
-
-  if (targetDateStr === tomorrowStr && block === 'Breakfast') {
-    return t >= 21; // 9 PM cutoff for next-day breakfast
-  }
-
-  return false;
-}
-
-function cutoffLabel(block: MealBlock): string {
-  if (block === 'Breakfast') return '8:00 AM';
-  if (block === 'Lunch')     return '10:00 AM';
-  return '5:00 PM';
-}
-
+// Cutoff logic — server-side truth lives in the meal_skip_requests trigger
+// (supabase/migrations/20260709_meal_skip_cutoff.sql); isMealLocked/cutoffLabel
+// here are the client-side mirror from @aaram/core so the UI can grey out the
+// button before even attempting the write. Rule: locked once we're within 8
+// hours of the meal's window start (effective cutoffs: Breakfast 12:00 AM,
+// Lunch 5:00 AM, Dinner 12:30 PM IST, all on the meal's own calendar day).
 // ────────────────────────────────────────────────────────────────────────────
 // Lock badge with tooltip
 // ────────────────────────────────────────────────────────────────────────────
@@ -230,22 +197,33 @@ export function MealsTab({ userId }: Props) {
     if (skipSaving || isMealLocked(block, today)) return;
     setSkipSaving(block);
     const already = skips.has(block);
+    let error;
 
     if (already) {
       // DELETE FROM meal_skip_requests WHERE ...
-      await supabase.from('meal_skip_requests')
+      ({ error } = await supabase.from('meal_skip_requests')
         .delete()
-        .eq('tenant_id', userId).eq('skip_date', today).eq('meal_block', block);
-      setSkips(prev => { const s = new Set(prev); s.delete(block); return s; });
-      showToast(`${block} skip removed — you're back on the list.`);
+        .eq('tenant_id', userId).eq('skip_date', today).eq('meal_block', block));
+      if (!error) {
+        setSkips(prev => { const s = new Set(prev); s.delete(block); return s; });
+        showToast(`${block} skip removed — you're back on the list.`);
+      }
     } else {
       // INSERT INTO meal_skip_requests — reduces today's Kitchen Hub prep count
-      await supabase.from('meal_skip_requests').upsert(
+      ({ error } = await supabase.from('meal_skip_requests').upsert(
         { tenant_id: userId, skip_date: today, meal_block: block },
         { onConflict: 'tenant_id,skip_date,meal_block' }
-      );
-      setSkips(prev => new Set([...prev, block]));
-      showToast(`${block} skipped for today.`);
+      ));
+      if (!error) {
+        setSkips(prev => new Set([...prev, block]));
+        showToast(`${block} skipped for today.`);
+      }
+    }
+
+    if (error) {
+      showToast(error.message.includes('MEAL_SKIP_CUTOFF_PASSED')
+        ? 'Kitchen prep has started — changes are locked.'
+        : 'Something went wrong. Please try again.');
     }
     setSkipSaving(null);
   };
@@ -258,26 +236,38 @@ export function MealsTab({ userId }: Props) {
 
     const existing = vacSkips.get(dateStr)?.has(block) ?? false;
     const next     = new Map(vacSkips);
+    let error;
 
     if (existing) {
       // DELETE FROM meal_skip_requests WHERE tenant_id = ? AND skip_date = ? AND meal_block = ?
-      await supabase.from('meal_skip_requests')
+      ({ error } = await supabase.from('meal_skip_requests')
         .delete()
-        .eq('tenant_id', userId).eq('skip_date', dateStr).eq('meal_block', block);
-      next.get(dateStr)?.delete(block);
-      if ((next.get(dateStr)?.size ?? 0) === 0) next.delete(dateStr);
+        .eq('tenant_id', userId).eq('skip_date', dateStr).eq('meal_block', block));
+      if (!error) {
+        next.get(dateStr)?.delete(block);
+        if ((next.get(dateStr)?.size ?? 0) === 0) next.delete(dateStr);
+      }
     } else {
       // UPSERT — Kitchen Hub queries meal_skip_requests daily at 6 AM to finalize prep counts
-      await supabase.from('meal_skip_requests').upsert(
+      ({ error } = await supabase.from('meal_skip_requests').upsert(
         { tenant_id: userId, skip_date: dateStr, meal_block: block },
         { onConflict: 'tenant_id,skip_date,meal_block' }
-      );
-      if (!next.has(dateStr)) next.set(dateStr, new Set());
-      next.get(dateStr)!.add(block);
+      ));
+      if (!error) {
+        if (!next.has(dateStr)) next.set(dateStr, new Set());
+        next.get(dateStr)!.add(block);
+      }
     }
 
     setVacSkips(next);
     setVacSaving(false);
+
+    if (error) {
+      showToast(error.message.includes('MEAL_SKIP_CUTOFF_PASSED')
+        ? 'Kitchen prep has started — changes are locked.'
+        : 'Something went wrong. Please try again.');
+      return;
+    }
     const { label } = istDayInfo(dateStr);
     showToast(existing ? 'Skip removed.' : `${block} skipped for ${label}.`);
   };
