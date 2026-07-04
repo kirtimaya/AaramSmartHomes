@@ -7,6 +7,7 @@ import com.aaramsmarthomes.api.model.DishCatalog;
 import com.aaramsmarthomes.api.model.UserPrincipal;
 import com.aaramsmarthomes.api.repository.DishCatalogRepository;
 import com.aaramsmarthomes.api.service.AuditService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,20 +15,27 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/admin/dishes")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminDishCatalogController {
 
+    private static final Set<String> VALID_NUTRITION_STATUSES = Set.of("none", "estimated", "approved");
+
     private final DishCatalogRepository dishCatalogRepository;
     private final AuditService auditService;
+    private final ObjectMapper objectMapper;
 
-    public AdminDishCatalogController(DishCatalogRepository dishCatalogRepository, AuditService auditService) {
+    public AdminDishCatalogController(DishCatalogRepository dishCatalogRepository, AuditService auditService,
+                                       ObjectMapper objectMapper) {
         this.dishCatalogRepository = dishCatalogRepository;
         this.auditService = auditService;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -39,6 +47,9 @@ public class AdminDishCatalogController {
     public ResponseEntity<DishCatalogResponse> create(
             @Valid @RequestBody DishCatalogRequest req, Authentication auth,
             @RequestHeader(value = "X-Client-Source", required = false, defaultValue = "web") String source) {
+        if (req.nutrition() != null && !VALID_NUTRITION_STATUSES.contains(req.nutrition().status())) {
+            return ResponseEntity.badRequest().build();
+        }
         DishCatalog dish = new DishCatalog();
         apply(dish, req);
         DishCatalogResponse after = DishCatalogResponse.from(dishCatalogRepository.save(dish));
@@ -50,6 +61,9 @@ public class AdminDishCatalogController {
     public ResponseEntity<DishCatalogResponse> update(
             @PathVariable String id, @Valid @RequestBody DishCatalogRequest req, Authentication auth,
             @RequestHeader(value = "X-Client-Source", required = false, defaultValue = "web") String source) {
+        if (req.nutrition() != null && !VALID_NUTRITION_STATUSES.contains(req.nutrition().status())) {
+            return ResponseEntity.badRequest().build();
+        }
         DishCatalog dish = dishCatalogRepository.findById(id)
             .orElseThrow(() -> new NoSuchElementException("Dish not found: " + id));
         DishCatalogResponse before = DishCatalogResponse.from(dish);
@@ -84,5 +98,25 @@ public class AdminDishCatalogController {
         dish.setFallback(req.isFallback());
         dish.setFallbackPriority(req.fallbackPriority());
         dish.setActive(req.active());
+
+        if (req.nutrition() != null) {
+            DishCatalogRequest.NutritionInput n = req.nutrition();
+            dish.setServingSize(n.servingSize());
+            dish.setCalories(n.calories());
+            dish.setProteinG(n.protein());
+            dish.setCarbsG(n.carbs());
+            dish.setFatsG(n.fats());
+            dish.setFiberG(n.fiber());
+            dish.setCookingTip(n.cookingTip());
+            dish.setNutritionStatus(n.status() != null ? n.status() : "estimated");
+            dish.setNutritionUpdatedAt(OffsetDateTime.now());
+            try {
+                dish.setMicros(n.micros() != null ? objectMapper.writeValueAsString(n.micros()) : null);
+                dish.setWholeSpices(n.wholeSpices() != null ? objectMapper.writeValueAsString(n.wholeSpices()) : null);
+                dish.setBenefits(n.benefits() != null ? objectMapper.writeValueAsString(n.benefits()) : null);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to serialize dish nutrition fields", e);
+            }
+        }
     }
 }

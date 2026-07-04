@@ -127,3 +127,31 @@ export type VisitRequest = {
   status: VisitRequestStatus;
   created_at: string;
 };
+
+// ── Dish nutrition ────────────────────────────────────────────────────────────
+
+export type NutritionStatus = 'none' | 'estimated' | 'approved';
+
+export type Micro = {
+  name: string;
+  value: number;
+  unit: string;
+  rdv: number;
+  benefit: string;
+  color: string;
+};
+
+export type DishNutrition = {
+  servingSize: string | null;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fats: number | null;
+  fiber: number | null;
+  micros: Micro[];
+  wholeSpices: string[];
+  benefits: string[];
+  cookingTip: string | null;
+  status: NutritionStatus;
+  updatedAt: string | null;
+};

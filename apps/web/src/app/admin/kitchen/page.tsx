@@ -11,7 +11,8 @@ import {
   Plus, Trash2, CheckCircle2, Loader2,
   Save, RefreshCw, UtensilsCrossed, Mic,
   AlertCircle, Package, Clock, Lightbulb, Edit3,
-  Users, Shield, Send, Bot, RotateCcw, ChevronDown
+  Users, Shield, Send, Bot, RotateCcw, ChevronDown,
+  Flame, Check
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1476,7 +1477,22 @@ function PantryTab() {
 
 // ── Tab: Dish Catalog ─────────────────────────────────────────────────────────
 
-interface DishCatalogLocal { id: string; name: string; nameHi: string; imageUrl: string; isFallback: boolean; fallbackPriority: number; active: boolean; }
+interface NutritionMicro { name: string; value: number; unit: string; rdv: number; benefit: string; color: string; }
+interface DishNutritionLocal {
+  servingSize: string | null; calories: number | null; protein: number | null; carbs: number | null;
+  fats: number | null; fiber: number | null; micros: NutritionMicro[]; wholeSpices: string[];
+  benefits: string[]; cookingTip: string | null; status: 'none' | 'estimated' | 'approved'; updatedAt: string | null;
+}
+interface DishCatalogLocal {
+  id: string; name: string; nameHi: string; imageUrl: string; isFallback: boolean; fallbackPriority: number;
+  active: boolean; nutrition: DishNutritionLocal | null;
+}
+
+const NUTRITION_STATUS_STYLE: Record<string, string> = {
+  none:      'bg-foreground/10 text-foreground/40',
+  estimated: 'bg-amber-100 text-amber-700',
+  approved:  'bg-emerald-100 text-emerald-700',
+};
 
 function DishesTab() {
   const [dishes, setDishes] = useState<DishCatalogLocal[]>([]);
@@ -1485,6 +1501,9 @@ function DishesTab() {
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [newDish, setNewDish] = useState({ name: '', nameHi: '', imageUrl: '', isFallback: false });
+  const [estimating, setEstimating] = useState<string | null>(null);
+  const [draftOpenFor, setDraftOpenFor] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DishNutritionLocal | null>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
@@ -1492,7 +1511,7 @@ function DishesTab() {
     setLoading(true);
     try {
       const data = await apiGet<DishCatalogLocal[]>('/api/admin/dishes');
-      setDishes(data.map(d => ({ ...d, nameHi: d.nameHi ?? '', imageUrl: d.imageUrl ?? '' })));
+      setDishes(data.map(d => ({ ...d, nameHi: d.nameHi ?? '', imageUrl: d.imageUrl ?? '', nutrition: d.nutrition ?? null })));
     } catch {
       setDishes([]);
     }
@@ -1507,18 +1526,66 @@ function DishesTab() {
   const toggleFallback = (id: string) =>
     setDishes(prev => prev.map(d => d.id === id ? { ...d, isFallback: !d.isFallback } : d));
 
-  const saveDish = async (dish: DishCatalogLocal) => {
+  const saveDish = async (dish: DishCatalogLocal, nutritionOverride?: DishNutritionLocal | null) => {
     setSaving(dish.id);
+    const nutrition = nutritionOverride !== undefined ? nutritionOverride : dish.nutrition;
     try {
-      await apiPut(`/api/admin/dishes/${dish.id}`, {
+      const saved = await apiPut<DishCatalogLocal>(`/api/admin/dishes/${dish.id}`, {
         name: dish.name, nameHi: dish.nameHi || null, imageUrl: dish.imageUrl || null,
         isFallback: dish.isFallback, fallbackPriority: dish.fallbackPriority, active: dish.active,
+        nutrition: nutrition ? {
+          servingSize: nutrition.servingSize, calories: nutrition.calories, protein: nutrition.protein,
+          carbs: nutrition.carbs, fats: nutrition.fats, fiber: nutrition.fiber, micros: nutrition.micros,
+          wholeSpices: nutrition.wholeSpices, benefits: nutrition.benefits, cookingTip: nutrition.cookingTip,
+          status: nutrition.status,
+        } : null,
       });
+      setDishes(prev => prev.map(d => d.id === dish.id ? { ...d, nutrition: saved.nutrition ?? null } : d));
       showToast('Saved!');
     } catch {
       showToast('Save failed. Please try again.');
     }
     setSaving(null);
+  };
+
+  const estimateNutrition = async (dish: DishCatalogLocal) => {
+    setEstimating(dish.id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? '';
+      const res = await fetch('/api/nutrition/estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dishName: dish.name }),
+      });
+      if (!res.ok) throw new Error('estimate failed');
+      const raw = await res.json();
+      setDraft({
+        servingSize: raw.servingSize ?? null, calories: raw.calories ?? null, protein: raw.protein ?? null,
+        carbs: raw.carbs ?? null, fats: raw.fats ?? null, fiber: raw.fiber ?? null,
+        micros: raw.micros ?? [], wholeSpices: raw.wholeSpices ?? [], benefits: raw.benefits ?? [],
+        cookingTip: raw.cookingTip ?? null, status: 'estimated', updatedAt: null,
+      });
+      setDraftOpenFor(dish.id);
+    } catch {
+      showToast('Nutrition estimate failed. Please try again.');
+    }
+    setEstimating(null);
+  };
+
+  const openExistingNutrition = (dish: DishCatalogLocal) => {
+    setDraft(dish.nutrition ?? {
+      servingSize: null, calories: null, protein: null, carbs: null, fats: null, fiber: null,
+      micros: [], wholeSpices: [], benefits: [], cookingTip: null, status: 'estimated', updatedAt: null,
+    });
+    setDraftOpenFor(dish.id);
+  };
+
+  const approveDraft = async (dish: DishCatalogLocal) => {
+    if (!draft) return;
+    await saveDish(dish, { ...draft, status: 'approved' });
+    setDraftOpenFor(null);
+    setDraft(null);
   };
 
   const deleteDish = async (id: string) => {
@@ -1540,7 +1607,7 @@ function DishesTab() {
         name: newDish.name.trim(), nameHi: newDish.nameHi.trim() || null, imageUrl: newDish.imageUrl.trim() || null,
         isFallback: newDish.isFallback, fallbackPriority: dishes.filter(d => d.isFallback).length, active: true,
       });
-      setDishes(prev => [...prev, { ...created, nameHi: created.nameHi ?? '', imageUrl: created.imageUrl ?? '' }]);
+      setDishes(prev => [...prev, { ...created, nameHi: created.nameHi ?? '', imageUrl: created.imageUrl ?? '', nutrition: created.nutrition ?? null }]);
       setNewDish({ name: '', nameHi: '', imageUrl: '', isFallback: false });
       showToast('Dish added!');
     } catch {
@@ -1582,27 +1649,100 @@ function DishesTab() {
         <EmptyState icon={UtensilsCrossed} text="No dishes in the catalog yet." />
       ) : (
         <div className="space-y-2">
-          {dishes.map(dish => (
-            <div key={dish.id} className="soft-card p-4 border border-white bg-white/40 flex flex-wrap items-center gap-2">
-              <input value={dish.name} onChange={e => updateField(dish.id, 'name', e.target.value)}
-                className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-sm font-bold focus:outline-none bg-white/70 border border-white" />
-              <input value={dish.nameHi} onChange={e => updateField(dish.id, 'nameHi', e.target.value)}
-                placeholder="Hindi name" className="soft-ui-in w-36 px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
-              <input value={dish.imageUrl} onChange={e => updateField(dish.id, 'imageUrl', e.target.value)}
-                placeholder="Image URL" className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
-              <label className="flex items-center gap-1.5 text-[10px] font-bold text-foreground/40">
-                <input type="checkbox" checked={dish.isFallback} onChange={() => toggleFallback(dish.id)} /> Fallback
-              </label>
-              <button onClick={() => saveDish(dish)} disabled={saving === dish.id}
-                className="soft-button w-9 h-9 border border-white text-emerald-500 hover:bg-emerald-500 hover:text-white shrink-0">
-                {saving === dish.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              </button>
-              <button onClick={() => deleteDish(dish.id)}
-                className="soft-button w-9 h-9 border border-white text-foreground/20 hover:text-red-400 shrink-0">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+          {dishes.map(dish => {
+            const status = dish.nutrition?.status ?? 'none';
+            return (
+              <div key={dish.id} className="soft-card border border-white bg-white/40">
+                <div className="p-4 flex flex-wrap items-center gap-2">
+                  <input value={dish.name} onChange={e => updateField(dish.id, 'name', e.target.value)}
+                    className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-sm font-bold focus:outline-none bg-white/70 border border-white" />
+                  <input value={dish.nameHi} onChange={e => updateField(dish.id, 'nameHi', e.target.value)}
+                    placeholder="Hindi name" className="soft-ui-in w-36 px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+                  <input value={dish.imageUrl} onChange={e => updateField(dish.id, 'imageUrl', e.target.value)}
+                    placeholder="Image URL" className="soft-ui-in flex-1 min-w-[120px] px-3 py-2 text-xs focus:outline-none bg-white/70 border border-white" />
+                  <label className="flex items-center gap-1.5 text-[10px] font-bold text-foreground/40">
+                    <input type="checkbox" checked={dish.isFallback} onChange={() => toggleFallback(dish.id)} /> Fallback
+                  </label>
+                  <span className={cn('px-2 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-widest', NUTRITION_STATUS_STYLE[status])}>
+                    {status}
+                  </span>
+                  <button
+                    onClick={() => status === 'none' ? estimateNutrition(dish) : openExistingNutrition(dish)}
+                    disabled={estimating === dish.id}
+                    className="soft-button px-3 py-2 text-[10px] font-black uppercase tracking-widest text-foreground/60 hover:text-primary shrink-0 flex items-center gap-1.5"
+                  >
+                    {estimating === dish.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5" />}
+                    {status === 'none' ? 'Estimate nutrition' : 'View nutrition'}
+                  </button>
+                  <button onClick={() => saveDish(dish)} disabled={saving === dish.id}
+                    className="soft-button w-9 h-9 border border-white text-emerald-500 hover:bg-emerald-500 hover:text-white shrink-0">
+                    {saving === dish.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  </button>
+                  <button onClick={() => deleteDish(dish.id)}
+                    className="soft-button w-9 h-9 border border-white text-foreground/20 hover:text-red-400 shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {draftOpenFor === dish.id && draft && (
+                  <div className="border-t border-white/60 p-4 space-y-3 bg-white/30">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-foreground/50">
+                        Nutrition preview — {dish.name}
+                      </h4>
+                      <button onClick={() => { setDraftOpenFor(null); setDraft(null); }}
+                        className="text-foreground/30 hover:text-foreground text-[10px] font-bold uppercase tracking-widest">
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                      <label className="col-span-2 sm:col-span-1 text-[9px] font-extrabold uppercase text-foreground/30">
+                        Serving
+                        <input value={draft.servingSize ?? ''} onChange={e => setDraft(d => d && { ...d, servingSize: e.target.value })}
+                          className="soft-ui-in w-full mt-1 px-2 py-1.5 text-xs bg-white/70 border border-white focus:outline-none" />
+                      </label>
+                      {(['calories', 'protein', 'carbs', 'fats', 'fiber'] as const).map(field => (
+                        <label key={field} className="text-[9px] font-extrabold uppercase text-foreground/30 capitalize">
+                          {field}
+                          <input type="number" value={draft[field] ?? ''}
+                            onChange={e => setDraft(d => d && { ...d, [field]: e.target.value === '' ? null : Number(e.target.value) })}
+                            className="soft-ui-in w-full mt-1 px-2 py-1.5 text-xs bg-white/70 border border-white focus:outline-none" />
+                        </label>
+                      ))}
+                    </div>
+
+                    <label className="block text-[9px] font-extrabold uppercase text-foreground/30">
+                      Cooking tip
+                      <textarea value={draft.cookingTip ?? ''} onChange={e => setDraft(d => d && { ...d, cookingTip: e.target.value })}
+                        rows={2} className="soft-ui-in w-full mt-1 px-2 py-1.5 text-xs bg-white/70 border border-white focus:outline-none resize-none" />
+                    </label>
+
+                    {draft.micros.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {draft.micros.map((m, i) => (
+                          <span key={i} className="px-2 py-1 rounded-lg text-[9px] font-bold" style={{ backgroundColor: `${m.color}20`, color: m.color }}>
+                            {m.name}: {m.value}{m.unit}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {draft.benefits.length > 0 && (
+                      <ul className="text-[10px] text-foreground/50 font-semibold list-disc list-inside space-y-0.5">
+                        {draft.benefits.map((b, i) => <li key={i}>{b}</li>)}
+                      </ul>
+                    )}
+
+                    <button onClick={() => approveDraft(dish)} disabled={saving === dish.id}
+                      className="btn-terracotta px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-40">
+                      {saving === dish.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Approve &amp; Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -7,3 +7,4 @@ export * from "./properties";
 export * from "./aara";
 export * from "./admin";
 export * from "./guest";
+export * from "./food";

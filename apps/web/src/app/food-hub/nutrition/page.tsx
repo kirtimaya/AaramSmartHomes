@@ -452,9 +452,19 @@ export default function NutritionPage() {
     setEstimateError('');
     setEstimatedData(null);
     try {
+      // /api/nutrition/estimate now requires an admin session (Phase 3 security
+      // fix — it was previously callable by anyone). This whole add-dish flow
+      // moves to the admin kitchen page's Dishes tab in Phase 5; until then,
+      // attach the admin's bearer token so it keeps working here too.
+      const sbEntry = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+      const token = sbEntry ? JSON.parse(sbEntry[1])?.access_token : null;
+
       const res = await fetch('/api/nutrition/estimate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ dishName: addDishName }),
       });
       if (!res.ok) throw new Error('API error');

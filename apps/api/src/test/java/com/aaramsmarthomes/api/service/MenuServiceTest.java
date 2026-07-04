@@ -4,9 +4,11 @@ import com.aaramsmarthomes.api.dto.admin.MenuIngredientInput;
 import com.aaramsmarthomes.api.dto.admin.MenuItemInput;
 import com.aaramsmarthomes.api.dto.admin.MenuResponse;
 import com.aaramsmarthomes.api.dto.admin.MenuUpsertRequest;
+import com.aaramsmarthomes.api.model.DishCatalog;
 import com.aaramsmarthomes.api.model.Menu;
 import com.aaramsmarthomes.api.model.MenuIngredient;
 import com.aaramsmarthomes.api.model.MenuItem;
+import com.aaramsmarthomes.api.repository.DishCatalogRepository;
 import com.aaramsmarthomes.api.repository.MenuIngredientRepository;
 import com.aaramsmarthomes.api.repository.MenuItemRepository;
 import com.aaramsmarthomes.api.repository.MenuRepository;
@@ -33,12 +35,13 @@ class MenuServiceTest {
     @Mock MenuRepository menuRepository;
     @Mock MenuItemRepository menuItemRepository;
     @Mock MenuIngredientRepository menuIngredientRepository;
+    @Mock DishCatalogRepository dishCatalogRepository;
 
     MenuService menuService;
 
     @BeforeEach
     void setup() {
-        menuService = new MenuService(menuRepository, menuItemRepository, menuIngredientRepository);
+        menuService = new MenuService(menuRepository, menuItemRepository, menuIngredientRepository, dishCatalogRepository);
     }
 
     private MenuItem item(String menuId, String name, int order) {
@@ -170,5 +173,54 @@ class MenuServiceTest {
         verify(menuItemRepository).deleteByMenuId("menu-1");
         verify(menuIngredientRepository).deleteByMenuId("menu-1");
         verify(menuRepository).deleteById("menu-1");
+    }
+
+    @Test
+    void saveItem_links_dish_id_on_case_insensitive_name_match() {
+        LocalDate date = LocalDate.of(2026, 7, 3);
+        when(menuRepository.findByDateAndMealBlock(date, "Breakfast")).thenReturn(Optional.empty());
+        when(menuRepository.save(any(Menu.class))).thenAnswer(inv -> {
+            Menu m = inv.getArgument(0);
+            m.setId("menu-1");
+            return m;
+        });
+        when(menuItemRepository.findByMenuIdOrderBySortOrderAsc("menu-1")).thenReturn(List.of());
+
+        DishCatalog ragiIdli = new DishCatalog();
+        ragiIdli.setId("dish-ragi-idli");
+        ragiIdli.setName("Ragi Idli");
+        when(dishCatalogRepository.findFirstByNameIgnoreCase("ragi idli")).thenReturn(Optional.of(ragiIdli));
+
+        MenuUpsertRequest req = new MenuUpsertRequest(date, "Breakfast", null,
+            List.of(new MenuItemInput("ragi idli", 0)), List.of());
+
+        menuService.upsert(req);
+
+        ArgumentCaptor<MenuItem> captor = ArgumentCaptor.forClass(MenuItem.class);
+        verify(menuItemRepository).save(captor.capture());
+        assertThat(captor.getValue().getDishId()).isEqualTo("dish-ragi-idli");
+    }
+
+    @Test
+    void saveItem_leaves_dish_id_null_when_no_catalog_match() {
+        // Composite weekly-grid entries like "Poha + Sev" won't match any single catalog dish.
+        LocalDate date = LocalDate.of(2026, 7, 3);
+        when(menuRepository.findByDateAndMealBlock(date, "Breakfast")).thenReturn(Optional.empty());
+        when(menuRepository.save(any(Menu.class))).thenAnswer(inv -> {
+            Menu m = inv.getArgument(0);
+            m.setId("menu-1");
+            return m;
+        });
+        when(menuItemRepository.findByMenuIdOrderBySortOrderAsc("menu-1")).thenReturn(List.of());
+        when(dishCatalogRepository.findFirstByNameIgnoreCase("Poha + Sev")).thenReturn(Optional.empty());
+
+        MenuUpsertRequest req = new MenuUpsertRequest(date, "Breakfast", null,
+            List.of(new MenuItemInput("Poha + Sev", 0)), List.of());
+
+        menuService.upsert(req);
+
+        ArgumentCaptor<MenuItem> captor = ArgumentCaptor.forClass(MenuItem.class);
+        verify(menuItemRepository).save(captor.capture());
+        assertThat(captor.getValue().getDishId()).isNull();
     }
 }

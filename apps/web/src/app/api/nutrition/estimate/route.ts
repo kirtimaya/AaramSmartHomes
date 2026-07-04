@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/supabaseAdmin';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL_NUTRITION ?? process.env.GEMINI_CHAT_MODEL ?? 'gemini-2.5-flash';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req);
+  if (auth instanceof NextResponse) return auth;
+
   const { dishName } = await req.json();
 
   if (!dishName?.trim()) {

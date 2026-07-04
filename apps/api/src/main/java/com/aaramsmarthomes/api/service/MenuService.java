@@ -9,6 +9,7 @@ import com.aaramsmarthomes.api.dto.admin.MenuUpsertRequest;
 import com.aaramsmarthomes.api.model.Menu;
 import com.aaramsmarthomes.api.model.MenuIngredient;
 import com.aaramsmarthomes.api.model.MenuItem;
+import com.aaramsmarthomes.api.repository.DishCatalogRepository;
 import com.aaramsmarthomes.api.repository.MenuIngredientRepository;
 import com.aaramsmarthomes.api.repository.MenuItemRepository;
 import com.aaramsmarthomes.api.repository.MenuRepository;
@@ -28,12 +29,14 @@ public class MenuService {
     private final MenuRepository menuRepository;
     private final MenuItemRepository menuItemRepository;
     private final MenuIngredientRepository menuIngredientRepository;
+    private final DishCatalogRepository dishCatalogRepository;
 
     public MenuService(MenuRepository menuRepository, MenuItemRepository menuItemRepository,
-                        MenuIngredientRepository menuIngredientRepository) {
+                        MenuIngredientRepository menuIngredientRepository, DishCatalogRepository dishCatalogRepository) {
         this.menuRepository = menuRepository;
         this.menuItemRepository = menuItemRepository;
         this.menuIngredientRepository = menuIngredientRepository;
+        this.dishCatalogRepository = dishCatalogRepository;
     }
 
     /** Upserts a menu keyed by (date, meal_block). Items and ingredients are each replaced
@@ -94,11 +97,17 @@ public class MenuService {
         return toResponseWithChildren(menuRepository.save(menu));
     }
 
+    /** Links item_name to dish_catalog by case-insensitive exact match so nutrition (Phase 3)
+     *  and consumption aggregation (Phase 5) can join through dish_id. Composite weekly-grid
+     *  entries (e.g. "Poha + Sev") won't match anything — dish_id stays null and downstream
+     *  nutrition views degrade gracefully for those items. */
     private void saveItem(String menuId, MenuItemInput input) {
         MenuItem item = new MenuItem();
         item.setMenuId(menuId);
         item.setItemName(input.itemName());
         item.setSortOrder(input.sortOrder());
+        dishCatalogRepository.findFirstByNameIgnoreCase(input.itemName())
+            .ifPresent(dish -> item.setDishId(dish.getId()));
         menuItemRepository.save(item);
     }
 
