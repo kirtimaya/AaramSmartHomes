@@ -3,19 +3,28 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Utensils, Clock, Package, AlertCircle, Plus, Edit2, Trash2,
-  Calendar, Leaf, Coffee, CheckCircle2, X, PieChart as PieIcon,
-  ChefHat, Timer, Bell, RefreshCw, Wallet, ChevronDown, Zap,
+  Utensils, Clock, Package, AlertCircle,
+  Calendar, Leaf, Coffee, CheckCircle2,
+  ChefHat, Timer, Bell, RefreshCw, ChevronDown, Zap,
+  Flame, TrendingUp, Sparkles, PieChart as PieIcon,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+} from 'recharts';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import {
+  useWeekMenuNutrition, useMemberNutrition, macroCalorieBreakdown,
+  type DayMenuNutrition,
+} from '@aaram/core';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner';
 type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+type PortalRole = 'admin' | 'tenant' | 'guest' | null;
 
 interface PantryItem {
   id: string;
@@ -25,14 +34,6 @@ interface PantryItem {
   status: 'In Stock' | 'Low' | 'Out of Stock';
   category: string;
   last_updated_at: string;
-}
-
-interface Expense {
-  id: string;
-  item: string;
-  amount: number;
-  date: string;
-  category: string;
 }
 
 interface MenuRow {
@@ -63,6 +64,11 @@ function getWeekMondayIST(): string {
   return monday.toISOString().slice(0, 10);
 }
 
+function getMonthStartIST(): string {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
 const DAYS: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS: MealType[] = ['Breakfast', 'Lunch', 'Dinner'];
 
@@ -72,14 +78,201 @@ const MEAL_TIMINGS: Record<MealType, string> = {
   Dinner:    '08:30 PM – 10:30 PM',
 };
 
-// ── Static Expenses (non-DB for now) ──────────────────────────────────────────
+// ── Guest showcase: today's meals + macro chips + weekly strip + benefits ────────
 
-const INITIAL_EXPENSES: Expense[] = [
-  { id: '1', item: 'Organic Veggies',  amount: 3500,  date: '2026-05-10', category: 'Fresh' },
-  { id: '2', item: 'Milk Supply',      amount: 4800,  date: '2026-05-08', category: 'Dairy' },
-  { id: '3', item: 'Grocery Refill',   amount: 12000, date: '2026-05-05', category: 'Essentials' },
-  { id: '4', item: 'Gas Cylinder',     amount: 1150,  date: '2026-05-02', category: 'Utilities' },
-];
+function GuestNutritionShowcase({ days, todayIST }: { days: DayMenuNutrition[]; todayIST: string }) {
+  const today = days.find(d => d.date === todayIST);
+
+  const benefits = useMemo(() => {
+    if (!today) return [];
+    const all = MEALS.flatMap(m => today.blocks[m].items.flatMap(i => i.nutrition?.benefits ?? []));
+    return Array.from(new Set(all)).slice(0, 4);
+  }, [today]);
+
+  const weekCalories = days.map(d => ({
+    date: d.date,
+    calories: MEALS.reduce((sum, m) => sum + d.blocks[m].macros.calories, 0),
+  }));
+  const maxCalories = Math.max(1, ...weekCalories.map(d => d.calories));
+
+  return (
+    <motion.section initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
+      className="soft-card p-6 md:p-8 relative overflow-hidden">
+      <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 8, repeat: Infinity }}
+        className="absolute -top-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="flex items-center gap-3 mb-8">
+        <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><Sparkles className="w-4 h-4" /></span>
+        <div>
+          <h3 className="text-xl font-black uppercase tracking-tighter">Today&rsquo;s Nutrition</h3>
+          <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">Real food, real numbers — no surprises</p>
+        </div>
+      </div>
+
+      {/* Today's macro chips per block */}
+      <div className="space-y-3 mb-8">
+        {MEALS.map((block, i) => {
+          const b = today?.blocks[block];
+          const hasData = b && b.macros.calories > 0;
+          return (
+            <motion.div key={block} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+              className="soft-well p-4 border border-white flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center text-primary shrink-0">
+                  {block === 'Breakfast' ? <Coffee className="w-4 h-4" /> : block === 'Lunch' ? <Utensils className="w-4 h-4" /> : <Timer className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black text-primary/60 uppercase tracking-widest">{block}</p>
+                  <p className="text-xs font-bold text-foreground truncate">
+                    {b?.items.map(i2 => i2.itemName).join(', ') || <span className="italic text-foreground/30">Not set</span>}
+                  </p>
+                </div>
+              </div>
+              {hasData && (
+                <div className="flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black">
+                  <Flame className="w-3 h-3" /> {Math.round(b!.macros.calories)} kcal
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Weekly calorie strip */}
+      <div className="mb-8">
+        <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-3">This Week</p>
+        <div className="flex items-end gap-2 h-16">
+          {weekCalories.map((d, i) => (
+            <motion.div key={d.date} initial={{ height: 0 }} animate={{ height: `${(d.calories / maxCalories) * 100}%` }}
+              transition={{ delay: i * 0.05, duration: 0.6 }}
+              className={cn('flex-1 rounded-t-lg min-h-[4px]', d.date === todayIST ? 'bg-primary' : 'bg-primary/20')} />
+          ))}
+        </div>
+      </div>
+
+      {/* Benefits callouts */}
+      {benefits.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Why it&rsquo;s good for you</p>
+          {benefits.map((b, i) => (
+            <motion.div key={b} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
+              className="flex items-start gap-2 text-[11px] font-semibold text-foreground/60">
+              <Leaf className="w-3 h-3 text-secondary shrink-0 mt-0.5" /> {b}
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
+// ── Member dashboard: minimalist weekly/monthly calorie + macro tracking ────────
+
+function MemberNutritionDashboard({
+  weekTotal, monthTotal, mealsReceived, mealsSkipped, daily,
+}: {
+  weekTotal: { calories: number; protein: number; carbs: number; fats: number };
+  monthTotal: { calories: number };
+  mealsReceived: number;
+  mealsSkipped: number;
+  daily: { date: string; macros: { calories: number } }[];
+}) {
+  const breakdown = macroCalorieBreakdown(weekTotal);
+  const pieData = [
+    { name: 'Protein', value: breakdown.proteinPct, color: '#D67D61' },
+    { name: 'Carbs',   value: breakdown.carbsPct,   color: '#8BA88E' },
+    { name: 'Fats',    value: breakdown.fatsPct,    color: '#A8C5DA' },
+  ];
+  const chartData = daily.map(d => ({ date: d.date.slice(5), calories: Math.round(d.macros.calories) }));
+
+  return (
+    <motion.section initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
+      className="soft-card p-6 md:p-8">
+      <div className="flex items-center gap-3 mb-8">
+        <span className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary"><TrendingUp className="w-4 h-4" /></span>
+        <div>
+          <h3 className="text-xl font-black uppercase tracking-tighter">My Nutrition</h3>
+          <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest">This week &amp; this month</p>
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="soft-well p-4 border border-white">
+          <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest mb-1 leading-none">This Week</p>
+          <p className="text-xl font-black text-primary leading-none">{Math.round(weekTotal.calories)} <span className="text-xs">kcal</span></p>
+        </div>
+        <div className="soft-well p-4 border border-white">
+          <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest mb-1 leading-none">This Month</p>
+          <p className="text-xl font-black text-foreground leading-none">{Math.round(monthTotal.calories)} <span className="text-xs">kcal</span></p>
+        </div>
+      </div>
+
+      {/* Daily calorie trend */}
+      <div className="h-32 w-full mb-8">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="calorieGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#D67D61" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#D67D61" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.03)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} />
+            <YAxis hide />
+            <Tooltip contentStyle={{ background: 'rgba(242,238,230,0.9)', borderRadius: '12px', border: 'none', fontSize: '11px' }} />
+            <Area type="monotone" dataKey="calories" stroke="#D67D61" strokeWidth={2} fill="url(#calorieGradient)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Macro split donut */}
+      <div className="flex items-center gap-6 mb-8">
+        <div className="h-24 w-24 shrink-0 relative">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={40} paddingAngle={4} dataKey="value">
+                {pieData.map((entry, i) => <Cell key={i} fill={entry.color} stroke="none" />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <PieIcon className="w-4 h-4 text-foreground/20" />
+          </div>
+        </div>
+        <div className="space-y-1.5 flex-1">
+          {pieData.map(p => (
+            <div key={p.name} className="flex items-center justify-between text-[10px] font-bold">
+              <span className="flex items-center gap-1.5 text-foreground/50">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} /> {p.name}
+              </span>
+              <span className="text-foreground">{p.value}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Meals received vs skipped */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="soft-well p-4 border border-white flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-secondary" />
+          <div>
+            <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest leading-none mb-0.5">Received</p>
+            <p className="text-lg font-black text-foreground leading-none">{mealsReceived}</p>
+          </div>
+        </div>
+        <div className="soft-well p-4 border border-white flex items-center gap-3">
+          <Clock className="w-5 h-5 text-foreground/30" />
+          <div>
+            <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest leading-none mb-0.5">Skipped</p>
+            <p className="text-lg font-black text-foreground/50 leading-none">{mealsSkipped}</p>
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
@@ -89,7 +282,7 @@ export default function FoodHub() {
 
   const [activeDay, setActiveDay] = useState<DayOfWeek>(todayDayName);
   const [showTimings, setShowTimings] = useState(false);
-  const [walletBalance] = useState(2450);
+  const [portalRole, setPortalRole] = useState<PortalRole>(null);
 
   // ── DB State ─────────────────────────────────────────────────────────────────
 
@@ -101,21 +294,27 @@ export default function FoodHub() {
   const [pantryLoading, setPantryLoading] = useState(true);
   const [alexaUpdates, setAlexaUpdates]   = useState<Record<string, string>>({}); // menuItemId → time
 
-  // ── Expenses (local) ──────────────────────────────────────────────────────────
+  // ── Role detection (server-verified via /api/auth/me) ─────────────────────────
 
-  const [expenses, setExpenses]       = useState(INITIAL_EXPENSES);
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [newExpense, setNewExpense]    = useState({ item: '', amount: '', category: 'Essentials' });
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const { role } = await res.json();
+      setPortalRole(role);
+    })();
+  }, []);
 
-  const monthlyBudget = 35000;
-  const spent = useMemo(() => expenses.reduce((a, e) => a + e.amount, 0), [expenses]);
-  const margin = monthlyBudget - spent;
+  // ── Nutrition data (Phase 5 shared hooks) ─────────────────────────────────────
 
-  const chartData = [
-    { name: 'Spent',  value: spent,              color: '#D67D61' },
-    { name: 'Margin', value: Math.max(0, margin), color: '#8BA88E' },
-  ];
+  const weekStart = getWeekMondayIST();
+  const weekEnd = addDaysToIST(weekStart, 6);
+  const monthStart = getMonthStartIST();
+
+  const weekNutrition = useWeekMenuNutrition(supabase, weekStart, weekEnd);
+  const memberWeek = useMemberNutrition(supabase, weekStart, weekEnd);
+  const memberMonth = useMemberNutrition(supabase, monthStart, todayIST);
 
   // ── Fetch weekly menu from DB ─────────────────────────────────────────────────
 
@@ -167,13 +366,16 @@ export default function FoodHub() {
     loadPantry();
   }, [loadWeekMenu, loadPantry]);
 
-  // ── Supabase Realtime — menu_items changes (Alexa updates) ────────────────────
+  // ── Supabase Realtime — menu_items / dish_catalog changes ─────────────────────
 
   useEffect(() => {
     const channel = supabase
       .channel('food-hub-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, (payload) => {
         loadWeekMenu();
+        weekNutrition.refresh();
+        memberWeek.refresh();
+        memberMonth.refresh();
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
           const id = (payload.new as any)?.id as string;
           if (id) {
@@ -181,12 +383,18 @@ export default function FoodHub() {
           }
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_catalog' }, () => {
+        weekNutrition.refresh();
+        memberWeek.refresh();
+        memberMonth.refresh();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pantry_items' }, () => {
         loadPantry();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadWeekMenu, loadPantry]);
 
   // ── Derived: reminders from pantry ───────────────────────────────────────────
@@ -196,34 +404,11 @@ export default function FoodHub() {
     [pantry]
   );
 
-  // ── Expense helpers ───────────────────────────────────────────────────────────
-
-  const handleAddOrUpdateExpense = () => {
-    if (!newExpense.item || !newExpense.amount) return;
-    if (editingExpense) {
-      setExpenses(expenses.map(e => e.id === editingExpense.id
-        ? { ...e, item: newExpense.item, amount: parseFloat(newExpense.amount), category: newExpense.category }
-        : e));
-    } else {
-      setExpenses([{ id: Math.random().toString(36).slice(2), item: newExpense.item, amount: parseFloat(newExpense.amount), date: todayIST, category: newExpense.category }, ...expenses]);
-    }
-    setNewExpense({ item: '', amount: '', category: 'Essentials' });
-    setEditingExpense(null);
-    setShowAddExpense(false);
-  };
-
-  const deleteExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
-
-  const editExpense = (expense: Expense) => {
-    setEditingExpense(expense);
-    setNewExpense({ item: expense.item, amount: expense.amount.toString(), category: expense.category });
-    setShowAddExpense(true);
-  };
-
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const activeDayMenu = weekMenu[activeDay];
   const hasAlexaUpdate = Object.keys(alexaUpdates).length > 0;
+  const isMember = portalRole === 'tenant';
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 lg:p-12 pb-24 overflow-x-hidden">
@@ -254,18 +439,9 @@ export default function FoodHub() {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-wrap gap-4">
-          <div className="soft-card px-5 py-3 flex items-center gap-4 bg-white/60 backdrop-blur-md">
-            <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
-              <Wallet className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[9px] font-black uppercase text-foreground/40 leading-none mb-1 tracking-tighter">Culinary Wallet</p>
-              <p className="text-lg font-black text-foreground">₹{walletBalance.toLocaleString()}</p>
-            </div>
-          </div>
           <Link href="/food-hub/nutrition"
             className="soft-button px-6 py-3 text-[11px] font-black uppercase tracking-[0.15em] text-secondary hover:text-secondary/80 flex items-center gap-2">
-            <Leaf className="w-4 h-4" /> Nutrition
+            <Leaf className="w-4 h-4" /> Dish Library
           </Link>
         </motion.div>
       </header>
@@ -476,135 +652,22 @@ export default function FoodHub() {
                 ))}
               </div>
             )}
-
-            <button className="mt-8 w-full py-4 btn-terracotta text-[10px] font-black uppercase tracking-[0.25em] shadow-xl">
-              Automated Order Hub
-            </button>
           </motion.section>
 
-          {/* 4. Fiscal Hub */}
-          <motion.section initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
-            className="soft-card p-6 md:p-8 relative">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary"><PieIcon className="w-4 h-4" /></span>
-                <h3 className="text-xl font-black uppercase tracking-tighter">Fiscal Hub</h3>
-              </div>
-              <button onClick={() => { setEditingExpense(null); setNewExpense({ item: '', amount: '', category: 'Essentials' }); setShowAddExpense(true); }}
-                className="w-8 h-8 rounded-lg soft-button border-white text-primary">
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="h-64 w-full mb-8 relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={chartData} cx="50%" cy="50%" innerRadius={65} outerRadius={85} paddingAngle={8} dataKey="value" animationBegin={0} animationDuration={1500}>
-                    {chartData.map((entry, i) => <Cell key={i} fill={entry.color} stroke="none" />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'rgba(242,238,230,0.9)', borderRadius: '16px', border: 'none', backdropFilter: 'blur(10px)' }}
-                    itemStyle={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                <p className="text-[10px] font-black uppercase text-foreground/30 tracking-widest leading-none mb-1">Unused</p>
-                <p className="text-xl font-black text-secondary leading-none">₹{margin.toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-10">
-              <div className="soft-well p-4 border border-white">
-                <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest mb-1 leading-none">Net Spent</p>
-                <p className="text-xl font-black text-primary leading-none">₹{spent.toLocaleString()}</p>
-              </div>
-              <div className="soft-well p-4 border border-white">
-                <p className="text-[9px] font-black text-foreground/40 uppercase tracking-widest mb-1 leading-none">Budget</p>
-                <p className="text-xl font-black text-foreground leading-none">₹{(monthlyBudget / 1000).toFixed(0)}k</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-[10px] font-black text-foreground/40 uppercase tracking-[0.2em]">Live Transaction Feed</h4>
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              </div>
-              <div className="max-h-60 overflow-y-auto no-scrollbar space-y-3 pr-1">
-                {expenses.map((exp, idx) => (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}
-                    key={exp.id} className="group flex justify-between items-center p-4 soft-well bg-white/30 border border-white/60 hover:bg-white/50 transition-all">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-foreground truncate uppercase">{exp.item}</p>
-                      <p className="text-[9px] font-bold text-foreground/30 uppercase tracking-tighter">{exp.category} · {exp.date}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <p className="text-xs font-black text-primary">₹{exp.amount}</p>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => editExpense(exp)} className="p-1.5 hover:text-secondary transition-colors"><Edit2 className="w-3 h-3" /></button>
-                        <button onClick={() => deleteExpense(exp.id)} className="p-1.5 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </motion.section>
+          {/* 4. Nutrition — role-branched */}
+          {isMember ? (
+            <MemberNutritionDashboard
+              weekTotal={memberWeek.total}
+              monthTotal={memberMonth.total}
+              mealsReceived={memberWeek.mealsReceived}
+              mealsSkipped={memberWeek.mealsSkipped}
+              daily={memberMonth.daily}
+            />
+          ) : (
+            <GuestNutritionShowcase days={weekNutrition.days} todayIST={todayIST} />
+          )}
         </div>
       </div>
-
-      {/* Add/Edit Expense Modal */}
-      <AnimatePresence>
-        {showAddExpense && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowAddExpense(false)} className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-md soft-card p-8 md:p-10 space-y-8">
-              <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black uppercase tracking-tighter">
-                  {editingExpense ? 'Modify' : 'Log'} <span className="text-primary italic">Record</span>
-                </h3>
-                <button onClick={() => setShowAddExpense(false)} className="w-10 h-10 rounded-xl soft-button border-white text-foreground/40 hover:text-primary transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1">Description</label>
-                  <input type="text" value={newExpense.item} onChange={e => setNewExpense({ ...newExpense, item: e.target.value })}
-                    placeholder="e.g. Fresh Dairy Batch"
-                    className="w-full p-4 soft-well bg-white/40 border border-white outline-none focus:ring-2 ring-primary/20 text-sm font-bold placeholder:text-foreground/20" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1">Amount (₹)</label>
-                    <input type="number" value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })}
-                      placeholder="0.00"
-                      className="w-full p-4 soft-well bg-white/40 border border-white outline-none focus:ring-2 ring-primary/20 text-sm font-bold placeholder:text-foreground/20" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1">Category</label>
-                    <div className="relative">
-                      <select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })}
-                        className="w-full p-4 soft-well bg-white/40 border border-white outline-none focus:ring-2 ring-primary/20 text-sm font-bold appearance-none cursor-pointer">
-                        <option>Essentials</option><option>Fresh</option><option>Dairy</option><option>Utilities</option><option>Supplies</option><option>Beverages</option>
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={() => setShowAddExpense(false)}
-                  className="flex-1 py-4 soft-button border-white text-foreground/40 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white">Discard</button>
-                <button onClick={handleAddOrUpdateExpense}
-                  className="flex-[1.5] py-4 btn-terracotta text-[10px] font-black uppercase tracking-[0.2em] shadow-xl">
-                  {editingExpense ? 'Update' : 'Commit Entry'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Mobile floating nav */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 md:hidden">

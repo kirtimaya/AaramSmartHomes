@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Leaf, Flame, BarChart3, ChefHat, ArrowLeft, Coffee,
+  Leaf, BarChart3, ChefHat, ArrowLeft, Coffee,
   Utensils, Timer, Heart, Shield, Brain,
-  Sprout, Star, Zap, Apple, ChevronDown, Lightbulb,
-  Calendar, FlaskConical, Scroll, Plus, X, Loader2,
-  Edit3, Save, Check, RefreshCw
+  Sprout, Zap, ChevronDown, Lightbulb,
+  Calendar, FlaskConical, Scroll, Loader2,
 } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -15,6 +14,7 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,166 +45,6 @@ interface Recipe {
   ingredients: { item: string; quantity: string; note?: string }[];
   wholeSpiceMix: SpiceMix[]; steps: string[]; nutritionTip: string;
 }
-
-// ─── Initial Dish Library ─────────────────────────────────────────────────────
-
-const INITIAL_DISHES: DishProfile[] = [
-  {
-    id: 'moong-cheela', name: 'Moong Dal Cheela', emoji: '🫓', meal: 'Breakfast', servingSize: '2 medium cheelas',
-    nutrition: { calories: 185, protein: 12, carbs: 25, fats: 4, fiber: 5, micros: [
-      { name: 'Iron', value: 2.5, unit: 'mg', rdv: 18, benefit: 'Red blood cell formation', color: '#D67D61' },
-      { name: 'Folate', value: 125, unit: 'mcg', rdv: 400, benefit: 'DNA synthesis & cell growth', color: '#8BA88E' },
-      { name: 'Magnesium', value: 48, unit: 'mg', rdv: 420, benefit: 'Muscle & nerve function', color: '#A8C5DA' },
-      { name: 'Zinc', value: 1.5, unit: 'mg', rdv: 11, benefit: 'Immune defense', color: '#C4A882' },
-    ]},
-    wholeSpices: ['Cumin seeds (jeera)', 'Black pepper', 'Turmeric (haldi)', 'Green chili', 'Fresh coriander'],
-    cookingTip: 'Soak dal 4 hours for better digestibility. Cook on medium heat with ½ tsp ghee. Squeeze lemon after cooking — Vitamin C boosts iron absorption.',
-    benefits: ['High plant protein', 'Low glycemic index — sustained energy', 'Folate-rich for cellular health', 'Naturally gluten-free'],
-    replaces: 'Poha & Jalebi', replaceReason: 'Removes refined sugar, adds 8g extra protein. Lower glycemic load.'
-  },
-  {
-    id: 'palak-dal', name: 'Palak Dal', emoji: '🌿', meal: 'Lunch', servingSize: '1 katori (200ml)',
-    nutrition: { calories: 195, protein: 13, carbs: 28, fats: 4, fiber: 7, micros: [
-      { name: 'Iron', value: 5.2, unit: 'mg', rdv: 18, benefit: 'Prevents anaemia — top plant source', color: '#D67D61' },
-      { name: 'Vitamin A', value: 580, unit: 'mcg', rdv: 900, benefit: 'Eye health & immunity', color: '#F5C842' },
-      { name: 'Calcium', value: 180, unit: 'mg', rdv: 1000, benefit: 'Bone density', color: '#A8C5DA' },
-      { name: 'Vitamin K', value: 145, unit: 'mcg', rdv: 120, benefit: 'Blood clotting & bone metabolism', color: '#C4A882' },
-    ]},
-    wholeSpices: ['Mustard seeds (rai)', 'Cumin seeds', 'Dried red chili', 'Asafoetida (hing)', 'Turmeric'],
-    cookingTip: 'Use 1 tsp ghee for tadka — enhances fat-soluble vitamin absorption. Always squeeze lemon at end: Vitamin C triples iron absorption from plant sources.',
-    benefits: ['Iron + Vitamin C synergy maximises absorption', 'All 13 essential vitamins', 'Dal + rice = complete protein', 'Beta-carotene precursor of Vitamin A'],
-    replaces: 'Dal Tadka (plain)', replaceReason: 'Adding spinach doubles iron and Vitamin A with only 20 extra calories.'
-  },
-  {
-    id: 'ragi-idli', name: 'Ragi Idli', emoji: '⚪', meal: 'Breakfast', servingSize: '3 idlis (150g)',
-    nutrition: { calories: 168, protein: 7, carbs: 32, fats: 2, fiber: 4.5, micros: [
-      { name: 'Calcium', value: 244, unit: 'mg', rdv: 1000, benefit: 'Strongest plant calcium source', color: '#A8C5DA' },
-      { name: 'Iron', value: 3.6, unit: 'mg', rdv: 18, benefit: 'Oxygen transport', color: '#D67D61' },
-      { name: 'Phosphorus', value: 280, unit: 'mg', rdv: 700, benefit: 'Bone formation & energy storage', color: '#C4A882' },
-    ]},
-    wholeSpices: ['Fenugreek seeds in batter (methi)', 'Curry leaves in sambar', 'Mustard seeds', 'Cumin', 'Asafoetida'],
-    cookingTip: 'Add ½ tsp fenugreek seeds while soaking urad dal — improves fermentation and adds iron. Ferment 10–12 hours for maximum probiotic benefit.',
-    benefits: ['Highest calcium among Indian grains — rivals dairy', 'Naturally gluten-free', 'Low glycemic index (GI 40)', 'Fermentation enhances B12 bioavailability'],
-    replaces: 'Aloo Paratha with butter', replaceReason: 'Saves 180 calories and 12g fat. Adds 244mg calcium, much lower glycemic impact.'
-  },
-  {
-    id: 'rajma', name: 'Rajma (Kidney Beans)', emoji: '🫘', meal: 'Lunch', servingSize: '1 cup cooked (200g)',
-    nutrition: { calories: 225, protein: 15, carbs: 40, fats: 1, fiber: 11, micros: [
-      { name: 'Iron', value: 5, unit: 'mg', rdv: 18, benefit: 'Top plant iron source', color: '#D67D61' },
-      { name: 'Potassium', value: 742, unit: 'mg', rdv: 4700, benefit: 'Heart health & blood pressure', color: '#F5C842' },
-      { name: 'Folate', value: 230, unit: 'mcg', rdv: 400, benefit: 'DNA synthesis', color: '#8BA88E' },
-      { name: 'Magnesium', value: 74, unit: 'mg', rdv: 420, benefit: 'Blood glucose regulation', color: '#A8C5DA' },
-    ]},
-    wholeSpices: ['Bay leaf', 'Cinnamon', 'Cloves', 'Black cardamom', 'Cumin seeds', 'Freshly crushed coriander', 'Turmeric'],
-    cookingTip: 'Soak overnight 12h — reduces flatulence oligosaccharides by 60%. Use 1 tsp oil. Tomato base provides natural Vitamin C to boost iron absorption.',
-    benefits: ['11g fiber per serving', 'Resistant starch feeds gut bacteria', 'Low glycemic index (GI 24)', 'Complete protein with rice'],
-    replaces: 'Chole Bhature', replaceReason: 'Removes deep-fried bhatura. Adds 6g more fiber, saves ~400 calories.'
-  },
-  {
-    id: 'mushroom-palak', name: 'Mushroom Palak Masala', emoji: '🍄', meal: 'Dinner', servingSize: '1 cup (200g)',
-    nutrition: { calories: 120, protein: 8, carbs: 12, fats: 5, fiber: 4, micros: [
-      { name: 'Vitamin D', value: 5, unit: 'mcg', rdv: 20, benefit: 'Bone health & immune regulation', color: '#F5C842' },
-      { name: 'Selenium', value: 25, unit: 'mcg', rdv: 55, benefit: 'Thyroid & antioxidant defense', color: '#C4A882' },
-      { name: 'Iron', value: 3.5, unit: 'mg', rdv: 18, benefit: 'Oxygen transport', color: '#D67D61' },
-      { name: 'Vitamin K', value: 108, unit: 'mcg', rdv: 120, benefit: 'Blood clotting & bone metabolism', color: '#8BA88E' },
-    ]},
-    wholeSpices: ['Cumin seeds', 'Freshly crushed coriander seeds', 'Green cardamom', 'Black pepper', 'Turmeric', 'Bay leaf'],
-    cookingTip: 'Expose mushrooms to sunlight 1 hour before cooking — doubles Vitamin D. Use 1 tsp oil; mushrooms release their own moisture.',
-    benefits: ['Mushrooms: one of few plant sources of Vitamin D', 'Selenium supports thyroid health', 'Beta-glucans modulate immune response', 'Near-zero cholesterol'],
-    replaces: 'Paneer Lababdar', replaceReason: 'Saves 200 calories and 18g saturated fat. Adds Vitamin D, Selenium.'
-  },
-  {
-    id: 'vegetable-khichdi', name: 'Vegetable Khichdi', emoji: '🥘', meal: 'Dinner', servingSize: '1 bowl (300g)',
-    nutrition: { calories: 285, protein: 12, carbs: 48, fats: 6, fiber: 6, micros: [
-      { name: 'Zinc', value: 2.2, unit: 'mg', rdv: 11, benefit: 'Immune defense & wound healing', color: '#C4A882' },
-      { name: 'Magnesium', value: 60, unit: 'mg', rdv: 420, benefit: 'Relaxation & sleep quality', color: '#A8C5DA' },
-      { name: 'Lysine', value: 0.8, unit: 'g', rdv: 2.1, benefit: 'Complete protein via rice+dal synergy', color: '#8BA88E' },
-    ]},
-    wholeSpices: ['Cumin seeds', 'Bay leaf', 'Turmeric', 'Black peppercorns (2–3)', 'Fresh ginger'],
-    cookingTip: 'Use 1 part moong dal : 1 part brown rice. The 1 tsp ghee tadka is essential — provides butyrate for gut lining healing.',
-    benefits: ['Easiest to digest — ideal for dinner', 'Complete protein: rice + dal synergy', 'Magnesium promotes muscle relaxation & sleep', 'Ayurvedic gut restoration staple'],
-    replaces: 'Noodles / Manchurian', replaceReason: 'Removes refined flour, MSG, and 1800mg+ sodium. Complete nutrition.'
-  },
-  {
-    id: 'oats-upma', name: 'Oats Vegetable Upma', emoji: '🍲', meal: 'Breakfast', servingSize: '1 bowl (250g)',
-    nutrition: { calories: 225, protein: 7, carbs: 36, fats: 6, fiber: 5, micros: [
-      { name: 'Beta-glucan', value: 2, unit: 'g', rdv: 3, benefit: 'FDA-approved cholesterol lowering', color: '#8BA88E' },
-      { name: 'Vitamin B1', value: 0.4, unit: 'mg', rdv: 1.2, benefit: 'Carbohydrate metabolism', color: '#F5C842' },
-      { name: 'Magnesium', value: 52, unit: 'mg', rdv: 420, benefit: 'Energy production & bone health', color: '#A8C5DA' },
-    ]},
-    wholeSpices: ['Mustard seeds', 'Cumin seeds', 'Curry leaves', 'Dried red chili', 'Fresh ginger', 'Turmeric'],
-    cookingTip: 'Use steel-cut oats (lower GI: 55 vs 79 for instant). Add 1 tbsp roasted peanuts for protein. Use 1 tsp coconut oil — MCTs support brain health.',
-    benefits: ['Beta-glucan: only food fiber with FDA cholesterol-lowering claim', 'Sustained energy 4–5 hours', 'Avenanthramide antioxidants unique to oats', 'Feeds Bifidobacterium probiotic bacteria'],
-  },
-  {
-    id: 'quinoa-pulao', name: 'Quinoa Vegetable Pulao', emoji: '🫙', meal: 'Lunch', servingSize: '1 cup cooked (200g)',
-    nutrition: { calories: 220, protein: 8, carbs: 39, fats: 4, fiber: 4, micros: [
-      { name: 'Complete Protein', value: 4.4, unit: 'g EAA', rdv: 8, benefit: 'All 9 essential amino acids in one grain', color: '#8BA88E' },
-      { name: 'Magnesium', value: 118, unit: 'mg', rdv: 420, benefit: 'Highest among grains — 300+ reactions', color: '#A8C5DA' },
-      { name: 'Iron', value: 2.8, unit: 'mg', rdv: 18, benefit: 'Pair with Vitamin C for best absorption', color: '#D67D61' },
-    ]},
-    wholeSpices: ['Bay leaf', 'Green cardamom (2)', 'Cloves (2)', 'Cinnamon', 'Cumin seeds', 'Black pepper', 'Star anise (1)'],
-    cookingTip: 'Rinse quinoa thoroughly to remove saponins. Toast dry before cooking for nutty flavor. Use vegetable stock instead of water.',
-    benefits: ['One of very few complete plant proteins', 'Magnesium 4× higher than white rice', 'Gluten-free with high satiety', 'Flavonoid quercetin rivals vegetables'],
-    replaces: 'Biryani (white basmati)', replaceReason: '3× the protein, 2× the fiber, complete amino acids.'
-  },
-  {
-    id: 'kala-chana', name: 'Kala Chana Masala', emoji: '🟤', meal: 'Lunch', servingSize: '1 cup cooked (200g)',
-    nutrition: { calories: 210, protein: 14, carbs: 35, fats: 2, fiber: 10, micros: [
-      { name: 'Iron', value: 6, unit: 'mg', rdv: 18, benefit: 'Highest iron among chickpeas', color: '#D67D61' },
-      { name: 'Phosphorus', value: 380, unit: 'mg', rdv: 700, benefit: 'Bone mineralization', color: '#C4A882' },
-      { name: 'Zinc', value: 3, unit: 'mg', rdv: 11, benefit: 'Strong immune cells & skin repair', color: '#8BA88E' },
-      { name: 'Potassium', value: 620, unit: 'mg', rdv: 4700, benefit: 'Blood pressure regulation', color: '#F5C842' },
-    ]},
-    wholeSpices: ['Anardana (dried pomegranate)', 'Cumin seeds', 'Freshly crushed coriander', 'Black cardamom', 'Bay leaf', 'Cinnamon', 'Turmeric'],
-    cookingTip: 'Soak overnight. Slow cook — caramelises natural sugars for rich flavour without masala powder. Anardana adds Vitamin C naturally.',
-    benefits: ['Dark pigment = higher antioxidants', '10g fiber feeds gut microbiome', 'Resistant starch (GI 28)', 'Iron + zinc combo for energy and immunity'],
-    replaces: 'Pav Bhaji', replaceReason: 'Removes refined bread, adds iron, zinc, and 8g more fiber. Saves ~350 calories.'
-  },
-  {
-    id: 'sprout-chaat', name: 'Sprouted Moong Chaat', emoji: '🌱', meal: 'Breakfast', servingSize: '1 bowl (100g)',
-    nutrition: { calories: 140, protein: 8, carbs: 22, fats: 2, fiber: 6, micros: [
-      { name: 'Vitamin C', value: 22, unit: 'mg', rdv: 90, benefit: 'Immune boost & iron absorption', color: '#F5C842' },
-      { name: 'Iron', value: 2.2, unit: 'mg', rdv: 18, benefit: 'Haemoglobin synthesis', color: '#D67D61' },
-      { name: 'Folate', value: 80, unit: 'mcg', rdv: 400, benefit: 'Cell division & growth', color: '#8BA88E' },
-    ]},
-    wholeSpices: ['Roasted cumin (freshly ground)', 'Black salt (kala namak)', 'Fresh coriander', 'Green chili', 'Lemon juice'],
-    cookingTip: 'No cooking needed — preserves all enzymes and heat-sensitive vitamins. Top with pomegranate, cucumber, and lime.',
-    benefits: ['Sprouting doubles Vitamin C content', 'Live enzymes aid protein digestion', 'Anti-inflammatory isoflavones', 'Raw = maximum micronutrient retention'],
-  },
-  {
-    id: 'dosa-sambar', name: 'Set Dosa + Sambar', emoji: '🥞', meal: 'Breakfast', servingSize: '2 dosas + 1 katori sambar',
-    nutrition: { calories: 320, protein: 10, carbs: 56, fats: 6, fiber: 4, micros: [
-      { name: 'Probiotics', value: 1, unit: 'billion CFU', rdv: 1, benefit: 'Gut microbiome diversity', color: '#8BA88E' },
-      { name: 'Iron', value: 3.2, unit: 'mg', rdv: 18, benefit: 'From dal in sambar', color: '#D67D61' },
-      { name: 'Vitamin C', value: 15, unit: 'mg', rdv: 90, benefit: 'From tomatoes in sambar', color: '#F5C842' },
-    ]},
-    wholeSpices: ['Mustard seeds', 'Curry leaves', 'Dried red chili', 'Asafoetida (hing)', 'Turmeric', 'Cumin seeds'],
-    cookingTip: 'Ferment batter 12–16 hours for maximum probiotic activity. Add drumstick (moringa) to sambar — 7× more Vitamin C than oranges.',
-    benefits: ['Fermentation increases nutrient bioavailability', 'Lactic acid bacteria improve gut flora', 'Rice + Urad dal = synergistic amino acids', 'Probiotic support for immunity'],
-  },
-  {
-    id: 'besan-cheela', name: 'Besan Cheela', emoji: '🌮', meal: 'Breakfast', servingSize: '2 medium cheelas',
-    nutrition: { calories: 165, protein: 10, carbs: 20, fats: 6, fiber: 4, micros: [
-      { name: 'Folate', value: 140, unit: 'mcg', rdv: 400, benefit: 'DNA synthesis & neural health', color: '#8BA88E' },
-      { name: 'Iron', value: 2, unit: 'mg', rdv: 18, benefit: 'Oxygen carrying capacity', color: '#D67D61' },
-      { name: 'Vitamin B6', value: 0.2, unit: 'mg', rdv: 1.7, benefit: 'Mood regulation (serotonin synthesis)', color: '#F5C842' },
-    ]},
-    wholeSpices: ['Cumin seeds', 'Turmeric', 'Freshly ground coriander', 'Black pepper', 'Fresh ginger'],
-    cookingTip: 'Stuff with grated carrots, spinach, and paneer for a complete macro profile. Use ½ tsp oil per cheela.',
-    benefits: ['Chickpea flour = excellent plant protein + folate', 'Gluten-free', 'B6 supports neurotransmitter production', 'Stuffed with veg = minimal extra calories'],
-  },
-];
-
-const INITIAL_WEEK_MEALS: WeekMeals = {
-  Monday:    { Breakfast: 'moong-cheela',  Lunch: 'palak-dal',    Dinner: 'vegetable-khichdi' },
-  Tuesday:   { Breakfast: 'ragi-idli',     Lunch: 'rajma',        Dinner: 'mushroom-palak' },
-  Wednesday: { Breakfast: 'oats-upma',     Lunch: 'quinoa-pulao', Dinner: 'palak-dal' },
-  Thursday:  { Breakfast: 'oats-upma',     Lunch: 'kala-chana',   Dinner: 'mushroom-palak' },
-  Friday:    { Breakfast: 'besan-cheela',  Lunch: 'quinoa-pulao', Dinner: 'vegetable-khichdi' },
-  Saturday:  { Breakfast: 'dosa-sambar',   Lunch: 'kala-chana',   Dinner: 'palak-dal' },
-  Sunday:    { Breakfast: 'besan-cheela',  Lunch: 'palak-dal',    Dinner: 'vegetable-khichdi' },
-};
 
 // ─── Static Day Metadata ─────────────────────────────────────────────────────
 
@@ -351,42 +191,109 @@ const MEAL_ICONS: Record<MealType, React.ComponentType<{ className?: string }>> 
   Breakfast: Coffee, Lunch: Utensils, Dinner: Timer,
 };
 
-const LS_DISHES = 'aaram-dishes-v2';
-const LS_MEALS  = 'aaram-week-meals-v2';
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function loadFromLS<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback;
-  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : fallback; } catch { return fallback; }
-}
 function sum(arr: number[]) { return arr.reduce((a, b) => a + b, 0); }
 
+function getWeekMondayIST(): string {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const day = ist.getUTCDay();
+  const monday = new Date(ist);
+  monday.setUTCDate(ist.getUTCDate() - ((day + 6) % 7));
+  return monday.toISOString().slice(0, 10);
+}
+
+function addDaysToIST(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
+//
+// Phase 5: this page is now a read-only nutrition showcase. Dishes come from
+// dish_catalog (admin-approved, managed via the kitchen page's Dishes tab —
+// see Phase 3). The weekly plan reflects the REAL menu (managed via the
+// kitchen page's menu builder), not a locally-editable mock. Admin editing
+// for both moved entirely to /admin/kitchen; this page only reads.
 
 export default function NutritionPage() {
-  const [dishes, setDishes] = useState<DishProfile[]>(() => loadFromLS(LS_DISHES, INITIAL_DISHES));
-  const [weekMeals, setWeekMeals] = useState<WeekMeals>(() => loadFromLS(LS_MEALS, INITIAL_WEEK_MEALS));
-  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [dishes, setDishes] = useState<DishProfile[]>([]);
+  const [weekMeals, setWeekMeals] = useState<WeekMeals>(
+    Object.fromEntries(DAYS.map(d => [d, Object.fromEntries(MEALS.map(m => [m, null]))])) as WeekMeals
+  );
+  const [dataLoading, setDataLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('weekly');
   const [activeDay, setActiveDay] = useState<DayOfWeek>('Monday');
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
   const [expandedRecipe, setExpandedRecipe] = useState<string | null>(null);
-  const [editingMeals, setEditingMeals] = useState(false);
   const [mealFilter, setMealFilter] = useState<MealType | 'All'>('All');
 
-  // Add dish modal state
-  const [showAddDish, setShowAddDish] = useState(false);
-  const [addDishName, setAddDishName] = useState('');
-  const [addDishMeal, setAddDishMeal] = useState<MealType>('Breakfast');
-  const [addDishEmoji, setAddDishEmoji] = useState('🍽️');
-  const [estimating, setEstimating] = useState(false);
-  const [estimatedData, setEstimatedData] = useState<(DishNutrition & { servingSize: string; wholeSpices: string[]; benefits: string[]; cookingTip: string }) | null>(null);
-  const [estimateError, setEstimateError] = useState('');
+  // ── Load approved dishes + the current week's real menu from Supabase ────────
 
-  // Persist to localStorage
-  useEffect(() => { localStorage.setItem(LS_DISHES, JSON.stringify(dishes)); }, [dishes]);
-  useEffect(() => { localStorage.setItem(LS_MEALS, JSON.stringify(weekMeals)); }, [weekMeals]);
+  useEffect(() => {
+    (async () => {
+      setDataLoading(true);
+
+      const weekStart = getWeekMondayIST();
+      const weekDates = DAYS.map((_, i) => addDaysToIST(weekStart, i));
+
+      const [{ data: dishRows }, { data: menuRows }] = await Promise.all([
+        supabase
+          .from('dish_catalog')
+          .select('id, name, calories, protein_g, carbs_g, fats_g, fiber_g, micros, whole_spices, benefits, cooking_tip, serving_size')
+          .eq('nutrition_status', 'approved')
+          .order('name'),
+        supabase
+          .from('menus')
+          .select('date, meal_block, menu_items(dish_id)')
+          .in('date', weekDates),
+      ]);
+
+      // Which meal block each dish_id showed up under this week — used purely to
+      // give the Dish Library's meal-type filter a real (if approximate) value;
+      // dish_catalog itself has no meal classification column.
+      const inferredMeal = new Map<string, MealType>();
+      for (const row of (menuRows ?? []) as any[]) {
+        const block = row.meal_block as MealType;
+        if (!MEALS.includes(block)) continue;
+        for (const item of (row.menu_items ?? []) as any[]) {
+          if (item.dish_id && !inferredMeal.has(item.dish_id)) inferredMeal.set(item.dish_id, block);
+        }
+      }
+
+      const mappedDishes: DishProfile[] = ((dishRows ?? []) as any[]).map(d => ({
+        id: d.id,
+        name: d.name,
+        emoji: '🍽️',
+        meal: inferredMeal.get(d.id) ?? 'Breakfast',
+        servingSize: d.serving_size ?? '1 serving',
+        nutrition: {
+          calories: d.calories ?? 0, protein: d.protein_g ?? 0, carbs: d.carbs_g ?? 0,
+          fats: d.fats_g ?? 0, fiber: d.fiber_g ?? 0, micros: d.micros ?? [],
+        },
+        wholeSpices: d.whole_spices ?? [],
+        cookingTip: d.cooking_tip ?? '',
+        benefits: d.benefits ?? [],
+      }));
+
+      const freshWeekMeals: WeekMeals =
+        Object.fromEntries(DAYS.map(d => [d, Object.fromEntries(MEALS.map(m => [m, null]))])) as WeekMeals;
+
+      for (const row of (menuRows ?? []) as any[]) {
+        const dayIdx = weekDates.indexOf(row.date);
+        if (dayIdx < 0) continue;
+        const block = row.meal_block as MealType;
+        if (!MEALS.includes(block)) continue;
+        const firstDishId = ((row.menu_items ?? []) as any[]).find(i => i.dish_id)?.dish_id ?? null;
+        freshWeekMeals[DAYS[dayIdx]][block] = firstDishId;
+      }
+
+      setDishes(mappedDishes);
+      setWeekMeals(freshWeekMeals);
+      setDataLoading(false);
+    })();
+  }, []);
 
   // ── Dynamic computation ─────────────────────────────────────────────────────
 
@@ -440,83 +347,8 @@ export default function NutritionPage() {
   const radarData = useMemo(() => getRadarData(activeDay), [activeDay, getRadarData]);
   const dayMeta   = DAY_META.find(d => d.day === activeDay)!;
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  const updateMeal = (day: DayOfWeek, meal: MealType, dishId: string | null) => {
-    setWeekMeals(prev => ({ ...prev, [day]: { ...prev[day], [meal]: dishId } }));
-  };
-
-  const estimateNutrition = async () => {
-    if (!addDishName.trim()) return;
-    setEstimating(true);
-    setEstimateError('');
-    setEstimatedData(null);
-    try {
-      // /api/nutrition/estimate now requires an admin session (Phase 3 security
-      // fix — it was previously callable by anyone). This whole add-dish flow
-      // moves to the admin kitchen page's Dishes tab in Phase 5; until then,
-      // attach the admin's bearer token so it keeps working here too.
-      const sbEntry = Object.entries(localStorage).find(([k]) => k.startsWith('sb-') && k.endsWith('-auth-token'));
-      const token = sbEntry ? JSON.parse(sbEntry[1])?.access_token : null;
-
-      const res = await fetch('/api/nutrition/estimate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ dishName: addDishName }),
-      });
-      if (!res.ok) throw new Error('API error');
-      const data = await res.json();
-      setEstimatedData(data);
-    } catch {
-      setEstimateError('Could not estimate nutrition. Please try again.');
-    } finally {
-      setEstimating(false);
-    }
-  };
-
-  const saveDish = () => {
-    if (!estimatedData || !addDishName.trim()) return;
-    const id = addDishName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
-    const newDish: DishProfile = {
-      id, name: addDishName.trim(), emoji: addDishEmoji, meal: addDishMeal,
-      servingSize: estimatedData.servingSize || '1 serving',
-      nutrition: {
-        calories: estimatedData.calories, protein: estimatedData.protein,
-        carbs: estimatedData.carbs, fats: estimatedData.fats, fiber: estimatedData.fiber,
-        micros: estimatedData.micros || [],
-      },
-      wholeSpices: estimatedData.wholeSpices || [],
-      cookingTip: estimatedData.cookingTip || '',
-      benefits: estimatedData.benefits || [],
-    };
-    setDishes(prev => [...prev, newDish]);
-    setShowAddDish(false);
-    setAddDishName('');
-    setEstimatedData(null);
-    setAddDishEmoji('🍽️');
-  };
-
-  const resetToDefaults = () => {
-    setDishes(INITIAL_DISHES);
-    setWeekMeals(INITIAL_WEEK_MEALS);
-  };
-
-  const deleteDish = (id: string) => {
-    setDishes(prev => prev.filter(d => d.id !== id));
-    // Remove from week meals
-    setWeekMeals(prev => {
-      const next = { ...prev };
-      DAYS.forEach(day => {
-        MEALS.forEach(meal => {
-          if (next[day][meal] === id) next[day] = { ...next[day], [meal]: null };
-        });
-      });
-      return next;
-    });
-  };
+  // Menus and dishes are both read-only here (admin editing lives in
+  // /admin/kitchen) — no handlers needed beyond the UI toggles above.
 
   const filteredDishes = mealFilter === 'All' ? dishes : dishes.filter(d => d.meal === mealFilter);
 
@@ -528,6 +360,14 @@ export default function NutritionPage() {
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (dataLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 lg:p-12 pb-24 overflow-x-hidden">
@@ -546,20 +386,10 @@ export default function NutritionPage() {
             className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/40 hover:text-primary transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" /> Food Hub
           </Link>
-          <div className="flex items-center gap-3">
-            {isAdminMode && (
-              <button onClick={resetToDefaults}
-                className="soft-button px-4 py-2 text-[10px] font-black uppercase tracking-widest text-foreground/30 hover:text-primary flex items-center gap-1.5">
-                <RefreshCw className="w-3.5 h-3.5" /> Reset Defaults
-              </button>
-            )}
-            <button onClick={() => { setIsAdminMode(!isAdminMode); setEditingMeals(false); }}
-              className={cn('soft-button px-5 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all',
-                isAdminMode ? 'bg-primary text-white border-primary' : 'text-foreground/40 hover:text-primary')}>
-              <Shield className="w-3.5 h-3.5" />
-              {isAdminMode ? 'Admin Active' : 'Admin Mode'}
-            </button>
-          </div>
+          <Link href="/admin/kitchen"
+            className="soft-button px-5 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-foreground/40 hover:text-primary transition-colors">
+            <Shield className="w-3.5 h-3.5" /> Manage in Kitchen Dashboard
+          </Link>
         </div>
 
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
@@ -623,13 +453,6 @@ export default function NutritionPage() {
                 </h2>
                 <p className="text-[10px] text-foreground/40 uppercase font-bold tracking-widest ml-11">No processed masala · Whole spice tadkas · Max 2 tsp oil per dish</p>
               </div>
-              {isAdminMode && (
-                <button onClick={() => setEditingMeals(!editingMeals)}
-                  className={cn('flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all',
-                    editingMeals ? 'btn-terracotta border-primary' : 'soft-button border-white text-foreground/40 hover:text-foreground/70')}>
-                  {editingMeals ? <><Save className="w-3.5 h-3.5" /> Done Editing</> : <><Edit3 className="w-3.5 h-3.5" /> Edit Meals</>}
-                </button>
-              )}
             </div>
 
             {/* Day selector */}
@@ -720,23 +543,11 @@ export default function NutritionPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-[9px] font-black text-primary/60 uppercase tracking-widest mb-1">{meal}</p>
 
-                              {editingMeals && isAdminMode ? (
-                                <select
-                                  value={dishId || ''}
-                                  onChange={e => updateMeal(activeDay, meal, e.target.value || null)}
-                                  className="w-full p-2 soft-well border border-white text-sm font-bold text-foreground bg-background rounded-xl outline-none focus:ring-2 ring-primary/20">
-                                  <option value="">— Empty —</option>
-                                  {dishes.map(d => (
-                                    <option key={d.id} value={d.id}>{d.name} ({d.meal})</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="text-lg font-bold text-foreground">
-                                  {dish ? `${dish.emoji} ${dish.name}` : <span className="text-foreground/30 italic">No dish selected</span>}
-                                </p>
-                              )}
+                              <p className="text-lg font-bold text-foreground">
+                                {dish ? `${dish.emoji} ${dish.name}` : <span className="text-foreground/30 italic">No dish selected</span>}
+                              </p>
 
-                              {dish && !editingMeals && (
+                              {dish && (
                                 <div className="flex gap-3 mt-2">
                                   <span className="text-[9px] font-bold text-foreground/40">{dish.nutrition.calories} kcal</span>
                                   <span className="text-[9px] font-bold text-foreground/40">{dish.nutrition.protein}g protein</span>
@@ -748,17 +559,6 @@ export default function NutritionPage() {
                         </motion.div>
                       );
                     })}
-
-                    {editingMeals && isAdminMode && (
-                      <div className="soft-card p-4 border border-primary/20 bg-primary/5">
-                        <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-                          <Star className="w-3.5 h-3.5 inline mr-1" /> Editing Mode
-                        </p>
-                        <p className="text-xs text-foreground/50">
-                          Select dishes from the dropdown. Daily Balance charts update automatically. Add new dishes in the Dish Library tab.
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -810,12 +610,6 @@ export default function NutritionPage() {
                     {f}
                   </button>
                 ))}
-                {isAdminMode && (
-                  <button onClick={() => { setShowAddDish(true); setEstimatedData(null); setEstimateError(''); setAddDishName(''); }}
-                    className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-dashed border-primary/40 text-primary hover:bg-primary/5 transition-all flex items-center gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add Dish
-                  </button>
-                )}
               </div>
             </div>
 
@@ -837,12 +631,6 @@ export default function NutritionPage() {
                       <div className="text-right flex flex-col items-end gap-1">
                         <p className="text-2xl font-black text-foreground">{dish.nutrition.calories}</p>
                         <p className="text-[9px] font-black text-foreground/30 uppercase">kcal</p>
-                        {isAdminMode && (
-                          <button onClick={() => deleteDish(dish.id)}
-                            className="text-[8px] font-black text-red-400/50 hover:text-red-400 uppercase tracking-wider mt-1">
-                            Remove
-                          </button>
-                        )}
                       </div>
                     </div>
 
@@ -1214,137 +1002,6 @@ export default function NutritionPage() {
         </p>
       </div>
 
-      {/* ── Add Dish Modal ──────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showAddDish && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowAddDish(false)}
-              className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-lg soft-card p-8 space-y-6 max-h-[90vh] overflow-y-auto">
-
-              <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black uppercase tracking-tighter">
-                  Add <span className="text-primary italic">Dish</span>
-                </h3>
-                <button onClick={() => setShowAddDish(false)}
-                  className="w-10 h-10 rounded-xl soft-button border-white text-foreground/40 hover:text-primary">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-5 gap-3">
-                  <div className="col-span-1">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1 block mb-2">Emoji</label>
-                    <input value={addDishEmoji} onChange={e => setAddDishEmoji(e.target.value)}
-                      className="w-full p-3 soft-well bg-white/40 border border-white outline-none focus:ring-2 ring-primary/20 text-center text-2xl rounded-xl" />
-                  </div>
-                  <div className="col-span-4">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1 block mb-2">Dish Name</label>
-                    <input value={addDishName} onChange={e => setAddDishName(e.target.value)}
-                      placeholder="e.g. Methi Thepla, Pongal, Baingan Bharta"
-                      className="w-full p-3 soft-well bg-white/40 border border-white outline-none focus:ring-2 ring-primary/20 text-sm font-bold rounded-xl placeholder:text-foreground/20" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 ml-1 block mb-2">Meal Type</label>
-                  <div className="flex gap-3">
-                    {MEALS.map(m => (
-                      <button key={m} onClick={() => setAddDishMeal(m)}
-                        className={cn('flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all',
-                          addDishMeal === m ? 'btn-terracotta border-primary' : 'soft-button border-white text-foreground/40')}>
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button onClick={estimateNutrition} disabled={!addDishName.trim() || estimating}
-                  className="w-full py-4 btn-terracotta text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {estimating ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Analysing with Gemini AI...</>
-                  ) : (
-                    <><Zap className="w-4 h-4" /> Auto-Detect Nutrition</>
-                  )}
-                </button>
-
-                {estimateError && (
-                  <p className="text-xs text-red-400 text-center font-bold">{estimateError}</p>
-                )}
-              </div>
-
-              {/* Estimated results */}
-              {estimatedData && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                  className="space-y-4 pt-2 border-t border-white/40">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Check className="w-4 h-4" />
-                    <p className="text-[10px] font-black uppercase tracking-widest">Nutrition Detected — Serving: {estimatedData.servingSize}</p>
-                  </div>
-
-                  {/* Macros */}
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { label: 'Cal',     value: estimatedData.calories, unit: 'kcal', color: '#D67D61' },
-                      { label: 'Protein', value: estimatedData.protein,  unit: 'g',    color: '#8BA88E' },
-                      { label: 'Carbs',   value: estimatedData.carbs,    unit: 'g',    color: '#F5C842' },
-                      { label: 'Fats',    value: estimatedData.fats,     unit: 'g',    color: '#A8C5DA' },
-                      { label: 'Fiber',   value: estimatedData.fiber,    unit: 'g',    color: '#C4A882' },
-                    ].map(m => (
-                      <div key={m.label} className="soft-well p-3 border border-white text-center">
-                        <p className="text-[8px] font-black uppercase" style={{ color: m.color }}>{m.label}</p>
-                        <p className="text-sm font-black text-foreground">{m.value}</p>
-                        <p className="text-[8px] text-foreground/30">{m.unit}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Whole spices */}
-                  {estimatedData.wholeSpices?.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Whole Spices</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {estimatedData.wholeSpices.map(s => (
-                          <span key={s} className="px-2.5 py-1 bg-secondary/10 border border-secondary/20 text-secondary rounded-lg text-[9px] font-bold">{s}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Benefits */}
-                  {estimatedData.benefits?.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Health Benefits</p>
-                      <ul className="space-y-1">
-                        {estimatedData.benefits.map(b => (
-                          <li key={b} className="flex items-start gap-2 text-xs text-foreground/60">
-                            <Sprout className="w-3 h-3 text-secondary flex-shrink-0 mt-0.5" /> {b}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="flex gap-3 pt-2">
-                    <button onClick={() => setEstimatedData(null)}
-                      className="flex-1 py-3 soft-button border-white text-foreground/40 text-[10px] font-black uppercase tracking-widest">
-                      Retry
-                    </button>
-                    <button onClick={saveDish}
-                      className="flex-[2] py-3 btn-terracotta text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                      <Plus className="w-4 h-4" /> Add to Library
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

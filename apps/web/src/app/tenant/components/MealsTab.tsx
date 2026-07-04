@@ -22,7 +22,7 @@ interface MealPrefs {
   meal_dinner:    boolean;
 }
 
-interface MenuItem { item_name: string; sort_order: number }
+interface MenuItem { item_name: string; sort_order: number; dish_id: string | null }
 interface DayMenu  { date: string; block: MealBlock; items: MenuItem[] }
 
 const BLOCK_META: Record<MealBlock, {
@@ -89,6 +89,7 @@ export function MealsTab({ userId }: Props) {
   const [prefs,       setPrefs]       = useState<MealPrefs>({ meal_breakfast: true, meal_lunch: true, meal_dinner: true });
   const [skips,       setSkips]       = useState<Set<MealBlock>>(new Set());
   const [weekMenus,   setWeekMenus]   = useState<DayMenu[]>([]);
+  const [dishCalories, setDishCalories] = useState<Map<string, number>>(new Map());
   const [loadingInit, setLoadingInit] = useState(true);
   const [savingPref,  setSavingPref]  = useState<MealBlock | null>(null);
   const [skipSaving,  setSkipSaving]  = useState<MealBlock | null>(null);
@@ -122,7 +123,7 @@ export function MealsTab({ userId }: Props) {
 
       // SELECT date, meal_block, menu_items(*) FROM menus WHERE date BETWEEN today AND today+7
       supabase.from('menus')
-        .select('date, meal_block, menu_items(item_name, sort_order)')
+        .select('date, meal_block, menu_items(item_name, sort_order, dish_id)')
         .gte('date', today)
         .lte('date', istDate(7)),
 
@@ -149,11 +150,24 @@ export function MealsTab({ userId }: Props) {
     }
 
     if (menusRes.data) {
-      setWeekMenus((menusRes.data as any[]).map(m => ({
+      const menus = (menusRes.data as any[]).map(m => ({
         date:  m.date,
         block: m.meal_block as MealBlock,
         items: ((m.menu_items as any[]) ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order),
-      })));
+      }));
+      setWeekMenus(menus);
+
+      // Batch-fetch calories for every dish referenced this week, for the
+      // per-item calorie badges on today's cards (Phase 5).
+      const dishIds = Array.from(new Set(
+        menus.flatMap(m => m.items.map((i: MenuItem) => i.dish_id)).filter(Boolean),
+      )) as string[];
+      if (dishIds.length > 0) {
+        const { data: dishRows } = await supabase.from('dish_catalog').select('id, calories').in('id', dishIds);
+        setDishCalories(new Map((dishRows ?? []).map((d: any) => [d.id, d.calories])));
+      } else {
+        setDishCalories(new Map());
+      }
     }
 
     if (todaySkipsRes.data) {
@@ -432,11 +446,17 @@ export function MealsTab({ userId }: Props) {
                     </div>
                   ) : menu?.items.length ? (
                     <div className="mt-4 flex flex-wrap gap-1.5">
-                      {menu.items.map(item => (
-                        <span key={item.item_name} className="px-2.5 py-1 rounded-full bg-white/70 border border-white text-[11px] font-bold text-foreground shadow-sm">
-                          {item.item_name}
-                        </span>
-                      ))}
+                      {menu.items.map(item => {
+                        const calories = item.dish_id ? dishCalories.get(item.dish_id) : undefined;
+                        return (
+                          <span key={item.item_name} className="px-2.5 py-1 rounded-full bg-white/70 border border-white text-[11px] font-bold text-foreground shadow-sm flex items-center gap-1.5">
+                            {item.item_name}
+                            {calories != null && (
+                              <span className="text-[9px] font-black text-primary/70">{Math.round(calories)} kcal</span>
+                            )}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="mt-4 text-[11px] text-foreground/25 italic">Menu not set yet — check back soon.</p>

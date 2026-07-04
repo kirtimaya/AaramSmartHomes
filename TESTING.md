@@ -447,7 +447,7 @@ Run the full suite before each phase merge to catch regressions:
 pnpm test
 ```
 
-Expected output: **193 tests** across **24 test files**, all passing.
+Expected output: **216 tests** across **26 test files**, all passing.
 
 To see coverage:
 
