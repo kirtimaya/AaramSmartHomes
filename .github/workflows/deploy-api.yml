@@ -5,6 +5,12 @@ name: Deploy API to Cloud Run
 # handled here — they live in Google Secret Manager and are pulled in by
 # cloudbuild.yaml's own --set-secrets step. This workflow only needs enough
 # to authenticate to GCP and kick off that Cloud Build job.
+#
+# Auth is via Workload Identity Federation, not a service-account key — the
+# GCP org here has iam.disableServiceAccountKeyCreation enforced, and this
+# is the better option regardless: no long-lived credential exists anywhere,
+# GitHub mints a short-lived OIDC token per run that GCP trusts only for
+# this exact repo. See the setup commands in the PR/commit description.
 
 on:
   push:
@@ -13,6 +19,10 @@ on:
       - "apps/api/**"
       - ".github/workflows/deploy-api.yml"
   workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # required to mint the OIDC token for Workload Identity Federation
 
 jobs:
   deploy:
@@ -23,7 +33,8 @@ jobs:
       - id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
       - uses: google-github-actions/setup-gcloud@v2
 
