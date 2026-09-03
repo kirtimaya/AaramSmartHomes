@@ -44,4 +44,5 @@ jobs:
             --config=apps/api/cloudbuild.yaml \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --substitutions=_SUPABASE_URL=https://ucqkvbhfgznaacuoyqkz.supabase.co,_CORS_ORIGINS="${{ secrets.CORS_ORIGINS }}" \
+            --suppress-logs \
             .
