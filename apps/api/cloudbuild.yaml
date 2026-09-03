@@ -21,7 +21,6 @@
 substitutions:
   _REGION: asia-south1
   _SERVICE: aaram-api
-  _IMAGE: gcr.io/$PROJECT_ID/$_SERVICE
   _WHATSAPP_ENABLED: "false"
   _WHATSAPP_PHONE_NUMBER_ID: ""
   _EMERGENCY_CONTACT_NUMBER: ""
@@ -33,16 +32,16 @@ steps:
     args:
       - build
       - -t
-      - $_IMAGE:$SHORT_SHA
+      - gcr.io/$PROJECT_ID/$_SERVICE:$BUILD_ID
       - -t
-      - $_IMAGE:latest
+      - gcr.io/$PROJECT_ID/$_SERVICE:latest
       - -f
       - apps/api/Dockerfile
       - apps/api
 
   # 2. Push both tags to Container Registry
   - name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, $_IMAGE]
+    args: [push, --all-tags, gcr.io/$PROJECT_ID/$_SERVICE]
 
   # 3. Deploy to Cloud Run
   #    Secrets (DB password, service role key, Groq key) are stored in
@@ -53,7 +52,7 @@ steps:
       - run
       - deploy
       - $_SERVICE
-      - --image=$_IMAGE:$SHORT_SHA
+      - --image=gcr.io/$PROJECT_ID/$_SERVICE:$BUILD_ID
       - --region=$_REGION
       - --platform=managed
       - --allow-unauthenticated
@@ -73,7 +72,7 @@ steps:
       - --set-secrets=SUPABASE_DB_URL=aaram-db-url:latest,SUPABASE_DB_PASSWORD=aaram-db-password:latest,SUPABASE_SERVICE_ROLE_KEY=aaram-service-role-key:latest,GROQ_API_KEY=aaram-groq-key:latest,WHATSAPP_TOKEN=aaram-whatsapp-token:latest,WHATSAPP_APP_SECRET=aaram-whatsapp-app-secret:latest,WHATSAPP_VERIFY_TOKEN=aaram-whatsapp-verify-token:latest,WHATSAPP_FEEDBACK_FLOW_ID=aaram-whatsapp-flow-id:latest,GOOGLE_TTS_API_KEY=aaram-google-tts-key:latest,TASKS_SECRET=aaram-tasks-secret:latest
 
 images:
-  - $_IMAGE:$SHORT_SHA
-  - $_IMAGE:latest
+  - gcr.io/$PROJECT_ID/$_SERVICE:$BUILD_ID
+  - gcr.io/$PROJECT_ID/$_SERVICE:latest
 
 timeout: 600s
