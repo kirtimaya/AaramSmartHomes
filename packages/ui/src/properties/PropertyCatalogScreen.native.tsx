@@ -50,8 +50,8 @@ function PropertyCard({
             )}
           </View>
 
-          {property.address && (
-            <Text style={s.cardAddress} numberOfLines={1}>📍 {property.address}</Text>
+          {property.location && (
+            <Text style={s.cardAddress} numberOfLines={1}>📍 {property.location}</Text>
           )}
 
           <View style={s.cardStats}>
@@ -60,12 +60,6 @@ function PropertyCard({
             <Text style={s.cardStat}>
               {rooms.filter((r: any) => r.status === 'occupied').length} occupied
             </Text>
-            {property.rent_per_room && (
-              <>
-                <Text style={s.cardStat}>·</Text>
-                <Text style={s.cardStatHighlight}>₹{property.rent_per_room}/mo</Text>
-              </>
-            )}
           </View>
 
           {benefits.length > 0 && (
@@ -110,7 +104,7 @@ export function PropertyCatalogScreen({
   const filtered = properties.filter(p =>
     !query.trim() ||
     p.name.toLowerCase().includes(query.toLowerCase()) ||
-    (p.address ?? '').toLowerCase().includes(query.toLowerCase())
+    (p.location ?? '').toLowerCase().includes(query.toLowerCase())
   );
 
   if (loading && !refreshing) {

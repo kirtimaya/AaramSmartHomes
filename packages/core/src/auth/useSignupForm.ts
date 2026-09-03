@@ -6,7 +6,7 @@ type AuthClient = {
       email: string;
       password: string;
       options?: { data?: Record<string, string>; emailRedirectTo?: string };
-    }) => Promise<{ error: { message: string } | null }>;
+    }) => PromiseLike<{ error: { message: string } | null }>;
   };
 };
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 export type ResetPasswordAuthClient = {
   auth: {
-    updateUser: (opts: { password: string }) => Promise<{ error: { message: string } | null }>;
+    updateUser: (opts: { password: string }) => PromiseLike<{ error: { message: string } | null }>;
   };
 };
 
@@ -11,7 +11,7 @@ export type ForgotPasswordAuthClient = {
     resetPasswordForEmail: (
       email: string,
       opts?: { redirectTo?: string },
-    ) => Promise<{ error: { message: string } | null }>;
+    ) => PromiseLike<{ error: { message: string } | null }>;
   };
 };
 

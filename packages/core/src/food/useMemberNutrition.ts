@@ -20,7 +20,7 @@ export type MemberNutritionState = {
 
 export type MemberNutritionClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string } } | null } }>;
   };
   from: (table: string) => any;
 };

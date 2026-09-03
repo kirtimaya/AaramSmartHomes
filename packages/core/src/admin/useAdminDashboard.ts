@@ -46,7 +46,7 @@ export type AdminDashboardState = {
 
 export type AdminSupabaseClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string }; access_token: string } | null } }>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string }; access_token: string } | null } }>;
   };
   from: (table: string) => any;
 };

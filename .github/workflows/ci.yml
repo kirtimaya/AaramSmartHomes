@@ -1,0 +1,65 @@
+name: CI
+
+# Runs the existing test suites, typecheck and lint. No secrets required —
+# apps/api's tests deliberately avoid needing a live DB (see
+# ApiApplicationTests.java) and the vitest suite covers packages/core in
+# isolation.
+
+on:
+  push:
+    branches: [mobile]
+  pull_request:
+    branches: [mobile]
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test (vitest — packages/core)
+        run: pnpm test
+
+      - name: Typecheck — apps/web
+        run: npx tsc --noEmit
+        working-directory: apps/web
+
+      - name: Typecheck — apps/mobile
+        run: npx tsc --noEmit
+        working-directory: apps/mobile
+
+      # Non-blocking for now: apps/web currently carries ~224 pre-existing
+      # lint errors (mostly no-explicit-any) unrelated to any single change.
+      # Visible here so it doesn't regress further; make this blocking once
+      # that backlog is cleared.
+      - name: Lint — apps/web
+        run: npx eslint src
+        working-directory: apps/web
+        continue-on-error: true
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: apps/api/pom.xml
+
+      - name: Test (JUnit — apps/api)
+        run: ./mvnw -B test
+        working-directory: apps/api

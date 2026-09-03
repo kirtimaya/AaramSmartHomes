@@ -33,7 +33,7 @@ export type AdminTenantsState = {
 
 export type AdminTenantsClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string } } | null } }>;
   };
   from: (table: string) => any;
 };

@@ -62,7 +62,7 @@ export type AdminFinancialsState = {
 
 export type AdminFinancialsClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string } } | null } }>;
   };
   from: (table: string) => any;
 };

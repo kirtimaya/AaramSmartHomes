@@ -6,12 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F2EEE6"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aaramsmarthomes.app"
@@ -30,11 +24,26 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F2EEE6"
+        }
+      ]
     ],
     "scheme": "aaram",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "81dd1951-8e65-4c58-b867-f25084718cbb"
+      }
+    },
+    "owner": "kritlab"
   }
 }

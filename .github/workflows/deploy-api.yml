@@ -1,0 +1,36 @@
+name: Deploy API to Cloud Run
+
+# Builds apps/api and deploys it via the existing apps/api/cloudbuild.yaml.
+# Runtime secrets (DB password, service-role key, Groq key, etc.) are NOT
+# handled here — they live in Google Secret Manager and are pulled in by
+# cloudbuild.yaml's own --set-secrets step. This workflow only needs enough
+# to authenticate to GCP and kick off that Cloud Build job.
+
+on:
+  push:
+    branches: [mobile]
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Submit Cloud Build
+        run: |
+          gcloud builds submit \
+            --config=apps/api/cloudbuild.yaml \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --substitutions=_SUPABASE_URL=https://ucqkvbhfgznaacuoyqkz.supabase.co,_CORS_ORIGINS="${{ secrets.CORS_ORIGINS }}" \
+            .

@@ -5,8 +5,8 @@ import type { Property, VisitRequest } from '@aaram/types';
 
 export type GuestDashboardClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
-    signOut: () => Promise<void>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string } } | null } }>;
+    signOut: () => PromiseLike<{ error: unknown }>;
   };
   from: (table: string) => any;
 };

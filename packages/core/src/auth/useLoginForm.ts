@@ -5,7 +5,7 @@ export type LoginAuthClient = {
     signInWithPassword: (opts: {
       email: string;
       password: string;
-    }) => Promise<{ error: { message: string } | null }>;
+    }) => PromiseLike<{ error: { message: string } | null }>;
   };
 };
 

@@ -1,24 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Tenant, Ticket, BillSplit } from '@aaram/types';
 
+// auth.* methods are thenables, not real Promise instances — PromiseLike is
+// what they actually satisfy. `from` is typed as `any` (matching the same
+// convention in useGuestDashboard.ts and elsewhere in this package): hand-
+// chaining postgrest's builder shape here makes tsc structurally compare it
+// against the real client's deeply generic, mutually-recursive query-builder
+// types on every consumer of this type and blow its recursion budget
+// (TS2589 "Type instantiation is excessively deep").
 export type SupabaseClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string }; access_token: string } | null } }>;
-    signOut: () => Promise<void>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string }; access_token: string } | null } }>;
+    signOut: () => PromiseLike<{ error: unknown }>;
   };
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (col: string, val: string) => {
-        maybeSingle: () => Promise<{ data: unknown }>;
-        in: (col2: string, vals: string[]) => { maybeSingle: () => Promise<{ data: unknown }> };
-        order: (col2: string, opts: { ascending: boolean }) => {
-          limit: (n: number) => Promise<{ data: unknown[] | null }>;
-        };
-      };
-      order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown[] | null }>;
-    };
-    insert: (row: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
-  };
+  from: (table: string) => any;
 };
 
 export type DashboardState = {

@@ -5,10 +5,10 @@ export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
 
 export type TicketFormClient = {
   auth: {
-    getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
+    getSession: () => PromiseLike<{ data: { session: { user: { id: string } } | null } }>;
   };
   from: (table: string) => {
-    insert: (row: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    insert: (row: Record<string, unknown>) => PromiseLike<{ error: { message: string } | null }>;
   };
 };
 

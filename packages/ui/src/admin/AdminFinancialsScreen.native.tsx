@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { MotiView } from 'moti';
 import { BarChart, PieChart } from 'react-native-gifted-charts';
+import type { barDataItem } from 'react-native-gifted-charts';
 import { useAdminFinancials } from '@aaram/core';
 import type { AdminFinancialsClient, CategorySlice, MonthlyPoint } from '@aaram/core';
 import { colors, radii } from '@aaram/config';
@@ -99,7 +100,7 @@ export function AdminFinancialsScreen({ supabase, onNotAuthenticated, onBack }: 
   }
 
   // Build BarChart data — two-series interleaved (income, expense per month)
-  const barData = monthlyPoints.flatMap((m: MonthlyPoint, i: number) => [
+  const barData: barDataItem[] = monthlyPoints.flatMap((m: MonthlyPoint, i: number) => [
     {
       value:        m.income,
       label:        i % 2 === 0 ? m.month : '',  // label every other to avoid crowding

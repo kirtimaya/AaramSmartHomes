@@ -24,13 +24,15 @@
     "lucide-react": "*",
     "lucide-react-native": "*",
     "framer-motion": "*",
-    "moti": "*"
+    "moti": "*",
+    "react-native-gifted-charts": "*"
   },
   "peerDependenciesMeta": {
     "react-native": { "optional": true },
     "lucide-react-native": { "optional": true },
     "framer-motion": { "optional": true },
-    "moti": { "optional": true }
+    "moti": { "optional": true },
+    "react-native-gifted-charts": { "optional": true }
   },
   "devDependencies": {
     "@types/react": "^19",
@@ -40,6 +42,7 @@
     "moti": "*",
     "react": "^19",
     "react-native": "^0.85.3",
+    "react-native-gifted-charts": "^1.4.77",
     "typescript": "^5"
   }
 }
