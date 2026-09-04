@@ -103,7 +103,7 @@ export function LoginScreen({
               )}
               Continue with Google
             </button>
-            <p className="text-center text-[9px] font-bold text-foreground/20 uppercase tracking-widest">
+            <p className="text-center text-[9px] font-bold text-foreground/50 uppercase tracking-widest">
               Recommended for admin access
             </p>
           </div>
@@ -200,7 +200,7 @@ export function LoginScreen({
           </div>
         </div>
 
-        <div className="mt-10 text-center text-[9px] text-foreground/10 font-bold tracking-[0.4em] uppercase">
+        <div className="mt-10 text-center text-[9px] text-foreground/60 font-bold tracking-[0.4em] uppercase">
           Zero-Trust Environment
         </div>
       </motion.div>

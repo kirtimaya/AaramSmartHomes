@@ -130,7 +130,7 @@ export function SignupScreen({ supabase, onNavigateLogin, onNavigateHome, emailR
             </p>
           </div>
         </div>
-        <div className="mt-10 text-center text-[9px] text-foreground/10 font-bold tracking-[0.4em] uppercase">Zero-Trust Environment</div>
+        <div className="mt-10 text-center text-[9px] text-foreground/60 font-bold tracking-[0.4em] uppercase">Zero-Trust Environment</div>
       </motion.div>
     </div>
   );

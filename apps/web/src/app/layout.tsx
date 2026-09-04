@@ -15,7 +15,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-import { AaraWidget } from "@/components/aara/AaraWidget";
+// Aara AI is temporarily dormant — not deleted, just unmounted. Uncomment
+// both this import and the <AaraWidget /> render below to bring it back.
+// import { AaraWidget } from "@/components/aara/AaraWidget";
 
 export const metadata: Metadata = {
   title: "Aaram Smart Homes | Premium Villa PMS",
@@ -46,7 +48,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             {children}
-            <AaraWidget />
+            {/* <AaraWidget /> */}
           </AuthProvider>
         </ThemeProvider>
       </body>
