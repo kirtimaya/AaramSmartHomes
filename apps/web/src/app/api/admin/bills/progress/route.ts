@@ -43,11 +43,11 @@ export async function GET(request: NextRequest) {
     }
 
     // AC submissions for current bill (if any)
-    const submissions: { room_id: string; ac_units_submitted: number; submitted_at: string }[] = [];
+    const submissions: { room_id: string; ac_units_submitted: number; submitted_at: string; meter_photo_url: string | null }[] = [];
     if (bill && ['validated', 'split_calculated', 'locked'].includes(bill.status)) {
       const { data: subs } = await supabaseAdmin
         .from('tenant_ac_submissions')
-        .select('room_id, ac_units_submitted, submitted_at')
+        .select('room_id, ac_units_submitted, submitted_at, meter_photo_url')
         .eq('bill_id', bill.id);
       if (subs) submissions.push(...subs);
     }
@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
         submitted:          !!sub,
         ac_units_submitted: sub?.ac_units_submitted ?? null,
         submitted_at:       sub?.submitted_at ?? null,
+        meter_photo_url:    sub?.meter_photo_url ?? null,
       };
     });
 

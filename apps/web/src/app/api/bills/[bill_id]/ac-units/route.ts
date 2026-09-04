@@ -13,7 +13,7 @@ export async function POST(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { bill_id } = await params;
-  const { ac_units_submitted } = await request.json();
+  const { ac_units_submitted, meter_photo_url } = await request.json();
 
   if (typeof ac_units_submitted !== 'number' || ac_units_submitted < 0) {
     return NextResponse.json({ error: 'ac_units_submitted must be a non-negative number' }, { status: 400 });
@@ -55,6 +55,9 @@ export async function POST(
       room_id:           tenant.room_id,
       ac_units_submitted,
       submitted_at:      new Date().toISOString(),
+      // Only overwrite when a new photo is actually sent, so re-submitting just
+      // the units on a later edit doesn't wipe out a previously uploaded photo.
+      ...(typeof meter_photo_url === 'string' && meter_photo_url ? { meter_photo_url } : {}),
     }, { onConflict: 'bill_id,room_id' })
     .select()
     .single();

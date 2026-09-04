@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap, Plus, Check, X, ChevronDown, AlertTriangle, Loader2,
   Edit2, Lock, Eye, Upload, RefreshCw, Wind, FileText, Trash2, Image as ImageIcon,
-  BarChart2, CheckCircle2, Clock, AlertCircle, ChevronRight, Bell,
+  BarChart2, CheckCircle2, Clock, AlertCircle, ChevronRight, Bell, Camera,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -601,7 +601,7 @@ function EditBillModal({ bill, onClose, onSaved }: EditBillModalProps) {
 
 // ── Billing Progress Panel ────────────────────────────────────────────────────
 
-interface ProgressRoom  { room_id: string; room_name: string; tenant_name: string; tenant_phone: string | null; tenant_email: string | null; submitted: boolean; ac_units_submitted: number | null; submitted_at: string | null }
+interface ProgressRoom  { room_id: string; room_name: string; tenant_name: string; tenant_phone: string | null; tenant_email: string | null; submitted: boolean; ac_units_submitted: number | null; submitted_at: string | null; meter_photo_url: string | null }
 interface ProgressSplit { tenant_name: string; room_id: string; ac_units: number; ac_charge: number; common_share: number; total_payable: number }
 interface PropertyProgress {
   property_id:        string;
@@ -768,6 +768,15 @@ function BillingProgressPanel() {
                                       <span className="font-extrabold text-emerald-700">{r.ac_units_submitted} units</span>
                                       {r.submitted_at && (
                                         <span className="text-[9px] text-foreground/30">{new Date(r.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                                      )}
+                                      {r.meter_photo_url && (
+                                        <button
+                                          onClick={() => window.open(r.meter_photo_url!, '_blank')}
+                                          title="View meter photo"
+                                          className="w-6 h-6 rounded-lg soft-button border border-white text-foreground/40 hover:text-secondary flex items-center justify-center shrink-0"
+                                        >
+                                          <Camera className="w-3 h-3" />
+                                        </button>
                                       )}
                                     </>
                                   ) : (
