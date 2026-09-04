@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import {
   ShieldCheck,
   Mail,
@@ -242,10 +243,15 @@ function AdminLoginContent() {
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-[420px] z-10">
         <div className="text-center mb-10 space-y-4">
-          <Link href="/login" className="soft-button inline-flex items-center gap-2 px-4 py-2 border border-white group bg-white/60">
-            <ChevronLeft className="w-4 h-4 text-foreground/40 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-[10px] font-extrabold tracking-widest text-foreground/40 uppercase">Gate Switch</span>
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link href="/login" className="soft-button inline-flex items-center gap-2 px-4 py-2 border border-white group bg-white/60">
+              <ChevronLeft className="w-4 h-4 text-foreground/40 group-hover:-translate-x-1 transition-transform" />
+              <span className="text-[10px] font-extrabold tracking-widest text-foreground/40 uppercase">Gate Switch</span>
+            </Link>
+            <Link href="/" className="flex items-center gap-2">
+              <Image src="/images/aaram-logo.png" alt="Aaram" width={28} height={28} className="w-7 h-7 object-contain" />
+            </Link>
+          </div>
 
           <div className="pt-2">
             <div className="mx-auto w-20 h-20 rounded-[2.5rem] bg-foreground text-background flex items-center justify-center shadow-2xl mb-6 border-4 border-white/20">

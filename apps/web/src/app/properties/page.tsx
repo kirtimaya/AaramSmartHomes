@@ -4,13 +4,12 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Property } from '@/lib/types';
-import { 
-  MapPin, 
-  Home, 
-  Building, 
+import {
+  MapPin,
+  Home,
+  Building,
   Hotel,
   ArrowRight,
-  Shield,
   Star,
   Search,
   Leaf,
@@ -60,9 +59,8 @@ export default function PropertiesCatalog() {
         <div className="flex flex-col gap-10">
           <div className="flex justify-between items-start">
              <Link href="/" className="soft-button px-4 py-2 border border-white group inline-flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-110 shadow-sm shadow-primary/20">
-                  <Shield className="w-4 h-4 text-white" />
-                </div>
+                <Image src="/images/aaram-logo.png" alt="Aaram" width={28} height={28}
+                  className="w-7 h-7 object-contain transition-transform group-hover:scale-110" />
                 <span className="text-sm font-bold tracking-tighter text-foreground uppercase">Aaram</span>
              </Link>
              

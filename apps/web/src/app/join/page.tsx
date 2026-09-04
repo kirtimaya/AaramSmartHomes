@@ -5,10 +5,11 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Home, Loader2, CheckCircle2, AlertCircle,
+  Home, Loader2, CheckCircle2, AlertCircle,
   MapPin, ArrowRight, Mail, Lock, User, Phone
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type InvitationInfo = {
@@ -165,9 +166,7 @@ function JoinContent() {
         {/* Header */}
         <div className="text-center space-y-3">
           <Link href="/" className="soft-button inline-flex items-center gap-2 px-3 py-1.5 border border-white bg-white/40">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shadow-sm shadow-primary/20">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
+            <Image src="/images/aaram-logo.png" alt="Aaram" width={28} height={28} className="w-7 h-7 object-contain" />
             <span className="text-sm font-bold tracking-tighter text-foreground uppercase">Aaram</span>
           </Link>
         </div>

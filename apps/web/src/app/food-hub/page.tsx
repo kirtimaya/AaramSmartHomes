@@ -6,13 +6,15 @@ import {
   Utensils, Clock, Package, AlertCircle,
   Calendar, Leaf, Coffee, CheckCircle2,
   ChefHat, Timer, Bell, RefreshCw, ChevronDown, Zap,
-  Flame, TrendingUp, Sparkles, PieChart as PieIcon,
+  Flame, TrendingUp, Sparkles, PieChart as PieIcon, ArrowLeft,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import {
@@ -277,6 +279,7 @@ function MemberNutritionDashboard({
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function FoodHub() {
+  const router = useRouter();
   const todayIST = getISTDate();
   const todayDayName = DAYS[new Date(todayIST + 'T00:00:00Z').getUTCDay() === 0 ? 6 : new Date(todayIST + 'T00:00:00Z').getUTCDay() - 1];
 
@@ -419,6 +422,20 @@ export default function FoodHub() {
         <motion.div animate={{ scale: [1, 1.1, 1], rotate: [0, -45, 0] }} transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
           className="absolute -bottom-1/4 -left-1/4 w-2/3 h-2/3 bg-secondary/5 rounded-full blur-[120px]" />
       </div>
+
+      {/* Back to Home */}
+      <nav className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => router.back()}
+          className="soft-button w-10 h-10 flex items-center justify-center border border-white"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/images/aaram-logo.png" alt="Aaram" width={32} height={32} className="w-8 h-8 object-contain" />
+          <span className="font-bold tracking-tighter text-foreground uppercase">Aaram</span>
+        </Link>
+      </nav>
 
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">

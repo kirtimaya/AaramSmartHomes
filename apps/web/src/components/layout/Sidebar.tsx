@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
@@ -81,9 +82,8 @@ export function Sidebar({
       )}>
         <div className="p-6 md:p-8 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group" onClick={handleNavClick}>
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <Image src="/images/aaram-logo.png" alt="Aaram" width={32} height={32}
+              className="w-8 h-8 object-contain transition-transform group-hover:scale-110" />
             <span className="font-bold tracking-tighter text-lg text-foreground uppercase">Aaram</span>
           </Link>
           <button

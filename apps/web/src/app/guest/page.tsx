@@ -6,7 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   Heart, MapPin, Home, Calendar, MessageCircle, Bell,
-  LogOut, Loader2, Shield, ArrowRight, ChevronDown, ChevronUp,
+  LogOut, Loader2, ArrowRight, ChevronDown, ChevronUp,
   X, CheckCircle2, Clock, AlertCircle, CreditCard, Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -338,9 +338,7 @@ function GuestPageInner() {
       {/* Header */}
       <nav className="sticky top-0 z-40 px-6 py-3 flex justify-between items-center bg-background/80 backdrop-blur-md border-b border-border/20">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
-            <Shield className="w-4 h-4 text-white" />
-          </div>
+          <Image src="/images/aaram-logo.png" alt="Aaram" width={32} height={32} className="w-8 h-8 object-contain" />
           <span className="font-bold tracking-tighter text-foreground">AARAM</span>
         </Link>
 

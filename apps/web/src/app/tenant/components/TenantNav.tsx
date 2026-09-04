@@ -2,7 +2,9 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Home, Utensils, LifeBuoy, Settings, Shield, LogOut } from 'lucide-react';
+import { Home, Utensils, LifeBuoy, Settings, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -31,15 +33,14 @@ export function TenantSidebar({ activeTab, onTabChange, userName }: TenantNavPro
     <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-64 bg-background border-r border-white/40 z-40 shadow-[4px_0_24px_rgba(0,0,0,0.04)]">
       {/* Logo */}
       <div className="px-6 pt-8 pb-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
+        <Link href="/" className="flex items-center gap-3 group">
+          <Image src="/images/aaram-logo.png" alt="Aaram" width={40} height={40}
+            className="w-10 h-10 object-contain transition-transform group-hover:scale-110" />
           <div>
             <p className="font-black tracking-tighter text-base uppercase text-foreground leading-none">Aaram</p>
             <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-foreground/30 mt-0.5">Member Portal</p>
           </div>
-        </div>
+        </Link>
         <ThemeToggle />
       </div>
 

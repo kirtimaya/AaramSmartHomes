@@ -62,9 +62,8 @@ export default function LandingPage() {
       {/* Navigation - Compact */}
       <nav className="fixed top-4 left-4 right-4 z-50 px-6 py-3 flex justify-between items-center bg-background/70 backdrop-blur-md rounded-2xl border border-white/40 soft-ui-out max-w-7xl mx-auto">
         <div className="flex items-center gap-2 group cursor-pointer">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
+          <Image src="/images/aaram-logo.png" alt="Aaram" width={36} height={36}
+            className="w-9 h-9 object-contain transition-transform group-hover:scale-110" />
           <span className="font-bold tracking-tighter text-lg text-foreground">AARAM</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-[13px]">

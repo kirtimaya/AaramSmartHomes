@@ -4,7 +4,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useResetPasswordForm } from '@aaram/core';
 import type { ResetPasswordAuthClient } from '@aaram/core';
-import { Lock, ArrowRight, Loader2, AlertCircle, CheckCircle2, Shield } from '../icons';
+import { Lock, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from '../icons';
 
 export interface ResetPasswordScreenProps {
   supabase: ResetPasswordAuthClient;
@@ -32,9 +32,7 @@ export function ResetPasswordScreen({ supabase, onSuccess, onNavigateHome }: Res
             onClick={onNavigateHome}
             className="soft-button inline-flex items-center gap-2 px-3 py-1.5 border border-white group bg-white/40"
           >
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shadow-sm shadow-primary/20">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
+            <img src="/images/aaram-logo.png" alt="Aaram" className="w-7 h-7 object-contain" />
             <span className="text-sm font-bold tracking-tighter text-foreground uppercase">Aaram</span>
           </button>
           <div>
