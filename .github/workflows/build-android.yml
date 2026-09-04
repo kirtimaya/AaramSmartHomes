@@ -1,0 +1,67 @@
+name: Build Android (debug APK)
+
+# Alternative to EAS Build for when Expo's build service is unreliable —
+# this builds entirely on GitHub's own runners (Android SDK is
+# pre-installed on ubuntu-latest) and never touches EAS's infrastructure
+# or Maven cache/proxy at all. Produces a debug-signed APK (installable
+# directly on a device, not intended for the Play Store) as a downloadable
+# workflow artifact.
+#
+# The Supabase URL/anon key and API URL below are public values (the anon
+# key is protected by RLS, not secrecy — same values already committed in
+# apps/mobile/eas.json), so no repository secrets are needed for this
+# workflow at all.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [mobile]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - ".github/workflows/build-android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write env for Expo prebuild/bundle
+        working-directory: apps/mobile
+        run: |
+          cat > .env.local << 'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://ucqkvbhfgznaacuoyqkz.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcWt2YmhmZ3puYWFjdW95cWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MjAyMTcsImV4cCI6MjA4OTA5NjIxN30.n5rfhQBFYrxQiNlK1dJwrdT5t9pVIA3LEmF78jbBDyY
+          EXPO_PUBLIC_API_URL=https://aaram-api-rrxe76e6qa-el.a.run.app
+          EOF
+
+      - name: Prebuild native Android project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Build debug APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aaram-smart-homes-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
