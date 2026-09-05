@@ -48,6 +48,7 @@ function GuestPageInner() {
   const searchParams = useSearchParams();
   const [guest, setGuest] = useState<Guest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notLinked, setNotLinked] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('explore');
 
   // Explore
@@ -103,7 +104,11 @@ function GuestPageInner() {
       const { role } = await meRes.json();
       if (role === 'tenant') { router.push('/tenant'); return; }
       if (role === 'admin') { router.push('/admin'); return; }
-      router.push('/login');
+      // No matching role anywhere — bouncing back to /login would just invite
+      // another failed sign-in attempt (e.g. the wrong Google account) and
+      // loop silently. Say so instead.
+      setNotLinked(session.user.email ?? 'this account');
+      setLoading(false);
       return;
     }
 
@@ -308,6 +313,32 @@ function GuestPageInner() {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  if (notLinked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-sm w-full soft-card border border-white bg-white/40 p-8 text-center space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-7 h-7 text-amber-500" />
+          </div>
+          <div>
+            <p className="font-bold text-foreground">No Profile Found</p>
+            <p className="text-xs text-foreground/50 mt-2 leading-relaxed">
+              You&apos;re signed in as <span className="font-bold text-foreground">{notLinked}</span>, but this
+              account isn&apos;t linked to any portal yet. If you have more than one Google account, try signing
+              in with the one you used to apply or book with Aaram.
+            </p>
+          </div>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); router.push('/login'); }}
+            className="w-full btn-terracotta py-3 text-xs font-bold uppercase tracking-widest"
+          >
+            Sign Out & Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

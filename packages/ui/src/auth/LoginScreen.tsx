@@ -102,7 +102,7 @@ export function LoginScreen({
               Continue with Google
             </button>
             <p className="text-center text-[9px] font-bold text-foreground/50 uppercase tracking-widest">
-              Recommended for admin access
+              Use the Google account linked to your membership
             </p>
           </div>
 

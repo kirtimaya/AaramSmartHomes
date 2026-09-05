@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield } from 'lucide-react';
+import { Shield, AlertCircle } from 'lucide-react';
 import { useAuth }   from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { supabase }  from '@/lib/supabase';
@@ -23,6 +23,7 @@ export default function TenantPortal() {
 
   const [tenantProfile,    setTenantProfile]    = useState<Tenant | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [notLinked,        setNotLinked]        = useState(false);
   const [activeTab,        setActiveTab]        = useState<TenantTab>('dashboard');
   const [ticketOpen,       setTicketOpen]       = useState(false);
 
@@ -62,12 +63,52 @@ export default function TenantPortal() {
           setDashboardLoading(false);
           return;
         }
+
+        // Not a tenant — check whether they're actually an admin or guest
+        // before giving up. A mismatched sign-in (e.g. the wrong Google
+        // account) should say so clearly instead of silently bouncing
+        // between /tenant, /guest and /login, which just looks like the
+        // page endlessly reloading.
+        const meRes = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const { role } = await meRes.json();
+        if (role === 'admin') { router.push('/admin'); return; }
+        if (role === 'guest') { router.push('/guest'); return; }
       }
 
-      // Not a registered tenant — redirect to guest portal
-      router.push('/guest');
+      setNotLinked(true);
+      setDashboardLoading(false);
     })();
   }, [user, loading, router]);
+
+  // ── Not linked to a member profile ──────────────────────────────────────
+
+  if (!loading && notLinked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="max-w-sm w-full soft-card border border-white bg-white/40 p-8 text-center space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-7 h-7 text-amber-500" />
+          </div>
+          <div>
+            <p className="font-black text-foreground tracking-tight">No Member Profile Found</p>
+            <p className="text-xs text-foreground/50 mt-2 leading-relaxed">
+              You&apos;re signed in as <span className="font-bold text-foreground">{user?.email}</span>, but this
+              account isn&apos;t linked to a member portal. If you have more than one Google account, try signing
+              in with the email your membership was set up with.
+            </p>
+          </div>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); router.push('/login'); }}
+            className="w-full btn-terracotta py-3 text-xs font-bold uppercase tracking-widest"
+          >
+            Sign Out & Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Loading screen ──────────────────────────────────────────────────────
 
