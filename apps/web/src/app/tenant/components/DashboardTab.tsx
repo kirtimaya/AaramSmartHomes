@@ -71,6 +71,7 @@ function formatHour(h: number): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Unit { room_number: string; status: string; property_name?: string }
+interface Roommate { name: string }
 interface Bill  { total_amount: number; status: 'unpaid' | 'paid'; bill_month: string }
 interface Notice {
   id:   string;
@@ -97,6 +98,7 @@ const fadeUp = (i: number) => ({
 
 export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
   const [unit,      setUnit]      = useState<Unit | null>(null);
+  const [roommates, setRoommates] = useState<Roommate[]>([]);
   const [prefs,     setPrefs]     = useState<MealPrefs | null>(null);
   const [nextMenu,  setNextMenu]  = useState<string[] | null>(null);
   const [bill,      setBill]      = useState<Bill | null>(null);
@@ -121,6 +123,18 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
           status:        (data as any).occupancy_status,
           property_name: (data as any).properties?.name,
         });
+      })(),
+
+      // Roommate(s) — other active tenants sharing the same room
+      (async () => {
+        if (!tenantProfile.room_id) return;
+        const { data } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('room_id', tenantProfile.room_id)
+          .neq('id', tenantProfile.id)
+          .in('status', ['active', 'notice']);
+        if (data) setRoommates(data as Roommate[]);
       })(),
 
       // Meal preferences + next meal menu
@@ -330,6 +344,12 @@ export function DashboardTab({ tenantProfile, onRaiseTicket }: Props) {
                 <p className="text-sm font-black text-foreground mt-0.5">
                   {new Date(tenantProfile.move_in_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
+              </div>
+            )}
+            {roommates.length > 0 && (
+              <div className="soft-well border border-white px-4 py-2.5 rounded-xl">
+                <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Sharing With</p>
+                <p className="text-sm font-black text-foreground mt-0.5">{roommates.map(r => r.name).join(', ')}</p>
               </div>
             )}
           </div>

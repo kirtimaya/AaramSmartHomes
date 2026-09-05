@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   User, Phone, MapPin, Calendar, Shield, Upload,
-  CheckCircle2, Loader2, Camera, FileText, Eye, EyeOff, LogOut,
+  CheckCircle2, Loader2, Camera, FileText, Eye, EyeOff, LogOut, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -13,19 +13,6 @@ import { useRouter } from 'next/navigation';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
-//
-// Extended profile is stored in a separate `tenant_profiles` table:
-//   CREATE TABLE tenant_profiles (
-//     tenant_id        UUID PRIMARY KEY REFERENCES tenants(id),
-//     date_of_birth    DATE,
-//     permanent_address TEXT,
-//     emergency_name   TEXT,
-//     emergency_phone  TEXT,
-//     emergency_rel    TEXT,
-//     avatar_url       TEXT,  -- Supabase Storage: 'profile-pictures' bucket
-//     id_doc_url       TEXT,  -- Supabase Storage: 'tenant-documents' bucket
-//     updated_at       TIMESTAMPTZ DEFAULT NOW()
-//   );
 // ────────────────────────────────────────────────────────────────────────────
 
 interface ExtendedProfile {
@@ -35,13 +22,19 @@ interface ExtendedProfile {
   emergency_phone:   string;
   emergency_rel:     string;
   avatar_url:        string;
-  id_doc_url:        string;
 }
 
 interface TenantBasic {
   name:  string;
   email: string;
   phone: string;
+}
+
+interface IdentityDoc {
+  id: string;
+  label: string;
+  storage_path: string;
+  created_at: string;
 }
 
 interface Props {
@@ -59,7 +52,7 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
   const router = useRouter();
   const [basic, setBasic] = useState<TenantBasic>({ name: initialName, email: initialEmail, phone: '' });
   const [ext,   setExt]   = useState<ExtendedProfile>({
-    date_of_birth: '', permanent_address: '', emergency_name: '', emergency_phone: '', emergency_rel: '', avatar_url: '', id_doc_url: '',
+    date_of_birth: '', permanent_address: '', emergency_name: '', emergency_phone: '', emergency_rel: '', avatar_url: '',
   });
   const [loading,       setLoading]       = useState(true);
   const [savingBasic,   setSavingBasic]   = useState(false);
@@ -69,11 +62,26 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingDoc,    setUploadingDoc]    = useState(false);
   const [showPhone,       setShowPhone]       = useState(false);
+  const [idDocs,          setIdDocs]          = useState<IdentityDoc[]>([]);
+  const [idDocsLoading,   setIdDocsLoading]   = useState(true);
+  const [deletingDocId,   setDeletingDocId]   = useState<string | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const docInputRef    = useRef<HTMLInputElement>(null);
 
   // ── Load ─────────────────────────────────────────────────────────────────
+
+  const fetchIdDocs = async () => {
+    setIdDocsLoading(true);
+    const { data } = await supabase
+      .from('tenant_documents')
+      .select('id, label, storage_path, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('category', 'id_proof')
+      .order('created_at', { ascending: false });
+    if (data) setIdDocs(data as IdentityDoc[]);
+    setIdDocsLoading(false);
+  };
 
   useEffect(() => {
     (async () => {
@@ -95,11 +103,11 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
           emergency_phone:   profileRes.data.emergency_phone   ?? '',
           emergency_rel:     profileRes.data.emergency_rel     ?? '',
           avatar_url:        profileRes.data.avatar_url        ?? '',
-          id_doc_url:        profileRes.data.id_doc_url        ?? '',
         });
       }
       setLoading(false);
     })();
+    fetchIdDocs();
   }, [tenantId, initialName, initialEmail]);
 
   // ── Save basic ───────────────────────────────────────────────────────────
@@ -156,30 +164,48 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
     setUploadingAvatar(false);
   };
 
-  // ── Identity doc upload ──────────────────────────────────────────────────
+  // ── Identity documents ───────────────────────────────────────────────────
+  // Each occupant uploads under their own tenant_id, so two people sharing a
+  // room each keep a fully separate set of documents automatically.
 
   const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingDoc(true);
 
-    // Upload to Supabase Storage — bucket: 'tenant-documents', path: '{tenantId}/identity/{filename}'
-    const path = `${tenantId}/identity/${file.name}`;
+    const ext_ = file.name.split('.').pop() || 'pdf';
+    const path = `${tenantId}/${Date.now()}-id-proof.${ext_}`;
     const { error } = await supabase.storage
       .from('tenant-documents')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, file, { contentType: file.type });
 
     if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('tenant-documents')
-        .getPublicUrl(path);
-      setExt(prev => ({ ...prev, id_doc_url: publicUrl }));
-      await supabase.from('tenant_profiles').upsert(
-        { tenant_id: tenantId, id_doc_url: publicUrl, updated_at: new Date().toISOString() },
-        { onConflict: 'tenant_id' }
-      );
+      await supabase.from('tenant_documents').insert({
+        tenant_id: tenantId,
+        label: 'Identity Document',
+        category: 'id_proof',
+        storage_path: path,
+        uploaded_by: tenantId,
+        uploaded_by_name: basic.name || 'Member',
+      });
+      await fetchIdDocs();
     }
     setUploadingDoc(false);
+    if (docInputRef.current) docInputRef.current.value = '';
+  };
+
+  const handleViewDoc = async (doc: IdentityDoc) => {
+    const { data } = await supabase.storage.from('tenant-documents').createSignedUrl(doc.storage_path, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+  };
+
+  const handleDeleteDoc = async (doc: IdentityDoc) => {
+    if (!confirm('Remove this document?')) return;
+    setDeletingDocId(doc.id);
+    await supabase.storage.from('tenant-documents').remove([doc.storage_path]);
+    await supabase.from('tenant_documents').delete().eq('id', doc.id);
+    setIdDocs(prev => prev.filter(d => d.id !== doc.id));
+    setDeletingDocId(null);
   };
 
   if (loading) {
@@ -338,23 +364,34 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
 
         <p className="text-[11px] text-foreground/40 font-bold leading-relaxed">
           Upload a government-issued ID (Aadhaar, Passport, PAN Card, or Driving License).
-          Files are stored in Supabase Storage bucket <code className="bg-foreground/5 px-1 py-0.5 rounded text-[10px]">tenant-documents/{'{'}tenantId{'}'}/identity/</code>
+          If you share this room, your roommate uploads their own from their own account —
+          each person's documents stay private to them.
         </p>
 
-        {ext.id_doc_url ? (
-          <div className="flex items-center gap-4 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200/60">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-extrabold text-emerald-700 uppercase tracking-wide">Document on file</p>
-              <a href={ext.id_doc_url} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] text-emerald-600 underline font-bold truncate block">
-                View document
-              </a>
-            </div>
-          </div>
-        ) : (
+        {idDocsLoading ? (
+          <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 text-foreground/20 animate-spin" /></div>
+        ) : idDocs.length === 0 ? (
           <div className="px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200/60">
             <p className="text-[11px] text-amber-700 font-bold">No identity document on file — please upload one.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {idDocs.map(doc => (
+              <div key={doc.id} className="flex items-center gap-4 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200/60">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-extrabold text-emerald-700 uppercase tracking-wide">Document on file</p>
+                  <button onClick={() => handleViewDoc(doc)}
+                    className="text-[10px] text-emerald-600 underline font-bold truncate block">
+                    View document · {new Date(doc.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </button>
+                </div>
+                <button onClick={() => handleDeleteDoc(doc)} disabled={deletingDocId === doc.id}
+                  className="text-emerald-400 hover:text-red-500 transition-colors shrink-0">
+                  {deletingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -366,7 +403,7 @@ export function SettingsTab({ tenantId, initialName = '', initialEmail = '' }: P
           >
             {uploadingDoc
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
-              : <><FileText className="w-3.5 h-3.5" /> {ext.id_doc_url ? 'Replace Document' : 'Upload Document'}</>}
+              : <><FileText className="w-3.5 h-3.5" /> Upload Document</>}
           </button>
           <input ref={docInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleDocUpload} />
           <p className="text-[10px] text-foreground/25 font-bold">PDF, JPG or PNG · Max 10 MB</p>

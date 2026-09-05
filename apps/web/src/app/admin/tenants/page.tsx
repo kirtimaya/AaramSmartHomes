@@ -59,13 +59,17 @@ function getAuthHeader(): Record<string, string> {
   return {};
 }
 
+const MAX_ROOM_OCCUPANTS = 2;
+
 function RoomPicker({
-  rooms, properties, currentRoomId, onSelect, onClose,
+  rooms, properties, tenants, currentRoomId, onSelect, onClose,
 }: {
-  rooms: Room[]; properties: Property[]; currentRoomId: string | null;
+  rooms: Room[]; properties: Property[]; tenants: Tenant[]; currentRoomId: string | null;
   onSelect: (roomId: string | null) => void; onClose: () => void;
 }) {
-  const available = rooms.filter(r => r.occupancy_status !== 'Occupied' || r.id === currentRoomId);
+  const occupantCount = (roomId: string) => tenants.filter(t => t.room_id === roomId && t.status !== 'moved_out').length;
+
+  const available = rooms.filter(r => occupantCount(r.id) < MAX_ROOM_OCCUPANTS || r.id === currentRoomId);
   return (
     <div className="absolute top-full left-0 right-0 mt-1 z-50 soft-card border border-white bg-background shadow-xl rounded-2xl overflow-hidden max-h-56 overflow-y-auto">
       <button
@@ -90,7 +94,13 @@ function RoomPicker({
                 )}
               >
                 {r.name}
-                {r.id === currentRoomId && <span className="ml-2 text-[9px] text-primary/60 font-bold uppercase tracking-widest">current</span>}
+                {r.id === currentRoomId
+                  ? <span className="ml-2 text-[9px] text-primary/60 font-bold uppercase tracking-widest">current</span>
+                  : occupantCount(r.id) > 0 && (
+                    <span className="ml-2 text-[9px] text-secondary/60 font-bold uppercase tracking-widest">
+                      {occupantCount(r.id)}/{MAX_ROOM_OCCUPANTS} sharing
+                    </span>
+                  )}
               </button>
             ))}
           </div>
@@ -101,9 +111,9 @@ function RoomPicker({
 }
 
 function AddMemberModal({
-  rooms, properties, onClose, onCreated, toast,
+  rooms, properties, tenants, onClose, onCreated, toast,
 }: {
-  rooms: Room[]; properties: Property[];
+  rooms: Room[]; properties: Property[]; tenants: Tenant[];
   onClose: () => void;
   onCreated: () => void;
   toast: (msg: string, ok?: boolean) => void;
@@ -198,6 +208,7 @@ function AddMemberModal({
                   <RoomPicker
                     rooms={rooms}
                     properties={properties}
+                    tenants={tenants}
                     currentRoomId={roomId}
                     onSelect={setRoomId}
                     onClose={() => setPickerOpen(false)}
@@ -487,8 +498,8 @@ function EditTenantModal({
   );
 }
 
-function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, onViewDocuments, toast }: {
-  tenant: Tenant; rooms: Room[]; properties: Property[];
+function TenantCard({ tenant, rooms, properties, allTenants, onRoomChange, onStatusToggle, onEdit, onViewDocuments, toast }: {
+  tenant: Tenant; rooms: Room[]; properties: Property[]; allTenants: Tenant[];
   onRoomChange: (tenantId: string, newRoomId: string | null) => Promise<void>;
   onStatusToggle: (tenantId: string, currentStatus: string) => Promise<void>;
   onEdit: (tenant: Tenant) => void;
@@ -500,6 +511,9 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
   const [togglingStatus, setTogglingStatus] = useState(false);
   const room = rooms.find(r => r.id === tenant.room_id);
   const property = room ? properties.find(p => p.id === room.property_id) : null;
+  const roommates = tenant.room_id
+    ? allTenants.filter(t => t.id !== tenant.id && t.room_id === tenant.room_id && t.status !== 'moved_out')
+    : [];
 
   const handleAssign = async (roomId: string | null) => {
     setSaving(true);
@@ -563,6 +577,11 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
         {tenant.phone && (
           <div className="flex items-center gap-2"><Phone className="w-3 h-3 shrink-0" /> {tenant.phone}</div>
         )}
+        {roommates.length > 0 && (
+          <div className="flex items-center gap-2 text-secondary">
+            <Users className="w-3 h-3 shrink-0" /> Sharing with {roommates.map(r => r.name).join(', ')}
+          </div>
+        )}
       </div>
 
       <div className="relative">
@@ -588,6 +607,7 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
               <RoomPicker
                 rooms={rooms}
                 properties={properties}
+                tenants={allTenants}
                 currentRoomId={tenant.room_id}
                 onSelect={handleAssign}
                 onClose={() => setPickerOpen(false)}
@@ -923,6 +943,7 @@ export default function TenantsPage() {
                   tenant={tenant}
                   rooms={rooms}
                   properties={properties}
+                  allTenants={tenants}
                   onRoomChange={handleRoomChange}
                   onStatusToggle={handleStatusToggle}
                   onEdit={setEditingTenant}
@@ -974,6 +995,7 @@ export default function TenantsPage() {
           <AddMemberModal
             rooms={rooms}
             properties={properties}
+            tenants={tenants}
             onClose={() => setShowAddMember(false)}
             onCreated={() => { fetchAll(); setActiveTab('invitations'); }}
             toast={showToast}

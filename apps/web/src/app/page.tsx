@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Shield, ArrowRight, Zap, Leaf, Loader2, Home, ChefHat, Sprout, Star } from "lucide-react";
+import { Shield, ArrowRight, Zap, Leaf, Loader2, Home, ChefHat, Sprout, Star, Menu, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { Property } from "@/lib/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -13,6 +14,7 @@ export default function LandingPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [portalRole, setPortalRole] = useState<'admin' | 'tenant' | 'guest' | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -60,31 +62,78 @@ export default function LandingPage() {
       <div className="absolute bottom-[-2%] left-[-2%] w-[30%] h-[30%] bg-primary/5 rounded-full blur-[80px] pointer-events-none" />
 
       {/* Navigation - Compact */}
-      <nav className="fixed top-4 left-4 right-4 z-50 px-6 py-3 flex justify-between items-center bg-background/70 backdrop-blur-md rounded-2xl border border-white/40 soft-ui-out max-w-7xl mx-auto">
-        <div className="flex items-center gap-2 group cursor-pointer">
-          <Image src="/images/aaram-logo.png" alt="Aaram" width={36} height={36}
-            className="w-9 h-9 object-contain transition-transform group-hover:scale-110" />
-          <span className="font-bold tracking-tighter text-lg text-foreground">AARAM</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8 text-[13px]">
-          <Link href="/properties" className="font-bold text-foreground/70 hover:text-primary transition-colors">Find a Home</Link>
-          <Link href="#spaces" className="font-medium text-foreground/50 hover:text-primary transition-colors">Spaces</Link>
-          <Link href="#amenities" className="font-medium text-foreground/50 hover:text-primary transition-colors">Amenities</Link>
-          <Link href="/food-hub" className="font-medium text-foreground/50 hover:text-primary transition-colors">Kitchen</Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <button
-            onClick={handleTenantPortalClick}
-            className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 hover:text-primary transition-all"
-          >
-            <Home className="w-3.5 h-3.5" />
-            {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Member Portal'}
-          </button>
-          <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all">
-            Sign In
+      <nav className="fixed top-4 left-4 right-4 z-50 px-4 sm:px-6 py-3 bg-background/70 backdrop-blur-md rounded-2xl border border-white/40 soft-ui-out max-w-7xl mx-auto">
+        <div className="flex justify-between items-center">
+          <Link href="/" className="flex items-center gap-2 group shrink-0">
+            <Image src="/images/aaram-logo.png" alt="Aaram" width={36} height={36}
+              className="w-9 h-9 object-contain transition-transform group-hover:scale-110" />
+            <span className="font-bold tracking-tighter text-lg text-foreground">AARAM</span>
           </Link>
+          <div className="hidden md:flex items-center gap-8 text-[13px]">
+            <Link href="/properties" className="font-bold text-foreground/70 hover:text-primary transition-colors">Find a Home</Link>
+            <Link href="#spaces" className="font-medium text-foreground/50 hover:text-primary transition-colors">Spaces</Link>
+            <Link href="#amenities" className="font-medium text-foreground/50 hover:text-primary transition-colors">Amenities</Link>
+            <Link href="/food-hub" className="font-medium text-foreground/50 hover:text-primary transition-colors">Kitchen</Link>
+          </div>
+          <div className="hidden md:flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              onClick={handleTenantPortalClick}
+              className="soft-button px-4 py-2 text-[12px] font-bold flex items-center gap-1.5 hover:text-primary transition-all whitespace-nowrap"
+            >
+              <Home className="w-3.5 h-3.5" />
+              {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Member Portal'}
+            </button>
+            <Link href="/login" className="btn-terracotta px-5 py-2 text-[13px] hover:shadow-lg transition-all whitespace-nowrap">
+              Sign In
+            </Link>
+          </div>
+
+          {/* Mobile: hamburger toggle only — everything else moves into the panel below */}
+          <button
+            onClick={() => setMobileMenuOpen(v => !v)}
+            className="md:hidden soft-button w-10 h-10 flex items-center justify-center border border-white/40 shrink-0"
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
+
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden overflow-hidden"
+            >
+              <div className="pt-4 mt-4 border-t border-white/40 flex flex-col gap-1">
+                <Link href="/properties" onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2.5 rounded-xl font-bold text-sm text-foreground/70 hover:bg-white/50 hover:text-primary transition-colors">Find a Home</Link>
+                <Link href="#spaces" onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2.5 rounded-xl font-medium text-sm text-foreground/50 hover:bg-white/50 hover:text-primary transition-colors">Spaces</Link>
+                <Link href="#amenities" onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2.5 rounded-xl font-medium text-sm text-foreground/50 hover:bg-white/50 hover:text-primary transition-colors">Amenities</Link>
+                <Link href="/food-hub" onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2.5 rounded-xl font-medium text-sm text-foreground/50 hover:bg-white/50 hover:text-primary transition-colors">Kitchen</Link>
+
+                <div className="flex items-center gap-2 pt-3 mt-2 border-t border-white/40">
+                  <ThemeToggle />
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); handleTenantPortalClick(); }}
+                    className="flex-1 soft-button px-4 py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5"
+                  >
+                    <Home className="w-3.5 h-3.5" />
+                    {portalRole === 'tenant' ? 'My Portal' : portalRole === 'guest' ? 'My Space' : 'Member Portal'}
+                  </button>
+                </div>
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)}
+                  className="btn-terracotta px-5 py-3 text-center text-[13px] mt-1">
+                  Sign In
+                </Link>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero Section - Tighter Padding */}
