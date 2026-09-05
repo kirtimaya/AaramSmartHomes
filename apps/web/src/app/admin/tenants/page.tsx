@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon, Pencil, ToggleLeft, ToggleRight, Save, Loader2 } from 'lucide-react';
+import { Users, Clock, Copy, Check, Trash2, Home, Mail, Phone, MapPin, Search, X, ChevronDown, Link as LinkIcon, Pencil, ToggleLeft, ToggleRight, Save, Loader2, Plus, FileText, Eye, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,6 +30,22 @@ interface TenantInvitation {
   token: string;
   created_at: string;
 }
+interface TenantDocument {
+  id: string;
+  tenant_id: string;
+  label: string;
+  category: string;
+  storage_path: string;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+const DOC_CATEGORIES = [
+  { value: 'rental_agreement', label: 'Rental Agreement' },
+  { value: 'id_proof',         label: 'ID Proof' },
+  { value: 'receipt',          label: 'Receipt' },
+  { value: 'other',            label: 'Other' },
+] as const;
 
 function getAuthHeader(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -81,6 +97,289 @@ function RoomPicker({
         );
       })}
     </div>
+  );
+}
+
+function AddMemberModal({
+  rooms, properties, onClose, onCreated, toast,
+}: {
+  rooms: Room[]; properties: Property[];
+  onClose: () => void;
+  onCreated: () => void;
+  toast: (msg: string, ok?: boolean) => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [moveInDate, setMoveInDate] = useState(new Date().toISOString().slice(0, 10));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const selectedRoom = rooms.find(r => r.id === roomId);
+  const selectedProperty = selectedRoom ? properties.find(p => p.id === selectedRoom.property_id) : null;
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !roomId) { setError('Name and room are required'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/tenants/add', {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          roomId,
+          moveInDate,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to add member'); return; }
+      toast(data.emailSent ? 'Member added — invite email sent' : 'Member added — pending activation');
+      onCreated();
+      onClose();
+    } catch {
+      setError('Failed to add member');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="soft-card border border-white bg-background w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Add Member</p>
+          <button onClick={onClose} className="text-foreground/30 hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Optional — sends an invite link"
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Phone</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Optional"
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+          <div className="relative">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Room *</label>
+            <button
+              onClick={() => setPickerOpen(v => !v)}
+              className="w-full mt-1 flex items-center justify-between gap-2 soft-button px-3 py-2.5 text-[12px] font-bold border border-white text-left"
+            >
+              <span className="flex items-center gap-2">
+                <Home className="w-3.5 h-3.5 text-primary/60" />
+                {selectedRoom ? <span>{selectedProperty?.name} · {selectedRoom.name}</span> : <span className="text-foreground/30">Select a room</span>}
+              </span>
+              <ChevronDown className={cn('w-3.5 h-3.5 text-foreground/30 transition-transform', pickerOpen && 'rotate-180')} />
+            </button>
+            <AnimatePresence>
+              {pickerOpen && (
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
+                  <RoomPicker
+                    rooms={rooms}
+                    properties={properties}
+                    currentRoomId={roomId}
+                    onSelect={setRoomId}
+                    onClose={() => setPickerOpen(false)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Move-in Date</label>
+            <input type="date" value={moveInDate} onChange={e => setMoveInDate(e.target.value)}
+              className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-red-600 font-bold">{error}</p>}
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 soft-button border border-white py-2.5 text-[11px] font-extrabold uppercase tracking-widest text-foreground/40">
+            Cancel
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex-1 flex items-center justify-center gap-2 btn-terracotta py-2.5 text-[11px] font-extrabold uppercase tracking-widest disabled:opacity-50">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {saving ? 'Adding…' : 'Add Member'}
+          </button>
+        </div>
+        <p className="text-[9px] text-foreground/25 font-bold text-center">
+          This creates a pending invitation — activate it from the Invitations tab, or the member can self-activate via the join link.
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TenantDocumentsModal({
+  tenant, onClose, toast,
+}: {
+  tenant: Tenant; onClose: () => void;
+  toast: (msg: string, ok?: boolean) => void;
+}) {
+  const [docs, setDocs] = useState<TenantDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [label, setLabel] = useState('');
+  const [category, setCategory] = useState<typeof DOC_CATEGORIES[number]['value']>('rental_agreement');
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const fetchDocs = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('tenant_documents')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .order('created_at', { ascending: false });
+    if (data) setDocs(data as TenantDocument[]);
+    setLoading(false);
+  }, [tenant.id]);
+
+  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+
+  const handleUpload = async () => {
+    if (!file || !label.trim()) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'pdf';
+      const safeLabel = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const path = `${tenant.id}/${Date.now()}-${safeLabel}.${ext}`;
+
+      const { error: upErr } = await supabase.storage.from('tenant-documents').upload(path, file, { contentType: file.type });
+      if (upErr) throw upErr;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: insErr } = await supabase.from('tenant_documents').insert({
+        tenant_id: tenant.id,
+        label: label.trim(),
+        category,
+        storage_path: path,
+        uploaded_by: user?.id ?? null,
+        uploaded_by_name: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? 'Admin',
+      });
+      if (insErr) throw insErr;
+
+      toast('Document uploaded');
+      setLabel(''); setFile(null);
+      if (fileRef.current) fileRef.current.value = '';
+      await fetchDocs();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Upload failed', false);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (doc: TenantDocument) => {
+    if (!confirm(`Delete "${doc.label}"?`)) return;
+    setDeletingId(doc.id);
+    try {
+      await supabase.storage.from('tenant-documents').remove([doc.storage_path]);
+      const { error } = await supabase.from('tenant_documents').delete().eq('id', doc.id);
+      if (error) throw error;
+      setDocs(prev => prev.filter(d => d.id !== doc.id));
+      toast('Document removed');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to delete', false);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleView = async (doc: TenantDocument) => {
+    const { data, error } = await supabase.storage.from('tenant-documents').createSignedUrl(doc.storage_path, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    else toast(error?.message ?? 'Could not open document', false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="soft-card border border-white bg-background w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/40">Documents</p>
+            <p className="text-sm font-bold text-foreground">{tenant.name}</p>
+          </div>
+          <button onClick={onClose} className="text-foreground/30 hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-2">
+          {loading ? (
+            <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-foreground/20 animate-spin" /></div>
+          ) : docs.length === 0 ? (
+            <p className="text-xs text-foreground/30 italic text-center py-4">No documents uploaded yet.</p>
+          ) : docs.map(doc => (
+            <div key={doc.id} className="flex items-center justify-between gap-3 p-3 soft-well border border-white rounded-xl">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-foreground truncate">{doc.label}</p>
+                <p className="text-[9px] text-foreground/30 font-bold uppercase tracking-widest">
+                  {DOC_CATEGORIES.find(c => c.value === doc.category)?.label ?? doc.category} · {new Date(doc.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button onClick={() => handleView(doc)} className="w-7 h-7 flex items-center justify-center soft-button border border-white text-foreground/40 hover:text-secondary transition-colors rounded-lg">
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => handleDelete(doc)} disabled={deletingId === doc.id}
+                  className="w-7 h-7 flex items-center justify-center soft-button border border-white text-red-400 hover:text-red-500 transition-colors rounded-lg">
+                  {deletingId === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3 pt-4 border-t border-foreground/10">
+          <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Upload New</p>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Rental Agreement"
+            className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60" />
+          <select value={category} onChange={e => setCategory(e.target.value as typeof category)}
+            className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white/60 appearance-none">
+            {DOC_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf"
+            onChange={e => setFile(e.target.files?.[0] ?? null)}
+            className="w-full soft-well border border-white rounded-xl px-4 py-2.5 text-xs font-bold bg-white/60" />
+          <button onClick={handleUpload} disabled={!file || !label.trim() || uploading}
+            className="w-full flex items-center justify-center gap-2 btn-terracotta py-3 text-[11px] font-extrabold uppercase tracking-widest disabled:opacity-50">
+            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -188,11 +487,12 @@ function EditTenantModal({
   );
 }
 
-function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, toast }: {
+function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, onEdit, onViewDocuments, toast }: {
   tenant: Tenant; rooms: Room[]; properties: Property[];
   onRoomChange: (tenantId: string, newRoomId: string | null) => Promise<void>;
   onStatusToggle: (tenantId: string, currentStatus: string) => Promise<void>;
   onEdit: (tenant: Tenant) => void;
+  onViewDocuments: (tenant: Tenant) => void;
   toast: (msg: string, ok?: boolean) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -245,7 +545,11 @@ function TenantCard({ tenant, rooms, properties, onRoomChange, onStatusToggle, o
           )}>
             {tenant.status === 'active' ? 'Active' : tenant.status ?? 'Unknown'}
           </span>
-          <button onClick={() => onEdit(tenant)}
+          <button onClick={() => onViewDocuments(tenant)} title="Documents"
+            className="w-7 h-7 flex items-center justify-center soft-button border border-white text-foreground/30 hover:text-secondary transition-colors rounded-lg">
+            <FileText className="w-3 h-3" />
+          </button>
+          <button onClick={() => onEdit(tenant)} title="Edit"
             className="w-7 h-7 flex items-center justify-center soft-button border border-white text-foreground/30 hover:text-primary transition-colors rounded-lg">
             <Pencil className="w-3 h-3" />
           </button>
@@ -441,6 +745,8 @@ export default function TenantsPage() {
   const [activeTab, setActiveTab] = useState<'tenants' | 'invitations'>('tenants');
   const [toast, setToastState] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [docsForTenant, setDocsForTenant] = useState<Tenant | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToastState({ msg, ok });
@@ -557,19 +863,25 @@ export default function TenantsPage() {
               {tenants.length} active · {invitations.length} pending invitations
             </p>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search tenants..."
-              className="soft-well pl-9 pr-9 py-2.5 text-[12px] font-bold w-full sm:w-64 bg-transparent border-0 focus:outline-none placeholder:text-foreground/30"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search tenants..."
+                className="soft-well pl-9 pr-9 py-2.5 text-[12px] font-bold w-full sm:w-64 bg-transparent border-0 focus:outline-none placeholder:text-foreground/30"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button onClick={() => setShowAddMember(true)}
+              className="soft-button px-4 py-2.5 border border-primary/30 bg-primary/5 text-primary text-[11px] font-extrabold uppercase tracking-widest flex items-center gap-2 shrink-0">
+              <Plus className="w-3.5 h-3.5" /> Add Member
+            </button>
           </div>
         </div>
 
@@ -614,6 +926,7 @@ export default function TenantsPage() {
                   onRoomChange={handleRoomChange}
                   onStatusToggle={handleStatusToggle}
                   onEdit={setEditingTenant}
+                  onViewDocuments={setDocsForTenant}
                   toast={showToast}
                 />
               ))}
@@ -650,6 +963,30 @@ export default function TenantsPage() {
             tenant={editingTenant}
             onClose={() => setEditingTenant(null)}
             onSave={handleUpdateTenant}
+            toast={showToast}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Add Member modal */}
+      <AnimatePresence>
+        {showAddMember && (
+          <AddMemberModal
+            rooms={rooms}
+            properties={properties}
+            onClose={() => setShowAddMember(false)}
+            onCreated={() => { fetchAll(); setActiveTab('invitations'); }}
+            toast={showToast}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Documents modal */}
+      <AnimatePresence>
+        {docsForTenant && (
+          <TenantDocumentsModal
+            tenant={docsForTenant}
+            onClose={() => setDocsForTenant(null)}
             toast={showToast}
           />
         )}

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Ticket, LogOut, MessageSquare, MessageCircle, FileText, Download,
   CheckCircle2, Clock, AlertCircle, Loader2, Send, ChevronRight,
-  Shield, FileCheck, Receipt, Phone, Plus, Wrench, Zap, Droplets,
+  Shield, Wallet, Phone, Plus, Wrench, Zap, Droplets,
   Wind, HelpCircle, X, BatteryCharging, CreditCard, Camera, Upload,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -41,12 +41,27 @@ const PRIORITY_STYLE: Record<string, string> = {
   Urgent: 'text-red-600',
 };
 
-const VAULT_DOCS = [
-  { icon: FileCheck, label: 'Rental Agreement',    desc: 'Your signed tenancy agreement',      bucket: 'tenant-documents', path: 'rental-agreement.pdf' },
-  { icon: Receipt,   label: 'Rent Receipt – May',  desc: 'Official receipt for May 2026',       bucket: 'tenant-documents', path: 'receipts/2026-05.pdf' },
-  { icon: Receipt,   label: 'Rent Receipt – Apr',  desc: 'Official receipt for April 2026',     bucket: 'tenant-documents', path: 'receipts/2026-04.pdf' },
-  { icon: FileText,  label: 'Community Guidelines', desc: 'House rules and policies document',  bucket: 'tenant-documents', path: 'guidelines.pdf' },
-];
+const DOC_CATEGORY_LABELS: Record<string, string> = {
+  rental_agreement: 'Rental Agreement',
+  id_proof: 'ID Proof',
+  receipt: 'Receipt',
+  other: 'Document',
+};
+
+interface TenantDocument {
+  id: string;
+  label: string;
+  category: string;
+  storage_path: string;
+  created_at: string;
+}
+
+interface FinancialsRecord { id: string; amount: number; income_date: string; note: string | null }
+interface FinancialsResponse {
+  deposit_total: number; deposit_records: FinancialsRecord[];
+  rent_records: FinancialsRecord[]; rent_total_paid: number;
+  setup_cost_total: number; warning?: string;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -525,57 +540,185 @@ function FeedbackSection({ tenantId }: { tenantId: string }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function VaultSection({ tenantId }: { tenantId: string }) {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [docs, setDocs] = useState<TenantDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const handleDownload = async (doc: typeof VAULT_DOCS[0]) => {
-    setLoading(doc.label);
-    // Generate a signed URL from Supabase Storage
-    // Bucket: '{doc.bucket}', Path: '{tenantId}/{doc.path}'
-    // e.g.: supabase.storage.from(doc.bucket).createSignedUrl(`${tenantId}/${doc.path}`, 60)
+  const [fin, setFin] = useState<FinancialsResponse | null>(null);
+  const [finLoading, setFinLoading] = useState(true);
+  const [showDeposits, setShowDeposits] = useState(false);
+  const [showRent, setShowRent] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('tenant_documents')
+        .select('id, label, category, storage_path, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      if (data) setDocs(data as TenantDocument[]);
+      setDocsLoading(false);
+    })();
+
+    (async () => {
+      const res = await fetch('/api/tenant/financials', { headers: getAuthHeader() });
+      if (res.ok) setFin(await res.json());
+      setFinLoading(false);
+    })();
+  }, [tenantId]);
+
+  const handleDownload = async (doc: TenantDocument) => {
+    setDownloadingId(doc.id);
     const { data, error } = await supabase.storage
-      .from(doc.bucket)
-      .createSignedUrl(`${tenantId}/${doc.path}`, 60);
+      .from('tenant-documents')
+      .createSignedUrl(doc.storage_path, 60);
 
     if (data?.signedUrl) {
       window.open(data.signedUrl, '_blank');
     } else {
-      // Fallback: show error toast or open placeholder
       console.warn('Document not found:', error?.message);
-      alert('Document not yet uploaded. Please contact management.');
+      alert('Could not open this document. Please contact management.');
     }
-    setLoading(null);
+    setDownloadingId(null);
   };
 
+  const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
   return (
-    <div className="space-y-3 max-w-lg">
-      <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/35">
-        Your Documents
-      </p>
-      {VAULT_DOCS.map(doc => (
-        <div key={doc.label} className="soft-card border border-white bg-white/40 p-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
-              <doc.icon className="w-5 h-5 text-secondary" />
-            </div>
-            <div>
-              <p className="text-sm font-extrabold uppercase tracking-tight text-foreground">{doc.label}</p>
-              <p className="text-[10px] text-foreground/40 font-bold mt-0.5">{doc.desc}</p>
-            </div>
+    <div className="space-y-6 max-w-lg">
+      {/* ── Documents ── */}
+      <div className="space-y-3">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/35">
+          Your Documents
+        </p>
+        {docsLoading ? (
+          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-foreground/20 animate-spin" /></div>
+        ) : docs.length === 0 ? (
+          <div className="soft-card border border-white bg-white/40 p-5 text-center">
+            <p className="text-xs text-foreground/40 font-bold">No documents uploaded yet.</p>
+            <p className="text-[10px] text-foreground/25 mt-1">Your rental agreement and other files will appear here once management uploads them.</p>
           </div>
-          <button
-            onClick={() => handleDownload(doc)}
-            disabled={loading === doc.label}
-            className="soft-button border border-white w-9 h-9 text-secondary hover:text-primary transition-colors"
-          >
-            {loading === doc.label
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Download className="w-4 h-4" />}
-          </button>
-        </div>
-      ))}
-      <p className="text-[10px] text-foreground/25 font-bold px-2">
-        Files are served from Supabase Storage bucket <code className="bg-foreground/5 px-1 rounded">tenant-documents/{'{'}tenantId{'}'}/</code>
-      </p>
+        ) : docs.map(doc => (
+          <div key={doc.id} className="soft-card border border-white bg-white/40 p-5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold uppercase tracking-tight text-foreground truncate">{doc.label}</p>
+                <p className="text-[10px] text-foreground/40 font-bold mt-0.5">
+                  {DOC_CATEGORY_LABELS[doc.category] ?? doc.category} · {fmtDate(doc.created_at)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleDownload(doc)}
+              disabled={downloadingId === doc.id}
+              className="soft-button border border-white w-9 h-9 text-secondary hover:text-primary transition-colors shrink-0"
+            >
+              {downloadingId === doc.id
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Download className="w-4 h-4" />}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Deposit & Rent History ── */}
+      <div className="space-y-3">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-foreground/35">
+          Deposit &amp; Rent History
+        </p>
+        {finLoading ? (
+          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-foreground/20 animate-spin" /></div>
+        ) : !fin ? (
+          <p className="text-xs text-foreground/30 italic">Could not load your financial history.</p>
+        ) : (
+          <>
+            {fin.warning && (
+              <div className="soft-well border border-amber-300/40 bg-amber-50/60 p-3 flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {fin.warning}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="soft-card border border-white bg-white/40 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet className="w-3.5 h-3.5 text-secondary" />
+                  <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Security Deposit</p>
+                </div>
+                <p className="text-xl font-black tracking-tighter text-foreground">{fmt(fin.deposit_total)}</p>
+              </div>
+              <div className="soft-card border border-white bg-white/40 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-3.5 h-3.5 text-primary" />
+                  <p className="text-[9px] font-extrabold uppercase tracking-widest text-foreground/30">Total Rent Paid</p>
+                </div>
+                <p className="text-xl font-black tracking-tighter text-foreground">{fmt(fin.rent_total_paid)}</p>
+              </div>
+            </div>
+
+            {fin.deposit_records.length > 0 && (
+              <div className="soft-card border border-white bg-white/40 overflow-hidden">
+                <button onClick={() => setShowDeposits(v => !v)}
+                  className="w-full flex items-center justify-between p-4 text-left">
+                  <span className="text-[11px] font-extrabold uppercase tracking-widest text-foreground/50">Deposit Breakdown ({fin.deposit_records.length})</span>
+                  <ChevronRight className={cn('w-4 h-4 text-foreground/30 transition-transform', showDeposits && 'rotate-90')} />
+                </button>
+                <AnimatePresence>
+                  {showDeposits && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                      <div className="px-4 pb-4 space-y-2">
+                        {fin.deposit_records.map(r => (
+                          <div key={r.id} className="flex justify-between items-center text-xs border-t border-foreground/5 pt-2">
+                            <div>
+                              <p className="font-bold text-foreground">{fmtDate(r.income_date)}</p>
+                              {r.note && <p className="text-[10px] text-foreground/40">{r.note}</p>}
+                            </div>
+                            <span className="font-black text-secondary">{fmt(r.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {fin.rent_records.length > 0 && (
+              <div className="soft-card border border-white bg-white/40 overflow-hidden">
+                <button onClick={() => setShowRent(v => !v)}
+                  className="w-full flex items-center justify-between p-4 text-left">
+                  <span className="text-[11px] font-extrabold uppercase tracking-widest text-foreground/50">Rent Payments ({fin.rent_records.length})</span>
+                  <ChevronRight className={cn('w-4 h-4 text-foreground/30 transition-transform', showRent && 'rotate-90')} />
+                </button>
+                <AnimatePresence>
+                  {showRent && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                      <div className="px-4 pb-4 space-y-2">
+                        {fin.rent_records.map(r => (
+                          <div key={r.id} className="flex justify-between items-center text-xs border-t border-foreground/5 pt-2">
+                            <div>
+                              <p className="font-bold text-foreground">{new Date(r.income_date).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</p>
+                              {r.note && <p className="text-[10px] text-foreground/40">{r.note}</p>}
+                            </div>
+                            <span className="font-black text-primary">{fmt(r.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {fin.deposit_records.length === 0 && fin.rent_records.length === 0 && !fin.warning && (
+              <p className="text-xs text-foreground/30 italic">No records yet.</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
